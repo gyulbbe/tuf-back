@@ -65,8 +65,10 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
         ObjectMapper objectMapper = new ObjectMapper();
         Map<String, Object> responseData = Map.of(
-            "userId", username,
-            "role", role
+        "userId", username,
+        "role", role,
+        "point", customUserDetails.getPoint(),
+        "photo", customUserDetails.getPhoto()
         );
 
         response.getWriter().write(objectMapper.writeValueAsString(responseData));

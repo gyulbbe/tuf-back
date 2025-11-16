@@ -29,7 +29,9 @@ public class UserService {
         user.setTier(registerUserDto.getTier());
         user.setRace(registerUserDto.getRace());
         user.setStatus("ACTIVE");
+        user.setPoint(1000L);
         user.setUserType("USER");
+        user.setPhoto("default.jpg");
         userRepository.save(user);
         return ResponseDto.success(null);
     }
@@ -48,6 +50,8 @@ public class UserService {
             user.setRace(registerUserDto.getRace());
             user.setStatus("ACTIVE");
             user.setUserType("USER");
+            user.setPhoto("default.jpg");
+            user.setPoint(1000L);
             userEntityList.add(user);
         }
 
