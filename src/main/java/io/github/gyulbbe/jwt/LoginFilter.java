@@ -52,26 +52,12 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         GrantedAuthority auth = iterator.next();
 
         String role = auth.getAuthority();
+        String photo = customUserDetails.getPhoto();
 
-        String token = jwtUtil.createJwt(username, role, 60*60*1000L*2);
+        String token = jwtUtil.createJwt(username, role, photo, 60*60*1000L*2);
 
         // JWT 토큰을 헤더에 추가
         response.addHeader("Authorization", "Bearer " + token);
-
-        // 응답 body에 사용자 정보를 JSON으로 반환
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        response.setStatus(HttpServletResponse.SC_OK);
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        Map<String, Object> responseData = Map.of(
-        "userId", username,
-        "role", role,
-        "point", customUserDetails.getPoint(),
-        "photo", customUserDetails.getPhoto()
-        );
-
-        response.getWriter().write(objectMapper.writeValueAsString(responseData));
     }
 
     @Override
