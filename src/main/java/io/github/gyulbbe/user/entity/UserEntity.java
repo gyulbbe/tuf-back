@@ -38,4 +38,7 @@ public class UserEntity {
 
     @Column(name = "PHOTO")
     private String photo;
+
+    @Column(name = "POINT")
+    private Long point;
 }

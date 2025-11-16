@@ -36,4 +36,12 @@ public class CustomUserDetails implements UserDetails {
     public String getUsername() {
         return userEntity.getUserId();
     }
+
+    public String getPhoto() {
+        return userEntity.getPhoto();
+    }
+
+    public Long getPoint() {
+        return userEntity.getPoint();
+    }
 }
