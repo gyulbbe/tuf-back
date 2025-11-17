@@ -37,6 +37,8 @@ public class JWTFilter extends OncePerRequestFilter {
             return;
         }
 
+
+
         String username = jwtUtil.getUsername(token);
         String role = jwtUtil.getRole(token);
 

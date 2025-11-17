@@ -3,7 +3,7 @@ package io.github.gyulbbe.user.dto;
 import lombok.Data;
 
 @Data
-public class RegisterUserDto {
+public class UserDto {
     private String userId;
     private String password;
     private String name;

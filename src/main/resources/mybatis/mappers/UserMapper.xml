@@ -3,7 +3,7 @@
 <mapper namespace="io.github.gyulbbe.user.mapper.UserMapper">
 
     <!-- 사용자 등록 -->
-    <insert id="insertUser" parameterType="RegisterUserDto">
+    <insert id="insertUser" parameterType="UserDto">
         INSERT INTO users (
             user_id,
             password,

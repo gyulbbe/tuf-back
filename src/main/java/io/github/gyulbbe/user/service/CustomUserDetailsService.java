@@ -17,13 +17,14 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String userId) throws UsernameNotFoundException {
-        UserEntity user = userRepository.findByUserId(userId);
+        UserEntity user = userRepository.findByUserIdAndStatus(userId, "ACTIVE");
 
-        if (user != null) {
-            System.out.println("Found user: " + user.getUserId());
-            System.out.println("User type from DB: " + user.getUserType());
-            return new CustomUserDetails(user);
+        if (user == null) {
+            throw new UsernameNotFoundException("사용자를 찾을 수 없거나 비활성 상태입니다: " + userId);
         }
-        return null;
+
+        System.out.println("Found user: " + user.getUserId());
+        System.out.println("User type from DB: " + user.getUserType());
+        return new CustomUserDetails(user);
     }
 }
