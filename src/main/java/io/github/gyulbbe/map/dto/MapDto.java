@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class MapDto {
     private Long id;
-    private Long matchInfoId;
-    private Long userId;
+    private String mapName;
+    private String image;
 }

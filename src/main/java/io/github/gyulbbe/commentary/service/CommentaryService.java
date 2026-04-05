@@ -23,9 +23,10 @@ public class CommentaryService {
 
     public ResponseDto<Void> insertCommentary(CommentaryDto commentaryDto) {
         try {
-            CommentaryEntity entity = new CommentaryEntity();
-            entity.setMatchInfoId(commentaryDto.getMatchInfoId());
-            entity.setMatchSummary(commentaryDto.getMatchSummary());
+            CommentaryEntity entity = CommentaryEntity.builder()
+                    .matchInfoId(commentaryDto.getMatchInfoId())
+                    .matchSummary(commentaryDto.getMatchSummary())
+                    .build();
 
             commentaryRepository.save(entity);
             return ResponseDto.success(null);

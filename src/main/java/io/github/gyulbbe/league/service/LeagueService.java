@@ -30,10 +30,11 @@ public class LeagueService {
 
     public ResponseDto<Void> insertLeague(LeagueDto leagueDto) {
         try {
-            LeagueEntity entity = new LeagueEntity();
-            entity.setLeagueName(leagueDto.getLeagueName());
-            entity.setStartDate(leagueDto.getStartDate());
-            entity.setEndDate(leagueDto.getEndDate());
+            LeagueEntity entity = LeagueEntity.builder()
+                    .leagueName(leagueDto.getLeagueName())
+                    .startDate(leagueDto.getStartDate())
+                    .endDate(leagueDto.getEndDate())
+                    .build();
 
             leagueRepository.save(entity);
             return ResponseDto.success(null);
@@ -45,11 +46,12 @@ public class LeagueService {
 
     public ResponseDto<Void> insertLeagueParticipation(LeagueParticipationDto leagueParticipationDto) {
         try {
-            LeagueParticipationEntity entity = new LeagueParticipationEntity();
-            entity.setLeagueId(leagueParticipationDto.getLeagueId());
-            entity.setUserId(leagueParticipationDto.getUserId());
-            entity.setRace(leagueParticipationDto.getRace());
-            entity.setStatus(leagueParticipationDto.getStatus() != null ? leagueParticipationDto.getStatus() : "ACTIVE");
+            LeagueParticipationEntity entity = LeagueParticipationEntity.builder()
+                    .leagueId(leagueParticipationDto.getLeagueId())
+                    .userId(leagueParticipationDto.getUserId())
+                    .race(leagueParticipationDto.getRace())
+                    .status(leagueParticipationDto.getStatus() != null ? leagueParticipationDto.getStatus() : "ACTIVE")
+                    .build();
 
             leagueParticipationRepository.save(entity);
             return ResponseDto.success(null);
@@ -61,11 +63,12 @@ public class LeagueService {
 
     public ResponseDto<Void> insertProleagueTeam(ProleagueTeamDto proleagueTeamDto) {
         try {
-            ProleagueTeamEntity entity = new ProleagueTeamEntity();
-            entity.setTeamName(proleagueTeamDto.getTeamName());
-            entity.setLeagueId(proleagueTeamDto.getLeagueId());
-            entity.setLeaderId(proleagueTeamDto.getLeaderId());
-            entity.setViceLeaderId(proleagueTeamDto.getViceLeaderId());
+            ProleagueTeamEntity entity = ProleagueTeamEntity.builder()
+                    .teamName(proleagueTeamDto.getTeamName())
+                    .leagueId(proleagueTeamDto.getLeagueId())
+                    .leaderId(proleagueTeamDto.getLeaderId())
+                    .viceLeaderId(proleagueTeamDto.getViceLeaderId())
+                    .build();
 
             proleagueTeamRepository.save(entity);
             return ResponseDto.success(null);
@@ -108,11 +111,14 @@ public class LeagueService {
                 return ResponseDto.fail("리그를 찾을 수 없습니다.");
             }
 
-            entity.setLeagueName(leagueDto.getLeagueName());
-            entity.setStartDate(leagueDto.getStartDate());
-            entity.setEndDate(leagueDto.getEndDate());
+            LeagueEntity updated = LeagueEntity.builder()
+                    .id(entity.getId())
+                    .leagueName(leagueDto.getLeagueName())
+                    .startDate(leagueDto.getStartDate())
+                    .endDate(leagueDto.getEndDate())
+                    .build();
 
-            leagueRepository.save(entity);
+            leagueRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("리그 수정 실패", e);
@@ -154,12 +160,15 @@ public class LeagueService {
                 return ResponseDto.fail("리그 참가 정보를 찾을 수 없습니다.");
             }
 
-            entity.setLeagueId(leagueParticipationDto.getLeagueId());
-            entity.setUserId(leagueParticipationDto.getUserId());
-            entity.setRace(leagueParticipationDto.getRace());
-            entity.setStatus(leagueParticipationDto.getStatus());
+            LeagueParticipationEntity updated = LeagueParticipationEntity.builder()
+                    .id(entity.getId())
+                    .leagueId(leagueParticipationDto.getLeagueId())
+                    .userId(leagueParticipationDto.getUserId())
+                    .race(leagueParticipationDto.getRace())
+                    .status(leagueParticipationDto.getStatus())
+                    .build();
 
-            leagueParticipationRepository.save(entity);
+            leagueParticipationRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("리그 참가 수정 실패", e);
@@ -201,12 +210,15 @@ public class LeagueService {
                 return ResponseDto.fail("프로리그 팀을 찾을 수 없습니다.");
             }
 
-            entity.setTeamName(proleagueTeamDto.getTeamName());
-            entity.setLeagueId(proleagueTeamDto.getLeagueId());
-            entity.setLeaderId(proleagueTeamDto.getLeaderId());
-            entity.setViceLeaderId(proleagueTeamDto.getViceLeaderId());
+            ProleagueTeamEntity updated = ProleagueTeamEntity.builder()
+                    .id(entity.getId())
+                    .teamName(proleagueTeamDto.getTeamName())
+                    .leagueId(proleagueTeamDto.getLeagueId())
+                    .leaderId(proleagueTeamDto.getLeaderId())
+                    .viceLeaderId(proleagueTeamDto.getViceLeaderId())
+                    .build();
 
-            proleagueTeamRepository.save(entity);
+            proleagueTeamRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("프로리그 팀 수정 실패", e);

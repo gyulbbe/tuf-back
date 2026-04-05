@@ -38,10 +38,9 @@ public class ChatService {
             Prompt prompt = new Prompt(messages);
             String response = chatModel.call(prompt).getResult().getOutput().getText();
 
-            log.info("User: {}, Question: {}, Type: {}",
+            log.info("User: {}, Question: {}",
                     requestChatDto.getUserId(),
-                    requestChatDto.getText(),
-                    requestChatDto.getType());
+                    requestChatDto.getText());
             log.info("AI Response: {}", response);
 
             return response;

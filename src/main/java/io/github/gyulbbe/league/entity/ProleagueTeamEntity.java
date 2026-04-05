@@ -1,11 +1,14 @@
 package io.github.gyulbbe.league.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
 @Entity
-@Data
-@Table(name = "PROLEAGUE_TEAM")
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "PROLEAGUE_TEAMS")
 public class ProleagueTeamEntity {
 
     @Id

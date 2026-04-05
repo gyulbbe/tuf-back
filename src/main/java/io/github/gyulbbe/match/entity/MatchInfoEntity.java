@@ -1,13 +1,16 @@
 package io.github.gyulbbe.match.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
 import java.time.LocalDate;
 
 @Entity
-@Data
-@Table(name = "MATCH_INFO")
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "MATCH_INFOS")
 public class MatchInfoEntity {
 
     @Id
@@ -29,12 +32,6 @@ public class MatchInfoEntity {
     @Column(name = "LOSER")
     private String loser;
 
-    @Column(name = "ROUND")
-    private String round;
-
     @Column(name = "SETS")
     private String sets;
-
-    @Column(name = "MATCH_DATE")
-    private LocalDate matchDate;
 }

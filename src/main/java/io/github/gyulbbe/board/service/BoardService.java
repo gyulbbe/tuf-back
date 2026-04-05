@@ -23,12 +23,13 @@ public class BoardService {
 
     public ResponseDto<Void> insert(BoardDto boardDto) {
         try {
-            BoardEntity entity = new BoardEntity();
-            entity.setUserId(boardDto.getUserId());
-            entity.setTitle(boardDto.getTitle());
-            entity.setText(boardDto.getText());
-            entity.setType(boardDto.getType());
-            entity.setCreatedDatetime(new Date());
+            BoardEntity entity = BoardEntity.builder()
+                    .userId(boardDto.getUserId())
+                    .title(boardDto.getTitle())
+                    .text(boardDto.getText())
+                    .type(boardDto.getType())
+                    .createdDatetime(new Date())
+                    .build();
 
             boardRepository.save(entity);
             return ResponseDto.success(null);
@@ -71,17 +72,16 @@ public class BoardService {
                 return ResponseDto.fail("게시글을 찾을 수 없습니다.");
             }
 
-            if (boardDto.getTitle() != null) {
-                entity.setTitle(boardDto.getTitle());
-            }
-            if (boardDto.getText() != null) {
-                entity.setText(boardDto.getText());
-            }
-            if (boardDto.getType() != null) {
-                entity.setType(boardDto.getType());
-            }
+            BoardEntity updated = BoardEntity.builder()
+                    .id(entity.getId())
+                    .userId(entity.getUserId())
+                    .title(boardDto.getTitle() != null ? boardDto.getTitle() : entity.getTitle())
+                    .text(boardDto.getText() != null ? boardDto.getText() : entity.getText())
+                    .type(boardDto.getType() != null ? boardDto.getType() : entity.getType())
+                    .createdDatetime(entity.getCreatedDatetime())
+                    .build();
 
-            boardRepository.save(entity);
+            boardRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("게시글 수정 실패", e);

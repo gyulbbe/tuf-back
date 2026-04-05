@@ -1,18 +1,17 @@
-package io.github.gyulbbe.board.entity;
+package io.github.gyulbbe.common.utils.trace;
 
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-@Table(name = "BOARDS")
-public class BoardEntity {
-
+@Table(name = "TRACES")
+public class TraceEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -20,16 +19,12 @@ public class BoardEntity {
     @Column(name = "USER_ID")
     private Long userId;
 
-    @Column(name = "TITLE")
-    private String title;
+    @Column(name = "TYPE")
+    private String type;
 
     @Column(name = "TEXT")
     private String text;
 
-    @Column(name = "TYPE")
-    private String type;
-
     @Column(name = "CREATED_DATETIME")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date createdDatetime;
+    private LocalDateTime createdDatetime;
 }

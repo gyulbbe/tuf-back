@@ -41,7 +41,7 @@ public class CustomUserDetails implements UserDetails {
         return userEntity.getPhoto();
     }
 
-    public Long getPoint() {
-        return userEntity.getPoint();
+    public Long getCoin() {
+        return userEntity.getCoin();
     }
 }

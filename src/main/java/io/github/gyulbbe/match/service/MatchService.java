@@ -22,15 +22,14 @@ public class MatchService {
 
     public ResponseDto<Void> insertMatchInfo(MatchInfoDto matchInfoDto) {
         try {
-            MatchInfoEntity entity = new MatchInfoEntity();
-            entity.setLeagueId(matchInfoDto.getLeagueId());
-            entity.setMatchType(matchInfoDto.getMatchType());
-            entity.setFormat(matchInfoDto.getFormat());
-            entity.setWinner(matchInfoDto.getWinner());
-            entity.setLoser(matchInfoDto.getLoser());
-            entity.setRound(matchInfoDto.getRound());
-            entity.setSets(matchInfoDto.getSets());
-            entity.setMatchDate(matchInfoDto.getMatchDate());
+            MatchInfoEntity entity = MatchInfoEntity.builder()
+                    .leagueId(matchInfoDto.getLeagueId())
+                    .matchType(matchInfoDto.getMatchType())
+                    .format(matchInfoDto.getFormat())
+                    .winner(matchInfoDto.getWinner())
+                    .loser(matchInfoDto.getLoser())
+                    .sets(matchInfoDto.getSets())
+                    .build();
 
             matchInfoRepository.save(entity);
             return ResponseDto.success(null);
@@ -56,9 +55,7 @@ public class MatchService {
             dto.setFormat(entity.getFormat());
             dto.setWinner(entity.getWinner());
             dto.setLoser(entity.getLoser());
-            dto.setRound(entity.getRound());
             dto.setSets(entity.getSets());
-            dto.setMatchDate(entity.getMatchDate());
 
             return ResponseDto.success(dto);
         } catch (Exception e) {
@@ -76,16 +73,17 @@ public class MatchService {
                 return ResponseDto.fail("매치 정보를 찾을 수 없습니다.");
             }
 
-            entity.setLeagueId(matchInfoDto.getLeagueId());
-            entity.setMatchType(matchInfoDto.getMatchType());
-            entity.setFormat(matchInfoDto.getFormat());
-            entity.setWinner(matchInfoDto.getWinner());
-            entity.setLoser(matchInfoDto.getLoser());
-            entity.setRound(matchInfoDto.getRound());
-            entity.setSets(matchInfoDto.getSets());
-            entity.setMatchDate(matchInfoDto.getMatchDate());
+            MatchInfoEntity updated = MatchInfoEntity.builder()
+                    .id(entity.getId())
+                    .leagueId(matchInfoDto.getLeagueId())
+                    .matchType(matchInfoDto.getMatchType())
+                    .format(matchInfoDto.getFormat())
+                    .winner(matchInfoDto.getWinner())
+                    .loser(matchInfoDto.getLoser())
+                    .sets(matchInfoDto.getSets())
+                    .build();
 
-            matchInfoRepository.save(entity);
+            matchInfoRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("매치 정보 수정 실패", e);
@@ -105,9 +103,7 @@ public class MatchService {
                 dto.setFormat(entity.getFormat());
                 dto.setWinner(entity.getWinner());
                 dto.setLoser(entity.getLoser());
-                dto.setRound(entity.getRound());
                 dto.setSets(entity.getSets());
-                dto.setMatchDate(entity.getMatchDate());
                 return dto;
             }).toList();
 

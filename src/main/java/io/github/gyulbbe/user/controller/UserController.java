@@ -25,6 +25,11 @@ public class UserController {
         return ResponseEntity.ok(userService.getUserDetail(userId));
     }
 
+    @PatchMapping("/password/{id}")
+    public ResponseEntity<ResponseDto<Void>> updatePassword(@PathVariable Long id, @RequestBody String newPassword) {
+        return ResponseEntity.ok(userService.updatePassword(id, newPassword));
+    }
+
     @PostMapping("/insert")
     public ResponseEntity<ResponseDto<Void>> insertUser(@Valid @RequestBody UserDto userDto) {
         return ResponseEntity.ok(userService.insertUser(userDto));

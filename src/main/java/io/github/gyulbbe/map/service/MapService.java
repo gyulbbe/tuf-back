@@ -22,9 +22,10 @@ public class MapService {
 
     public ResponseDto<Void> insertMap(MapDto mapDto) {
         try {
-            MapEntity entity = new MapEntity();
-            entity.setMatchInfoId(mapDto.getMatchInfoId());
-            entity.setUserId(mapDto.getUserId());
+            MapEntity entity = MapEntity.builder()
+                    .mapName(mapDto.getMapName())
+                    .image(mapDto.getMapName())
+                    .build();
 
             mapRepository.save(entity);
             return ResponseDto.success(null);
@@ -45,8 +46,8 @@ public class MapService {
 
             MapDto dto = new MapDto();
             dto.setId(entity.getId());
-            dto.setMatchInfoId(entity.getMatchInfoId());
-            dto.setUserId(entity.getUserId());
+            dto.setMapName(entity.getMapName());
+            dto.setImage(entity.getImage());
 
             return ResponseDto.success(dto);
         } catch (Exception e) {
@@ -64,10 +65,13 @@ public class MapService {
                 return ResponseDto.fail("맵을 찾을 수 없습니다.");
             }
 
-            entity.setMatchInfoId(mapDto.getMatchInfoId());
-            entity.setUserId(mapDto.getUserId());
+            MapEntity updated = MapEntity.builder()
+                    .id(entity.getId())
+                    .mapName(mapDto.getMapName())
+                    .image(mapDto.getMapName())
+                    .build();
 
-            mapRepository.save(entity);
+            mapRepository.save(updated);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("맵 수정 실패", e);
@@ -82,8 +86,8 @@ public class MapService {
             List<MapDto> dtos = entities.stream().map(entity -> {
                 MapDto dto = new MapDto();
                 dto.setId(entity.getId());
-                dto.setMatchInfoId(entity.getMatchInfoId());
-                dto.setUserId(entity.getUserId());
+                dto.setMapName(entity.getMapName());
+                dto.setImage(entity.getImage());
                 return dto;
             }).toList();
 

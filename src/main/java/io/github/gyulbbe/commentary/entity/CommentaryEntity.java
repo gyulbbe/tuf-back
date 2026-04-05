@@ -1,11 +1,14 @@
 package io.github.gyulbbe.commentary.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
 @Entity
-@Data
-@Table(name = "COMMENTARY")
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "COMMENTARIES")
 public class CommentaryEntity {
 
     @Id

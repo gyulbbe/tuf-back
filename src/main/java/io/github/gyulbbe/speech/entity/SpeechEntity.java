@@ -1,7 +1,7 @@
 package io.github.gyulbbe.speech.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -9,8 +9,11 @@ import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
-@Data
-@Table(name = "SPEECH_STYLE_LEARNING")
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "SPEECHES")
 public class SpeechEntity {
 
     @Id
@@ -23,7 +26,7 @@ public class SpeechEntity {
     @Column(name = "CHAT")
     private String chat;
 
-    @Column(name = "CHAT_EMBEDDING_VECTOR", columnDefinition = "VECTOR")
+    @Column(name = "CHAT_IMBEDDING_VECTOR", columnDefinition = "VECTOR")
     @JdbcTypeCode(SqlTypes.VARCHAR)
     private float[] chatEmbeddingVector;
 

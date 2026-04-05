@@ -23,15 +23,18 @@ public class UserService {
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
     public ResponseDto<Void> insertUser(UserDto userDto) {
-        UserEntity user = new UserEntity();
-        user.setUserId(userDto.getUserId());
-        user.setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()));
-        user.setTier(userDto.getTier());
-        user.setRace(userDto.getRace());
-        user.setStatus("ACTIVE");
-        user.setPoint(1000L);
-        user.setUserType("USER");
-        user.setPhoto("default.jpg");
+        UserEntity user = UserEntity.builder()
+                .userId(userDto.getUserId())
+                .password(bCryptPasswordEncoder.encode(userDto.getPassword()))
+                .tier(userDto.getTier())
+                .name(userDto.getName())
+                .phone(userDto.getPhone())
+                .race(userDto.getRace())
+                .status("ACTIVE")
+                .coin(1000L)
+                .userType("ROLE_USER")
+                .photo("default.jpg")
+                .build();
         userRepository.save(user);
         return ResponseDto.success(null);
     }
@@ -42,20 +45,33 @@ public class UserService {
         }
 
         List<UserEntity> userEntityList = new ArrayList<>();
-        for(UserDto userDto : userList) {
-            UserEntity user = new UserEntity();
-            user.setUserId(userDto.getUserId());
-            user.setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()));
-            user.setTier(userDto.getTier());
-            user.setRace(userDto.getRace());
-            user.setStatus("ACTIVE");
-            user.setUserType("USER");
-            user.setPhoto("default.jpg");
-            user.setPoint(1000L);
+        for (UserDto userDto : userList) {
+            UserEntity user = UserEntity.builder()
+                    .userId(userDto.getUserId())
+                    .password(bCryptPasswordEncoder.encode(userDto.getPassword()))
+                    .tier(userDto.getTier())
+                    .name(userDto.getName())
+                    .phone(userDto.getPhone())
+                    .race(userDto.getRace())
+                    .status("ACTIVE")
+                    .userType("ROLE_USER")
+                    .photo("default.jpg")
+                    .coin(1000L)
+                    .build();
             userEntityList.add(user);
         }
 
         userRepository.saveAll(userEntityList);
+        return ResponseDto.success(null);
+    }
+
+    public ResponseDto<Void> updatePassword(Long id, String newPassword) {
+        UserEntity user = userRepository.findById(id)
+                .orElse(null);
+        if (user == null) {
+            return ResponseDto.fail("해당 사용자를 찾을 수 없습니다.");
+        }
+        user.updatePassword(bCryptPasswordEncoder.encode(newPassword));
         return ResponseDto.success(null);
     }
 

@@ -49,14 +49,14 @@ public class SpeechService {
             List<SpeechEntity> entities = new ArrayList<>();
             for (int i = 0; i < dtoList.size(); i++) {
                 SpeechDto dto = dtoList.get(i);
-                SpeechEntity entity = new SpeechEntity();
-                entity.setNickname(dto.getNickname());
-                entity.setChat(dto.getChat());
-
-                // 임베딩 설정 (chat이 비어있지 않은 경우에만)
-                if (dto.getChat() != null && !dto.getChat().isEmpty()) {
-                    entity.setChatEmbeddingVector(embeddings.get(i));
-                }
+                SpeechEntity entity = SpeechEntity.builder()
+                        .nickname(dto.getNickname())
+                        .chat(dto.getChat())
+                        .chatEmbeddingVector(
+                                (dto.getChat() != null && !dto.getChat().isEmpty())
+                                        ? embeddings.get(i) : null
+                        )
+                        .build();
 
                 entities.add(entity);
             }

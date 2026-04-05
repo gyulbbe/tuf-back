@@ -1,11 +1,14 @@
 package io.github.gyulbbe.league.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 
 @Entity
-@Data
-@Table(name = "LEAGUE_PARTICIPATION")
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "LEAGUE_PARTICIPATIONS")
 public class LeagueParticipationEntity {
 
     @Id
@@ -21,6 +24,7 @@ public class LeagueParticipationEntity {
     @Column(name = "RACE")
     private String race;
 
+    @Builder.Default
     @Column(name = "STATUS")
     private String status = "ACTIVE";
 }

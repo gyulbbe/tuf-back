@@ -1,12 +1,17 @@
 package io.github.gyulbbe.user.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
+
+import java.io.Serializable;
 
 @Entity
-@Data
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(name = "USERS")
-public class UserEntity {
+public class UserEntity implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,6 +25,9 @@ public class UserEntity {
 
     @Column(name = "NAME")
     private String name;
+
+    @Column(name = "PHONE")
+    private String phone;
 
     @Column(name = "TIER")
     private String tier;
@@ -39,6 +47,10 @@ public class UserEntity {
     @Column(name = "PHOTO")
     private String photo;
 
-    @Column(name = "POINT")
-    private Long point;
+    @Column(name = "coin")
+    private Long coin;
+
+    public void updatePassword(String password) {
+        this.password = password;
+    }
 }
