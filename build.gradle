@@ -94,3 +94,7 @@ processResources {
         )
     }
 }
+
+jar {
+    enabled = false
+}
