@@ -51,20 +51,15 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 300s
           script: |
-            # 기존 프로세스 종료
             pkill -f 'java -jar' || true
             sleep 2
-            
-            # 새 JAR 실행 (백그라운드)
             cd /home/ubuntu/app
-            setsid java -jar *.jar \
-              --spring.profiles.active=prod \
-              > app.log 2>&1 &
+            bash -c 'setsid java -jar *.jar --spring.profiles.active=prod > app.log 2>&1 &'
             sleep 10
             if pgrep -f 'java -jar' > /dev/null; then
               echo "✅ Application started successfully"
             else
               echo "❌ Failed to start"
-              tail -50 logs/app.log
+              tail -50 app.log
               exit 1
             fi
