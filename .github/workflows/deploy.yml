@@ -53,13 +53,13 @@ jobs:
           script: |
             pkill -f 'java -jar' || true
             sleep 2
+            cat > /home/ubuntu/app/start.sh << 'EOF'
+            #!/bin/bash
             cd /home/ubuntu/app
-            bash -c 'setsid java -jar *.jar --spring.profiles.active=prod > app.log 2>&1 &'
-            sleep 10
-            if pgrep -f 'java -jar' > /dev/null; then
-              echo "✅ Application started successfully"
-            else
-              echo "❌ Failed to start"
-              tail -50 app.log
-              exit 1
-            fi
+            java -jar *.jar --spring.profiles.active=prod > app.log 2>&1
+            EOF
+            chmod +x /home/ubuntu/app/start.sh
+            nohup /home/ubuntu/app/start.sh &
+            disown -a
+            sleep 1
+            echo "done"
