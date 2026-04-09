@@ -88,9 +88,9 @@ processResources {
         def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss")
 
         expand(
-            'git.commit': gitCommit,
-            'git.branch': gitBranch,
-            'build.time': buildTime
+            'gitCommit': gitCommit,
+            'gitBranch': gitBranch,
+            'buildTime': buildTime
         )
     }
 }
