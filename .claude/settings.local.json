@@ -20,7 +20,11 @@
       "Bash(find:*)",
       "Bash(nul)",
       "Bash(dir:*)",
-      "Bash(./gradlew clean build:*)"
+      "Bash(./gradlew clean build:*)",
+      "Bash(del C:devtufsrcmainjavaiogithubgyulbbecommentarydtoInsertCommentaryDto.java C:devtufsrcmainjavaiogithubgyulbbecommentarydtoUpdateCommentaryDto.java C:devtufsrcmainjavaiogithubgyulbbemapdtoInsertMapDto.java C:devtufsrcmainjavaiogithubgyulbbemapdtoUpdateMapDto.java)",
+      "Bash(del C:devtufsrcmainjavaiogithubgyulbbeleaguedtoInsertLeagueDto.java C:devtufsrcmainjavaiogithubgyulbbeleaguedtoUpdateLeagueDto.java C:devtufsrcmainjavaiogithubgyulbbeleaguedtoInsertLeagueParticipationDto.java C:devtufsrcmainjavaiogithubgyulbbeleaguedtoUpdateLeagueParticipationDto.java)",
+      "Bash(del:*)",
+      "Bash(.\\gradlew.bat clean build:*)"
     ],
     "deny": [],
     "ask": []
