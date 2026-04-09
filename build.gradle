@@ -63,6 +63,10 @@ dependencies {
     testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:3.0.5'
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    implementation 'com.oracle.database.security:oraclepki:23.7.0.25.01'
+    implementation 'com.oracle.database.security:osdt_core:23.7.0.25.01'
+    implementation 'com.oracle.database.security:osdt_cert:23.7.0.25.01'
 }
 
 dependencyManagement {
