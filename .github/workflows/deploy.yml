@@ -13,6 +13,8 @@ jobs:
       # 1단계: 소스코드 체크아웃
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2단계: JDK 설치 (너 환경에 맞게 버전 조정)
       - name: Set up JDK 25
