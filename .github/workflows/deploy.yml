@@ -88,14 +88,17 @@ jobs:
             chmod 600 /home/ubuntu/app/app.env
             echo "env 파일 생성 완료, 변수 개수: $(wc -l < /home/ubuntu/app/app.env)"
 
-            # 시작 스크립트 생성
+            mkdir -p /home/ubuntu/app/logs
+
+            # 시작 스크립트 생성 (날짜별 로그 파일)
             cat > /home/ubuntu/app/start.sh << 'SCRIPT'
             #!/bin/bash
             set -a
             source /home/ubuntu/app/app.env
             set +a
             cd /home/ubuntu/app
-            java -jar *.jar --spring.profiles.active=prod > app.log 2>&1
+            LOG_FILE=logs/app-$(date +%Y%m%d).log
+            java -jar *.jar --spring.profiles.active=prod >> "$LOG_FILE" 2>&1
             SCRIPT
             chmod +x /home/ubuntu/app/start.sh
 
