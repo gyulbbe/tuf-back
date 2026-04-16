@@ -51,11 +51,29 @@ jobs:
           command_timeout: 300s
           envs: WALLET_PATH,DB_USER,DB_PASSWORD,JWT_SECRET,OLLAMA_BASE_URL,OLLAMA_MODEL,KURE_EMBEDDING_URL,TUF_FRONT_URL
           script: |
-            # 기존 프로세스 종료
+            echo "===== 디버그 시작 ====="
+            echo "현재 사용자: $(whoami)"
+            echo "현재 경로: $(pwd)"
+            echo "OS 정보: $(uname -a)"
+
+            # 기존 프로세스 확인 및 종료
+            echo "--- 기존 java 프로세스 확인 ---"
+            ps aux | grep 'java -jar' | grep -v grep || echo "실행 중인 java 프로세스 없음"
             pkill -f 'java -jar' || true
             sleep 2
 
+            # 앱 디렉토리 확인
+            echo "--- /home/ubuntu/app/ 디렉토리 ---"
+            ls -la /home/ubuntu/app/
+            echo "--- JAR 파일 확인 ---"
+            ls -la /home/ubuntu/app/*.jar 2>/dev/null || echo "JAR 파일 없음!"
+
+            # Java 확인
+            echo "--- Java 버전 ---"
+            which java && java -version 2>&1 || echo "java 명령어를 찾을 수 없음!"
+
             # 환경변수 파일 생성
+            echo "--- 환경변수 파일 생성 ---"
             cat > /home/ubuntu/app/app.env << ENVFILE
             SECRETS_WALLET_PATH=${WALLET_PATH}
             SECRETS_DB_USER=${DB_USER}
@@ -67,6 +85,7 @@ jobs:
             SECRETS_TUF_FRONT_URL=${TUF_FRONT_URL}
             ENVFILE
             chmod 600 /home/ubuntu/app/app.env
+            echo "env 파일 생성 완료, 변수 개수: $(wc -l < /home/ubuntu/app/app.env)"
 
             # 시작 스크립트 생성
             cat > /home/ubuntu/app/start.sh << 'SCRIPT'
@@ -79,10 +98,32 @@ jobs:
             SCRIPT
             chmod +x /home/ubuntu/app/start.sh
 
-            # 백그라운드 실행 (SSH 세션 종료 후에도 유지)
-            sudo systemd-run --scope nohup /home/ubuntu/app/start.sh &
-            sleep 3
-            echo "deploy complete"
+            # 백그라운드 실행
+            echo "--- 앱 시작 ---"
+            setsid nohup /home/ubuntu/app/start.sh > /dev/null 2>&1 &
+            APP_PID=$!
+            echo "시작된 PID: $APP_PID"
+
+            # 프로세스 뜰 때까지 대기 및 확인
+            sleep 5
+            echo "--- 프로세스 상태 확인 ---"
+            ps aux | grep 'java -jar' | grep -v grep || echo "java 프로세스가 떠있지 않음!"
+
+            echo "--- app.log 마지막 30줄 ---"
+            tail -30 /home/ubuntu/app/app.log 2>/dev/null || echo "app.log 파일 없음"
+
+            echo "--- nohup.out 확인 ---"
+            cat /home/ubuntu/app/nohup.out 2>/dev/null || echo "nohup.out 없음"
+
+            # 최종 판정
+            if pgrep -f 'java -jar' > /dev/null; then
+              echo "===== DEPLOY SUCCESS ====="
+            else
+              echo "===== DEPLOY FAILED ====="
+              echo "--- dmesg OOM 확인 ---"
+              sudo dmesg | grep -i 'oom\|killed' | tail -5 2>/dev/null || true
+              exit 1
+            fi
         env:
           WALLET_PATH: ${{ secrets.WALLET_PATH }}
           DB_USER: ${{ secrets.DB_USER }}
