@@ -56,10 +56,11 @@ jobs:
             echo "현재 경로: $(pwd)"
             echo "OS 정보: $(uname -a)"
 
-            # 기존 프로세스 확인 및 종료
-            echo "--- 기존 java 프로세스 확인 ---"
-            ps aux | grep 'java -jar' | grep -v grep || echo "실행 중인 java 프로세스 없음"
-            pkill -f 'java -jar' || true
+            # 기존 프로세스 확인 및 종료 (자기 자신 PID 제외)
+            MY_PID=$$
+            echo "--- 기존 java 프로세스 확인 (현재 PID: $MY_PID) ---"
+            ps aux | grep '[j]ava -jar' || echo "실행 중인 java 프로세스 없음"
+            pgrep -f 'java -jar' | grep -v "^${MY_PID}$" | xargs -r kill || true
             sleep 2
 
             # 앱 디렉토리 확인
@@ -107,7 +108,7 @@ jobs:
             # 프로세스 뜰 때까지 대기 및 확인
             sleep 5
             echo "--- 프로세스 상태 확인 ---"
-            ps aux | grep 'java -jar' | grep -v grep || echo "java 프로세스가 떠있지 않음!"
+            ps aux | grep '[j]ava -jar' || echo "java 프로세스가 떠있지 않음!"
 
             echo "--- app.log 마지막 30줄 ---"
             tail -30 /home/ubuntu/app/app.log 2>/dev/null || echo "app.log 파일 없음"
