@@ -99,7 +99,7 @@ jobs:
             set +a
             cd /home/ubuntu/app
             LOG_FILE=logs/app-$(date +%Y%m%d).log
-            java -jar *.jar --spring.profiles.active=prod >> "$LOG_FILE" 2>&1
+            java -jar *.jar --spring.profiles.active=prod --server.port=8080 >> "$LOG_FILE" 2>&1
             SCRIPT
             chmod +x /home/ubuntu/app/start.sh
 
