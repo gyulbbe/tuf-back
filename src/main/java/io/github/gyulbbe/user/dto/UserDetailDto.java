@@ -11,6 +11,7 @@ public class UserDetailDto {
     private String race;
     private String photo;
     private String battleTag;
+    private Long coin;
     private int win;
     private int lose;
 }

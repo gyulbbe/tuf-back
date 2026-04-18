@@ -22,6 +22,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
+    private static final String ACTIVE = "ACTIVE";
+
     public ResponseDto<Void> insertUser(UserDto userDto) {
         UserEntity user = UserEntity.builder()
                 .userId(userDto.getUserId())
@@ -30,7 +32,7 @@ public class UserService {
                 .name(userDto.getName())
                 .phone(userDto.getPhone())
                 .race(userDto.getRace())
-                .status("ACTIVE")
+                .status(ACTIVE)
                 .coin(1000L)
                 .userType("ROLE_USER")
                 .photo("default.jpg")
@@ -53,7 +55,7 @@ public class UserService {
                     .name(userDto.getName())
                     .phone(userDto.getPhone())
                     .race(userDto.getRace())
-                    .status("ACTIVE")
+                    .status(ACTIVE)
                     .userType("ROLE_USER")
                     .photo("default.jpg")
                     .coin(1000L)
@@ -77,12 +79,13 @@ public class UserService {
 
     public UserDetailDto getUserDetail(String userId) {
         UserDetailDto userDetailDto = new UserDetailDto();
-        UserEntity user = userRepository.findByUserIdAndStatus(userId, "ACTIVE");
+        UserEntity user = userRepository.findByUserIdAndStatus(userId, ACTIVE);
         userDetailDto.setUserId(user.getUserId());
         userDetailDto.setName(user.getName());
         userDetailDto.setRace(user.getRace());
         userDetailDto.setTier(user.getTier());
         userDetailDto.setBattleTag(user.getBattleTag());
+        userDetailDto.setCoin(user.getCoin());
         userDetailDto.setWin(0);
         userDetailDto.setLose(0);
         return userDetailDto;
