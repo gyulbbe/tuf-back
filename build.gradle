@@ -76,26 +76,6 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
-processResources {
-    filesMatching('application.properties') {
-        def gitCommit = providers.exec {
-            commandLine 'git', 'rev-parse', '--short', 'HEAD'
-        }.standardOutput.asText.get().trim()
-
-        def gitBranch = providers.exec {
-            commandLine 'git', 'rev-parse', '--abbrev-ref', 'HEAD'
-        }.standardOutput.asText.get().trim()
-
-        def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss")
-
-        expand(
-            'gitCommit': gitCommit,
-            'gitBranch': gitBranch,
-            'buildTime': buildTime
-        )
-    }
-}
-
 jar {
     enabled = false
 }
