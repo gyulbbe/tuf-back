@@ -65,7 +65,7 @@ public class CloudflareChatProvider {
         if (isCompatEndpoint()) {
             url = gatewayBaseUrl;
             body = Map.of(
-                    "model", model,
+                    "model", compatModelId(),
                     "messages", List.of(
                             Map.of("role", "system", "content", systemPrompt),
                             Map.of("role", "user", "content", userMessage)
@@ -107,6 +107,17 @@ public class CloudflareChatProvider {
 
     private boolean isCompatEndpoint() {
         return hasGateway() && gatewayBaseUrl.contains("/chat/completions");
+    }
+
+    /**
+     * Universal compat 엔드포인트(/compat/chat/completions)는 provider 접두사로
+     * 어느 백엔드로 라우팅할지 결정한다. Workers AI 모델이면 workers-ai/ 접두 필요.
+     */
+    private String compatModelId() {
+        if (model.startsWith("@cf/") && !model.startsWith("workers-ai/")) {
+            return "workers-ai/" + model;
+        }
+        return model;
     }
 
     private String parseNativeResponse(String body) throws Exception {
