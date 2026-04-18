@@ -93,19 +93,4 @@ public class EmbeddingVectorController {
         }
     }
 
-    /**
-     * 임베딩 API 헬스체크
-     */
-    @GetMapping("/health")
-    public ResponseEntity<ResponseDto<String>> healthCheck() {
-        try {
-            // 간단한 텍스트로 임베딩 API 호출 테스트
-            float[] testVector = embeddingService.getEmbedding("테스트");
-            String message = String.format("임베딩 서비스 정상 작동 중 (dimension: %d)", testVector.length);
-            return ResponseEntity.ok(ResponseDto.success(message));
-        } catch (Exception e) {
-            log.error("임베딩 API 헬스체크 실패", e);
-            return ResponseEntity.ok(ResponseDto.fail("임베딩 API 오류: " + e.getMessage()));
-        }
-    }
 }
