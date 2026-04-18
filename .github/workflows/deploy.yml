@@ -50,7 +50,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 300s
-          envs: WALLET_PATH,DB_USER,DB_PASSWORD,JWT_SECRET,OLLAMA_BASE_URL,OLLAMA_MODEL,KURE_EMBEDDING_URL,TUF_FRONT_URL
+          envs: WALLET_PATH,DB_USER,DB_PASSWORD,JWT_SECRET,OLLAMA_BASE_URL,OLLAMA_MODEL,KURE_EMBEDDING_URL,TUF_FRONT_URL,CLOUDFLARE_ACCOUNT_ID,CLOUDFLARE_API_TOKEN
           script: |
             echo "===== 디버그 시작 ====="
             echo "현재 사용자: $(whoami)"
@@ -85,6 +85,8 @@ jobs:
             SECRETS_OLLAMA_MODEL=${OLLAMA_MODEL}
             SECRETS_KURE_EMBEDDING_URL=${KURE_EMBEDDING_URL}
             SECRETS_TUF_FRONT_URL=${TUF_FRONT_URL}
+            SECRETS_CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+            SECRETS_CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
             ENVFILE
             chmod 600 /home/ubuntu/app/app.env
             echo "env 파일 생성 완료, 변수 개수: $(wc -l < /home/ubuntu/app/app.env)"
@@ -138,3 +140,5 @@ jobs:
           OLLAMA_MODEL: ${{ secrets.OLLAMA_MODEL }}
           KURE_EMBEDDING_URL: ${{ secrets.KURE_EMBEDDING_URL }}
           TUF_FRONT_URL: ${{ secrets.TUF_FRONT_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
