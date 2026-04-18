@@ -21,7 +21,7 @@ import java.util.Map;
 @Component
 public class CloudflareChatProvider {
 
-    private static final String API_URL_TEMPLATE =
+    private static final String DIRECT_API_URL_TEMPLATE =
             "https://api.cloudflare.com/client/v4/accounts/%s/ai/run/%s";
 
     private final RestTemplate restTemplate;
@@ -29,44 +29,64 @@ public class CloudflareChatProvider {
     private final String accountId;
     private final String apiToken;
     private final String model;
+    private final String gatewayBaseUrl;
 
     public CloudflareChatProvider(
             RestTemplate restTemplate,
             ObjectMapper objectMapper,
             @Value("${cloudflare.account-id:}") String accountId,
             @Value("${cloudflare.api-token:}") String apiToken,
-            @Value("${cloudflare.ai.model:}") String model) {
+            @Value("${cloudflare.ai.model:}") String model,
+            @Value("${cloudflare.ai-gateway.base-url:}") String gatewayBaseUrl) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.accountId = accountId;
         this.apiToken = apiToken;
         this.model = model;
+        this.gatewayBaseUrl = gatewayBaseUrl;
     }
 
     public boolean isConfigured() {
-        return accountId != null && !accountId.isBlank()
-                && apiToken != null && !apiToken.isBlank()
+        boolean tokenAndModel = apiToken != null && !apiToken.isBlank()
                 && model != null && !model.isBlank();
+        if (!tokenAndModel) {
+            return false;
+        }
+        return hasGateway() || (accountId != null && !accountId.isBlank());
     }
 
     public String chat(String systemPrompt, String userMessage) {
-        String url = String.format(API_URL_TEMPLATE, accountId, model);
-
-        Map<String, Object> body = Map.of(
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userMessage)
-                )
-        );
-
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiToken);
 
+        String url;
+        Map<String, Object> body;
+        if (isCompatEndpoint()) {
+            url = gatewayBaseUrl;
+            body = Map.of(
+                    "model", model,
+                    "messages", List.of(
+                            Map.of("role", "system", "content", systemPrompt),
+                            Map.of("role", "user", "content", userMessage)
+                    )
+            );
+        } else {
+            url = String.format(DIRECT_API_URL_TEMPLATE, accountId, model);
+            body = Map.of(
+                    "messages", List.of(
+                            Map.of("role", "system", "content", systemPrompt),
+                            Map.of("role", "user", "content", userMessage)
+                    )
+            );
+        }
+
         try {
             ResponseEntity<String> response = restTemplate.exchange(
                     url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-            return parseResponse(response.getBody());
+            return isCompatEndpoint()
+                    ? parseCompatResponse(response.getBody())
+                    : parseNativeResponse(response.getBody());
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS
                     || isQuotaError(e.getResponseBodyAsString())) {
@@ -81,7 +101,15 @@ public class CloudflareChatProvider {
         }
     }
 
-    private String parseResponse(String body) throws Exception {
+    private boolean hasGateway() {
+        return gatewayBaseUrl != null && !gatewayBaseUrl.isBlank();
+    }
+
+    private boolean isCompatEndpoint() {
+        return hasGateway() && gatewayBaseUrl.contains("/chat/completions");
+    }
+
+    private String parseNativeResponse(String body) throws Exception {
         JsonNode json = objectMapper.readTree(body);
         if (!json.path("success").asBoolean(false)) {
             String errors = json.path("errors").toString();
@@ -93,12 +121,26 @@ public class CloudflareChatProvider {
         return json.path("result").path("response").asText();
     }
 
+    private String parseCompatResponse(String body) throws Exception {
+        JsonNode json = objectMapper.readTree(body);
+        JsonNode error = json.path("error");
+        if (!error.isMissingNode() && !error.isNull()) {
+            String message = error.path("message").asText();
+            if (isQuotaError(message)) {
+                throw new CloudflareQuotaExhaustedException("Cloudflare quota exhausted: " + message);
+            }
+            throw new RuntimeException("Cloudflare AI error: " + message);
+        }
+        return json.path("choices").path(0).path("message").path("content").asText();
+    }
+
     private boolean isQuotaError(String text) {
         if (text == null || text.isEmpty()) {
             return false;
         }
         String lower = text.toLowerCase();
         return lower.contains("quota") || lower.contains("rate limit")
-                || lower.contains("exceed") || lower.contains("daily limit");
+                || lower.contains("exceed") || lower.contains("daily limit")
+                || lower.contains("insufficient_quota");
     }
 }
