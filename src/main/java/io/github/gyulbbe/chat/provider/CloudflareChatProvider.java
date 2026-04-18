@@ -90,7 +90,17 @@ public class CloudflareChatProvider {
             }
             throw new RuntimeException("Cloudflare AI error: " + errors);
         }
-        return json.path("result").path("response").asText();
+
+        JsonNode result = json.path("result");
+        String response = result.path("response").asText("");
+        if (response.isEmpty()) {
+            // OpenAI 호환 포맷 (choices[0].message.content) 시도
+            response = result.path("choices").path(0).path("message").path("content").asText("");
+        }
+        if (response.isEmpty()) {
+            log.warn("Cloudflare 응답은 왔지만 텍스트를 찾지 못함. raw body: {}", body);
+        }
+        return response;
     }
 
     private boolean isQuotaError(String text) {
