@@ -3,6 +3,7 @@ package io.github.gyulbbe.user.controller;
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.user.dto.UserDetailDto;
 import io.github.gyulbbe.user.dto.UserDto;
+import io.github.gyulbbe.user.dto.UserSearchDto;
 import io.github.gyulbbe.user.service.UserService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,14 @@ public class UserController {
     @GetMapping("/get/{userId}")
     public ResponseEntity<UserDetailDto> getUserDetail(@Valid @PathVariable String userId) {
         return ResponseEntity.ok(userService.getUserDetail(userId));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ResponseDto<List<UserSearchDto>>> searchUsers(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return ResponseEntity.ok(userService.searchUsers(keyword, limit));
     }
 
     @PatchMapping("/password/{id}")

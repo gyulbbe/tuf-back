@@ -3,10 +3,12 @@ package io.github.gyulbbe.user.service;
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.user.dto.UserDetailDto;
 import io.github.gyulbbe.user.dto.UserDto;
+import io.github.gyulbbe.user.dto.UserSearchDto;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,5 +91,34 @@ public class UserService {
         userDetailDto.setWin(0);
         userDetailDto.setLose(0);
         return userDetailDto;
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseDto<List<UserSearchDto>> searchUsers(String keyword, Integer limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return ResponseDto.success(List.of());
+        }
+
+        int resolvedLimit = limit == null ? 10 : Math.min(Math.max(limit, 1), 50);
+        List<UserSearchDto> users = userRepository.searchByUserIdKeyword(
+                        keyword.trim(),
+                        ACTIVE,
+                        PageRequest.of(0, resolvedLimit)
+                ).stream()
+                .map(this::toUserSearchDto)
+                .toList();
+
+        return ResponseDto.success(users);
+    }
+
+    private UserSearchDto toUserSearchDto(UserEntity user) {
+        UserSearchDto dto = new UserSearchDto();
+        dto.setId(user.getId());
+        dto.setUserId(user.getUserId());
+        dto.setName(user.getName());
+        dto.setTier(user.getTier());
+        dto.setRace(user.getRace());
+        dto.setPhoto(user.getPhoto());
+        return dto;
     }
 }
