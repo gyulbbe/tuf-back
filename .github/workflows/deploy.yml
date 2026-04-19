@@ -76,19 +76,19 @@ jobs:
 
             # 환경변수 파일 생성
             echo "--- 환경변수 파일 생성 ---"
-            {
-              printf 'export SECRETS_WALLET_PATH=%q\n' "$WALLET_PATH"
-              printf 'export SECRETS_DB_USER=%q\n' "$DB_USER"
-              printf 'export SECRETS_DB_PASSWORD=%q\n' "$DB_PASSWORD"
-              printf 'export SECRETS_JWT_SECRET=%q\n' "$JWT_SECRET"
-              printf 'export SECRETS_OLLAMA_BASE_URL=%q\n' "$OLLAMA_BASE_URL"
-              printf 'export SECRETS_OLLAMA_MODEL=%q\n' "$OLLAMA_MODEL"
-              printf 'export SECRETS_KURE_EMBEDDING_URL=%q\n' "$KURE_EMBEDDING_URL"
-              printf 'export SECRETS_TUF_FRONT_URL=%q\n' "$TUF_FRONT_URL"
-              printf 'export SECRETS_CLOUDFLARE_ACCOUNT_ID=%q\n' "$CLOUDFLARE_ACCOUNT_ID"
-              printf 'export SECRETS_CLOUDFLARE_API_TOKEN=%q\n' "$CLOUDFLARE_API_TOKEN"
-              printf 'export SECRETS_CLOUDFLARE_AI_GATEWAY_URL=%q\n' "$CLOUDFLARE_AI_GATEWAY_URL"
-            } > /home/ubuntu/app/app.env
+            cat > /home/ubuntu/app/app.env << ENVFILE
+            SECRETS_WALLET_PATH=${WALLET_PATH}
+            SECRETS_DB_USER=${DB_USER}
+            SECRETS_DB_PASSWORD=${DB_PASSWORD}
+            SECRETS_JWT_SECRET=${JWT_SECRET}
+            SECRETS_OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+            SECRETS_OLLAMA_MODEL=${OLLAMA_MODEL}
+            SECRETS_KURE_EMBEDDING_URL=${KURE_EMBEDDING_URL}
+            SECRETS_TUF_FRONT_URL=${TUF_FRONT_URL}
+            SECRETS_CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+            SECRETS_CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+            SECRETS_CLOUDFLARE_AI_GATEWAY_URL=${CLOUDFLARE_AI_GATEWAY_URL}
+            ENVFILE
             chmod 600 /home/ubuntu/app/app.env
             echo "env 파일 생성 완료, 변수 개수: $(wc -l < /home/ubuntu/app/app.env)"
 
@@ -117,9 +117,8 @@ jobs:
             echo "--- 프로세스 상태 확인 ---"
             ps aux | grep '[j]ava -jar' || echo "java 프로세스가 떠있지 않음!"
 
-            echo "--- 오늘자 로그 마지막 50줄 ---"
-            TODAY_LOG="/home/ubuntu/app/logs/app-$(date +%Y%m%d).log"
-            tail -50 "$TODAY_LOG" 2>/dev/null || echo "$TODAY_LOG 파일 없음"
+            echo "--- app.log 마지막 30줄 ---"
+            tail -30 /home/ubuntu/app/app.log 2>/dev/null || echo "app.log 파일 없음"
 
             echo "--- nohup.out 확인 ---"
             cat /home/ubuntu/app/nohup.out 2>/dev/null || echo "nohup.out 없음"
