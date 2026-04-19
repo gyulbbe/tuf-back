@@ -79,7 +79,7 @@ public class UserService {
 
     public UserDetailDto getUserDetail(String userId) {
         UserDetailDto userDetailDto = new UserDetailDto();
-        UserEntity user = userRepository.findByUserIdAndStatus(userId, ACTIVE);
+        UserEntity user = userRepository.findByUserIdIgnoreCaseAndStatus(userId, ACTIVE);
         userDetailDto.setUserId(user.getUserId());
         userDetailDto.setName(user.getName());
         userDetailDto.setRace(user.getRace());
