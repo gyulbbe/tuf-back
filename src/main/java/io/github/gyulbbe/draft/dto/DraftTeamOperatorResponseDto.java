@@ -9,4 +9,5 @@ public class DraftTeamOperatorResponseDto {
     private String operatorName;
     private String role;
     private String isActive;
+    private String canPick;
 }

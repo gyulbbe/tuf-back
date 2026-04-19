@@ -44,4 +44,8 @@ public class CustomUserDetails implements UserDetails {
     public Long getCoin() {
         return userEntity.getCoin();
     }
+
+    public Long getUserPk() {
+        return userEntity.getId();
+    }
 }

@@ -118,7 +118,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftTeamOperator.operatorUserId,
                         user.name.as("operatorName"),
                         draftTeamOperator.role,
-                        draftTeamOperator.isActive
+                        draftTeamOperator.isActive,
+                        draftTeamOperator.canPick
                 ))
                 .from(draftTeamOperator)
                 .leftJoin(user).on(user.id.eq(draftTeamOperator.operatorUserId))

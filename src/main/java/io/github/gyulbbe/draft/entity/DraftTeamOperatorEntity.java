@@ -32,8 +32,29 @@ public class DraftTeamOperatorEntity {
     @Column(name = "IS_ACTIVE", nullable = false)
     private String isActive;
 
+    @Column(name = "CAN_PICK", nullable = false)
+    private String canPick;
+
     public void update(String role, String isActive) {
         this.role = role;
         this.isActive = isActive;
+        if (!isEligiblePicker(role, isActive)) {
+            this.canPick = "N";
+        }
+    }
+
+    public void assignPicker() {
+        if (!isEligiblePicker(this.role, this.isActive)) {
+            throw new IllegalStateException("활성 팀장/부팀장만 픽 권한을 가질 수 있습니다.");
+        }
+        this.canPick = "Y";
+    }
+
+    public void clearPicker() {
+        this.canPick = "N";
+    }
+
+    private boolean isEligiblePicker(String role, String isActive) {
+        return "Y".equals(isActive) && ("CAPTAIN".equals(role) || "VICE_CAPTAIN".equals(role));
     }
 }

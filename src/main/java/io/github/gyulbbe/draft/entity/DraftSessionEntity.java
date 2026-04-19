@@ -77,6 +77,29 @@ public class DraftSessionEntity {
         this.deadlineAt = nextDeadlineAt;
     }
 
+    public void start(Long firstDraftTeamId, LocalDateTime startedAt, LocalDateTime deadlineAt) {
+        this.status = "LIVE";
+        this.currentPickNo = 1;
+        this.currentDraftTeamId = firstDraftTeamId;
+        this.startedAt = startedAt;
+        this.deadlineAt = deadlineAt;
+        this.endedAt = null;
+    }
+
+    public void pause() {
+        this.status = "PAUSED";
+        this.deadlineAt = null;
+    }
+
+    public void resume(LocalDateTime deadlineAt) {
+        this.status = "LIVE";
+        this.deadlineAt = deadlineAt;
+    }
+
+    public void extendDeadlineAt(LocalDateTime deadlineAt) {
+        this.deadlineAt = deadlineAt;
+    }
+
     public void finish(LocalDateTime endedAt) {
         this.status = "FINISHED";
         this.currentDraftTeamId = null;

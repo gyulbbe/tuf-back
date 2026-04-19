@@ -1,0 +1,61 @@
+package io.github.gyulbbe.draft.controller;
+
+import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.draft.auth.DraftActorResolver;
+import io.github.gyulbbe.draft.dto.DraftLivePickRequestDto;
+import io.github.gyulbbe.draft.dto.DraftLivePermissionsResponseDto;
+import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
+import io.github.gyulbbe.draft.service.DraftLiveCommandService;
+import io.github.gyulbbe.draft.service.DraftSnapshotService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/draft/live")
+public class DraftLiveController {
+
+    private final DraftLiveCommandService draftLiveCommandService;
+    private final DraftSnapshotService draftSnapshotService;
+    private final DraftActorResolver draftActorResolver;
+
+    @GetMapping("/sessions/{sessionId}/snapshot")
+    public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> getSnapshot(@PathVariable Long sessionId) {
+        try {
+            return ResponseEntity.ok(ResponseDto.success(draftSnapshotService.getSnapshot(sessionId, draftActorResolver.resolve())));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/sessions/{sessionId}/permissions")
+    public ResponseEntity<ResponseDto<DraftLivePermissionsResponseDto>> getPermissions(@PathVariable Long sessionId) {
+        try {
+            return ResponseEntity.ok(ResponseDto.success(
+                    draftSnapshotService.getPermissions(sessionId, draftActorResolver.resolve())
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sessions/{sessionId}/pick")
+    public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> pick(
+            @PathVariable Long sessionId,
+            @RequestBody DraftLivePickRequestDto requestDto
+    ) {
+        try {
+            return ResponseEntity.ok(ResponseDto.success(
+                    draftLiveCommandService.pick(sessionId, requestDto.getCandidateUserId(), draftActorResolver.resolve())
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+        }
+    }
+}

@@ -41,8 +41,10 @@ public class JWTFilter extends OncePerRequestFilter {
 
         String username = jwtUtil.getUsername(token);
         String role = jwtUtil.getRole(token);
+        Long userPk = jwtUtil.getUserPk(token);
 
         UserEntity userEntity = UserEntity.builder()
+                .id(userPk)
                 .userId(username)
                 .password("tempassword")
                 .userType(role)

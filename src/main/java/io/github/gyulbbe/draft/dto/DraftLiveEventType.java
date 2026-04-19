@@ -1,0 +1,13 @@
+package io.github.gyulbbe.draft.dto;
+
+public enum DraftLiveEventType {
+    SESSION_STARTED,
+    SESSION_PAUSED,
+    SESSION_RESUMED,
+    PICK_COMPLETED,
+    TURN_CHANGED,
+    TIMER_EXTENDED,
+    PICK_SKIPPED,
+    SESSION_FINISHED,
+    SNAPSHOT_SYNC_REQUIRED
+}

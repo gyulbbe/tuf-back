@@ -221,6 +221,7 @@ public class DraftService {
                     .operatorUserId(requestDto.getOperatorUserId())
                     .role(requestDto.getRole())
                     .isActive(defaultIfBlank(requestDto.getIsActive(), "Y"))
+                    .canPick("N")
                     .build();
 
             draftTeamOperatorRepository.save(entity);

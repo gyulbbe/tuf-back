@@ -39,13 +39,19 @@ public class JWTUtil {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().get("photo", String.class);
     }
 
+    public Long getUserPk(String token) {
+        Number userPk = Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().get("userPk", Number.class);
+        return userPk != null ? userPk.longValue() : null;
+    }
+
     public Boolean isExpired(String token) {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().getExpiration().before(new Date());
     }
 
-    public String createJwt(String username, String role, String photo, Long expiredMs) {
+    public String createJwt(String username, Long userPk, String role, String photo, Long expiredMs) {
         return Jwts.builder()
                 .claim("username", username)
+                .claim("userPk", userPk)
                 .claim("role", role)
                 .claim("photo", photo)
                 .issuedAt(new Date(System.currentTimeMillis()))
