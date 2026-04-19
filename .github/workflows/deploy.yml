@@ -117,8 +117,9 @@ jobs:
             echo "--- 프로세스 상태 확인 ---"
             ps aux | grep '[j]ava -jar' || echo "java 프로세스가 떠있지 않음!"
 
-            echo "--- app.log 마지막 30줄 ---"
-            tail -30 /home/ubuntu/app/app.log 2>/dev/null || echo "app.log 파일 없음"
+            echo "--- 오늘자 로그 마지막 50줄 ---"
+            TODAY_LOG="/home/ubuntu/app/logs/app-$(date +%Y%m%d).log"
+            tail -50 "$TODAY_LOG" 2>/dev/null || echo "$TODAY_LOG 파일 없음"
 
             echo "--- nohup.out 확인 ---"
             cat /home/ubuntu/app/nohup.out 2>/dev/null || echo "nohup.out 없음"
