@@ -31,6 +31,7 @@ public class DraftLiveCommandService {
     private final DraftPermissionService draftPermissionService;
     private final DraftSnapshotService draftSnapshotService;
     private final DraftEventPublisher draftEventPublisher;
+    private final DraftLiveSessionTracker draftLiveSessionTracker;
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
         draftPermissionService.assertAdmin(actor);
@@ -45,6 +46,7 @@ public class DraftLiveCommandService {
 
         LocalDateTime now = LocalDateTime.now();
         session.start(firstOrder.getDraftTeamId(), now, now.plusSeconds(session.getPickTimeSeconds()));
+        draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_STARTED, actor, "Draft session started.");
@@ -58,6 +60,7 @@ public class DraftLiveCommandService {
         assertLiveSession(session);
 
         session.pause();
+        draftLiveSessionTracker.refreshAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_PAUSED, actor, "Draft session paused.");
@@ -78,6 +81,7 @@ public class DraftLiveCommandService {
         }
 
         session.resume(LocalDateTime.now().plusSeconds(resumeSeconds));
+        draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_RESUMED, actor, "Draft session resumed.");
@@ -151,6 +155,7 @@ public class DraftLiveCommandService {
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
+            draftLiveSessionTracker.refreshAfterCommit();
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Final pick completed. Draft session finished.");
         } else {
             publishAfterCommit(sessionId, DraftLiveEventType.PICK_COMPLETED, actor, "Pick completed.");
@@ -171,6 +176,7 @@ public class DraftLiveCommandService {
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
+            draftLiveSessionTracker.refreshAfterCommit();
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Draft session finished.");
         } else {
             String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;
@@ -188,6 +194,7 @@ public class DraftLiveCommandService {
         }
 
         session.finish(LocalDateTime.now());
+        draftLiveSessionTracker.refreshAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;

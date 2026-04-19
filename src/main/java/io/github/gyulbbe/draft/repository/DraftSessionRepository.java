@@ -16,5 +16,7 @@ public interface DraftSessionRepository extends JpaRepository<DraftSessionEntity
     @Query("select s from DraftSessionEntity s where s.id = :sessionId")
     Optional<DraftSessionEntity> findByIdForUpdate(Long sessionId);
 
+    boolean existsByStatus(String status);
+
     List<DraftSessionEntity> findAllByStatusAndDeadlineAtLessThanEqual(String status, LocalDateTime deadlineAt);
 }

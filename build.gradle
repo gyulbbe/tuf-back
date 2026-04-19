@@ -78,6 +78,12 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+tasks.named('processResources') {
+    exclude 'oracle-schema-sequence.sql'
+    exclude 'oracle-rebuild-schema-sequence.sql'
+    exclude 'oracle-sequence-migration.sql'
+}
+
 jar {
     enabled = false
 }

@@ -22,7 +22,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Import({DraftService.class, DraftQueryRepositoryImpl.class, QueryDslConfig.class})
+@Import({DraftService.class, DraftLiveSessionTracker.class, DraftQueryRepositoryImpl.class, QueryDslConfig.class})
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,

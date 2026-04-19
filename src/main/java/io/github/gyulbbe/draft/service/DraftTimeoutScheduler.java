@@ -18,11 +18,16 @@ public class DraftTimeoutScheduler {
 
     private static final AuthActor SYSTEM_ACTOR = new AuthActor(null, "system", "ROLE_SYSTEM");
 
+    private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftSessionRepository draftSessionRepository;
     private final DraftLiveCommandService draftLiveCommandService;
 
     @Scheduled(fixedDelay = 1000)
     public void processTimeouts() {
+        if (!draftLiveSessionTracker.hasLiveSession()) {
+            return;
+        }
+
         LocalDateTime now = LocalDateTime.now();
         List<DraftSessionEntity> overdueSessions = draftSessionRepository
                 .findAllByStatusAndDeadlineAtLessThanEqual("LIVE", now);

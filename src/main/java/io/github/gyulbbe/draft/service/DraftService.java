@@ -36,6 +36,7 @@ public class DraftService {
     private final DraftPickRepository draftPickRepository;
     private final DraftQueryRepository draftQueryRepository;
     private final UserRepository userRepository;
+    private final DraftLiveSessionTracker draftLiveSessionTracker;
 
     public ResponseDto<DraftSessionSummaryResponseDto> createSession(DraftSessionRequestDto requestDto) {
         try {
@@ -54,6 +55,9 @@ public class DraftService {
                     .build();
 
             DraftSessionEntity saved = draftSessionRepository.save(entity);
+            if ("LIVE".equals(saved.getStatus())) {
+                draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
+            }
             return ResponseDto.success(requireSessionSummary(saved.getId()));
         } catch (Exception e) {
             log.error("드래프트 세션 생성 실패", e);
@@ -103,6 +107,12 @@ public class DraftService {
                     requestDto.getEndedAt() != null ? requestDto.getEndedAt() : entity.getEndedAt()
             );
 
+            if ("LIVE".equals(entity.getStatus())) {
+                draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
+            } else {
+                draftLiveSessionTracker.refreshAfterCommit();
+            }
+
             return ResponseDto.success(requireSessionSummary(sessionId));
         } catch (Exception e) {
             log.error("드래프트 세션 수정 실패", e);
@@ -126,6 +136,7 @@ public class DraftService {
             draftCandidateRepository.deleteAllByDraftSessionId(sessionId);
             draftTeamRepository.deleteAllByDraftSessionId(sessionId);
             draftSessionRepository.delete(session);
+            draftLiveSessionTracker.refreshAfterCommit();
 
             return ResponseDto.success(null);
         } catch (Exception e) {

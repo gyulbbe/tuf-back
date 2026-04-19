@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import({
         QueryDslConfig.class,
         DraftQueryRepositoryImpl.class,
+        DraftLiveSessionTracker.class,
         DraftService.class,
         DraftPermissionService.class,
         DraftSnapshotService.class,
@@ -85,6 +86,9 @@ class DraftTimeoutSchedulerTest {
     @Autowired
     private DraftTimeoutScheduler draftTimeoutScheduler;
 
+    @Autowired
+    private DraftLiveSessionTracker draftLiveSessionTracker;
+
     @Test
     void deadlineAt이_지난_live_세션은_자동으로_스킵된다() {
         Long sessionId = createSession();
@@ -95,6 +99,7 @@ class DraftTimeoutSchedulerTest {
 
         DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
         session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
+        draftLiveSessionTracker.synchronizeWithDatabase();
 
         draftTimeoutScheduler.processTimeouts();
 

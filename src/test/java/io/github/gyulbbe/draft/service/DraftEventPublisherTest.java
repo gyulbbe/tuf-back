@@ -48,6 +48,7 @@ import static org.mockito.Mockito.verify;
 @Import({
         QueryDslConfig.class,
         DraftQueryRepositoryImpl.class,
+        DraftLiveSessionTracker.class,
         DraftService.class,
         DraftPermissionService.class,
         DraftAdminService.class,
