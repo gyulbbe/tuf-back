@@ -64,6 +64,11 @@ jobs:
             pgrep -f 'java -jar' | grep -v "^${MY_PID}$" | xargs -r kill || true
             sleep 2
 
+            # JAR 외부 설정파일이 남아있으면 JAR 내부 설정을 덮어쓰므로 제거
+            echo "--- stale 외부 설정파일 정리 ---"
+            rm -f /home/ubuntu/app/application*.properties /home/ubuntu/app/application*.yml /home/ubuntu/app/application*.yaml
+            rm -rf /home/ubuntu/app/config
+
             # 앱 디렉토리 확인
             echo "--- /home/ubuntu/app/ 디렉토리 ---"
             ls -la /home/ubuntu/app/
