@@ -10,11 +10,16 @@ import java.io.Serializable;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "users_seq_gen",
+        sequenceName = "USERS_SEQ",
+        allocationSize = 1
+)
 @Table(name = "USERS")
 public class UserEntity implements Serializable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq_gen")
     private Long id;
 
     @Column(name = "USER_ID", nullable = false)

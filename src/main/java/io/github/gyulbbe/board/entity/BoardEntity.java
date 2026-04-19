@@ -10,11 +10,16 @@ import java.util.Date;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "boards_seq_gen",
+        sequenceName = "BOARDS_SEQ",
+        allocationSize = 1
+)
 @Table(name = "BOARDS")
 public class BoardEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "boards_seq_gen")
     private Long id;
 
     @Column(name = "USER_ID")

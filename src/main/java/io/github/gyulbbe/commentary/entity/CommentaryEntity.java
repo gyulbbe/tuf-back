@@ -8,11 +8,16 @@ import lombok.*;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "commentaries_seq_gen",
+        sequenceName = "COMMENTARIES_SEQ",
+        allocationSize = 1
+)
 @Table(name = "COMMENTARIES")
 public class CommentaryEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "commentaries_seq_gen")
     private Long id;
 
     @Column(name = "MATCH_INFO_ID", nullable = false)

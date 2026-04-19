@@ -13,11 +13,16 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "speeches_seq_gen",
+        sequenceName = "SPEECHES_SEQ",
+        allocationSize = 1
+)
 @Table(name = "SPEECHES")
 public class SpeechEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "speeches_seq_gen")
     private Long id;
 
     @Column(name = "NICKNAME", nullable = false)

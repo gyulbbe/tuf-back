@@ -10,6 +10,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "draft_sessions_seq_gen",
+        sequenceName = "DRAFT_SESSIONS_SEQ",
+        allocationSize = 1
+)
 @Table(
         name = "DRAFT_SESSIONS",
         indexes = {
@@ -19,7 +24,7 @@ import java.time.LocalDateTime;
 public class DraftSessionEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "draft_sessions_seq_gen")
     private Long id;
 
     @Column(name = "TITLE", nullable = false)

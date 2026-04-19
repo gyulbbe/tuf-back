@@ -8,11 +8,16 @@ import lombok.*;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "league_participations_seq_gen",
+        sequenceName = "LEAGUE_PARTICIPATIONS_SEQ",
+        allocationSize = 1
+)
 @Table(name = "LEAGUE_PARTICIPATIONS")
 public class LeagueParticipationEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "league_participations_seq_gen")
     private Long id;
 
     @Column(name = "LEAGUE_ID", nullable = false)

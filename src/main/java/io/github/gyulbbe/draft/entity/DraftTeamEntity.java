@@ -8,6 +8,11 @@ import lombok.*;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "draft_teams_seq_gen",
+        sequenceName = "DRAFT_TEAMS_SEQ",
+        allocationSize = 1
+)
 @Table(
         name = "DRAFT_TEAMS",
         uniqueConstraints = {
@@ -21,7 +26,7 @@ import lombok.*;
 public class DraftTeamEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "draft_teams_seq_gen")
     private Long id;
 
     @Column(name = "DRAFT_SESSION_ID", nullable = false)

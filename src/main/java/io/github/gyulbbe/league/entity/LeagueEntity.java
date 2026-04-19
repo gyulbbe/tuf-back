@@ -10,11 +10,16 @@ import java.time.LocalDate;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "leagues_seq_gen",
+        sequenceName = "LEAGUES_SEQ",
+        allocationSize = 1
+)
 @Table(name = "LEAGUES")
 public class LeagueEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "leagues_seq_gen")
     private Long id;
 
     @Column(name = "LEAGUE_NAME", nullable = false)

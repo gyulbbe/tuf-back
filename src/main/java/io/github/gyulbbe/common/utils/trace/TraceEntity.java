@@ -10,10 +10,15 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "traces_seq_gen",
+        sequenceName = "TRACES_SEQ",
+        allocationSize = 1
+)
 @Table(name = "TRACES")
 public class TraceEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "traces_seq_gen")
     private Long id;
 
     @Column(name = "USER_ID")
