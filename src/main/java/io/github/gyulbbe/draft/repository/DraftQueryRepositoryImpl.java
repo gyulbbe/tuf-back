@@ -68,6 +68,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     @Override
     public Optional<DraftTeamResponseDto> findTeam(Long teamId) {
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
+        QUserEntity picker = new QUserEntity("draftTeamPicker");
 
         return Optional.ofNullable(
                 queryFactory
@@ -76,9 +77,12 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftTeam.id,
                                 draftTeam.draftSessionId,
                                 draftTeam.teamName,
-                                draftTeam.displayOrder
+                                draftTeam.displayOrder,
+                                draftTeam.pickerUserId,
+                                picker.name.as("pickerName")
                         ))
                         .from(draftTeam)
+                        .leftJoin(picker).on(picker.id.eq(draftTeam.pickerUserId))
                         .where(draftTeam.id.eq(teamId))
                         .fetchOne()
         );
@@ -87,6 +91,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     @Override
     public List<DraftTeamResponseDto> findTeamsBySessionId(Long sessionId) {
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
+        QUserEntity picker = new QUserEntity("draftTeamPicker");
 
         return queryFactory
                 .select(Projections.bean(
@@ -94,37 +99,14 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftTeam.id,
                         draftTeam.draftSessionId,
                         draftTeam.teamName,
-                        draftTeam.displayOrder
+                        draftTeam.displayOrder,
+                        draftTeam.pickerUserId,
+                        picker.name.as("pickerName")
                 ))
                 .from(draftTeam)
+                .leftJoin(picker).on(picker.id.eq(draftTeam.pickerUserId))
                 .where(draftTeam.draftSessionId.eq(sessionId))
                 .orderBy(draftTeam.displayOrder.asc(), draftTeam.id.asc())
-                .fetch();
-    }
-
-    @Override
-    public List<DraftTeamOperatorResponseDto> findOperatorsByTeamIds(List<Long> teamIds) {
-        if (teamIds == null || teamIds.isEmpty()) {
-            return List.of();
-        }
-
-        QDraftTeamOperatorEntity draftTeamOperator = QDraftTeamOperatorEntity.draftTeamOperatorEntity;
-        QUserEntity user = QUserEntity.userEntity;
-
-        return queryFactory
-                .select(Projections.bean(
-                        DraftTeamOperatorResponseDto.class,
-                        draftTeamOperator.draftTeamId,
-                        draftTeamOperator.operatorUserId,
-                        user.name.as("operatorName"),
-                        draftTeamOperator.role,
-                        draftTeamOperator.isActive,
-                        draftTeamOperator.canPick
-                ))
-                .from(draftTeamOperator)
-                .leftJoin(user).on(user.id.eq(draftTeamOperator.operatorUserId))
-                .where(draftTeamOperator.draftTeamId.in(teamIds))
-                .orderBy(draftTeamOperator.draftTeamId.asc(), draftTeamOperator.operatorUserId.asc())
                 .fetch();
     }
 

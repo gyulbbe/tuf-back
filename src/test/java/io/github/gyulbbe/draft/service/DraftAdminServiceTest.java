@@ -2,12 +2,10 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.dto.DraftTeamOperatorResponseDto;
+import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
@@ -27,13 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
-        DraftTeamOperatorEntity.class,
         UserEntity.class
 })
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
-        DraftTeamOperatorRepository.class,
         UserRepository.class
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
@@ -58,64 +54,55 @@ class DraftAdminServiceTest {
     private DraftTeamRepository draftTeamRepository;
 
     @Autowired
-    private DraftTeamOperatorRepository draftTeamOperatorRepository;
-
-    @Autowired
     private UserRepository userRepository;
 
     @Test
-    void 관리자는_팀별_단일_픽권한자를_지정할수있다() {
-        Long captainId = createUser("captain01", "팀장");
-        Long viceCaptainId = createUser("vice01", "부팀장");
+    void 관리자는_팀_픽커를_지정하고_다시_변경할_수_있다() {
+        Long firstPickerId = createUser("picker01", "첫번째", "ACTIVE");
+        Long secondPickerId = createUser("picker02", "두번째", "ACTIVE");
         Long sessionId = createSession();
         Long teamId = createTeam(sessionId, "A팀", 1);
 
-        createOperator(teamId, captainId, "CAPTAIN");
-        createOperator(teamId, viceCaptainId, "VICE_CAPTAIN");
-
         AuthActor admin = new AuthActor(999L, "admin", "ROLE_ADMIN");
 
-        ResponseDto<DraftTeamOperatorResponseDto> firstAssign = draftAdminService.assignPicker(teamId, captainId, admin);
-        ResponseDto<DraftTeamOperatorResponseDto> secondAssign = draftAdminService.assignPicker(teamId, viceCaptainId, admin);
+        ResponseDto<DraftPickerResponseDto> firstAssign = draftAdminService.assignPicker(teamId, firstPickerId, admin);
+        ResponseDto<DraftPickerResponseDto> secondAssign = draftAdminService.assignPicker(teamId, secondPickerId, admin);
 
         assertThat(firstAssign.getStatus()).isEqualTo(200);
         assertThat(secondAssign.getStatus()).isEqualTo(200);
-        assertThat(secondAssign.getData().getOperatorUserId()).isEqualTo(viceCaptainId);
-        assertThat(secondAssign.getData().getCanPick()).isEqualTo("Y");
-        assertThat(draftPermissionService.canPickForTeam(teamId, captainId)).isFalse();
-        assertThat(draftPermissionService.canPickForTeam(teamId, viceCaptainId)).isTrue();
+        assertThat(secondAssign.getData().getPickerUserId()).isEqualTo(secondPickerId);
+        assertThat(draftPermissionService.canPickForTeam(teamId, firstPickerId)).isFalse();
+        assertThat(draftPermissionService.canPickForTeam(teamId, secondPickerId)).isTrue();
     }
 
     @Test
-    void 관리자가_아니면_픽권한자를_지정할수없다() {
-        Long captainId = createUser("captain02", "팀장2");
+    void 관리자가_아니면_픽커를_지정할_수_없다() {
+        Long pickerId = createUser("picker03", "일반유저", "ACTIVE");
         Long sessionId = createSession();
         Long teamId = createTeam(sessionId, "B팀", 1);
-        createOperator(teamId, captainId, "CAPTAIN");
 
-        AuthActor normalUser = new AuthActor(captainId, "captain02", "ROLE_USER");
+        AuthActor normalUser = new AuthActor(pickerId, "picker03", "ROLE_USER");
 
-        ResponseDto<DraftTeamOperatorResponseDto> response = draftAdminService.assignPicker(teamId, captainId, normalUser);
+        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, normalUser);
 
         assertThat(response.getStatus()).isEqualTo(500);
         assertThat(response.getMessage()).contains("관리자");
-        assertThat(draftPermissionService.canPickForTeam(teamId, captainId)).isFalse();
+        assertThat(draftPermissionService.canPickForTeam(teamId, pickerId)).isFalse();
     }
 
     @Test
-    void 활성_팀장_부팀장만_픽권한자로_지정할수있다() {
-        Long operatorId = createUser("operator01", "운영자");
+    void 비활성_유저는_픽커로_지정할_수_없다() {
+        Long inactiveUserId = createUser("picker04", "비활성", "INACTIVE");
         Long sessionId = createSession();
         Long teamId = createTeam(sessionId, "C팀", 1);
-        createOperator(teamId, operatorId, "OPERATOR");
 
         AuthActor admin = new AuthActor(1000L, "admin", "ROLE_MANAGER");
 
-        ResponseDto<DraftTeamOperatorResponseDto> response = draftAdminService.assignPicker(teamId, operatorId, admin);
+        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, inactiveUserId, admin);
 
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getMessage()).contains("팀장 또는 부팀장");
-        assertThat(draftPermissionService.canPickForTeam(teamId, operatorId)).isFalse();
+        assertThat(response.getMessage()).contains("ACTIVE");
+        assertThat(draftPermissionService.canPickForTeam(teamId, inactiveUserId)).isFalse();
     }
 
     private Long createSession() {
@@ -134,27 +121,17 @@ class DraftAdminServiceTest {
                 .draftSessionId(sessionId)
                 .teamName(teamName)
                 .displayOrder(displayOrder)
+                .pickerUserId(null)
                 .build();
         return draftTeamRepository.save(entity).getId();
     }
 
-    private void createOperator(Long teamId, Long operatorUserId, String role) {
-        DraftTeamOperatorEntity entity = DraftTeamOperatorEntity.builder()
-                .draftTeamId(teamId)
-                .operatorUserId(operatorUserId)
-                .role(role)
-                .isActive("Y")
-                .canPick("N")
-                .build();
-        draftTeamOperatorRepository.save(entity);
-    }
-
-    private Long createUser(String userId, String name) {
+    private Long createUser(String userId, String name, String status) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
                 .name(name)
-                .status("ACTIVE")
+                .status(status)
                 .userType("ROLE_USER")
                 .build();
         return userRepository.save(user).getId();

@@ -1,18 +1,19 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
+import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
 
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class DraftPermissionService {
 
-    private final DraftTeamOperatorRepository draftTeamOperatorRepository;
+    private final DraftTeamRepository draftTeamRepository;
 
     public boolean isAdmin(AuthActor actor) {
         return actor != null && (
@@ -39,14 +40,11 @@ public class DraftPermissionService {
     }
 
     public boolean canPickForTeam(Long draftTeamId, Long userPk) {
-        return draftTeamOperatorRepository
-                .findByDraftTeamIdAndOperatorUserIdAndIsActiveAndCanPick(draftTeamId, userPk, "Y", "Y")
-                .isPresent();
-    }
-
-    public DraftTeamOperatorEntity getCurrentPicker(Long draftTeamId) {
-        return draftTeamOperatorRepository
-                .findByDraftTeamIdAndCanPickAndIsActive(draftTeamId, "Y", "Y")
-                .orElse(null);
+        if (draftTeamId == null || userPk == null) {
+            return false;
+        }
+        return draftTeamRepository.findById(draftTeamId)
+                .map(team -> Objects.equals(team.getPickerUserId(), userPk))
+                .orElse(false);
     }
 }

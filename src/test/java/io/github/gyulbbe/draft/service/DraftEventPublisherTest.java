@@ -7,20 +7,17 @@ import io.github.gyulbbe.draft.dto.DraftLiveEventResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventType;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
-import io.github.gyulbbe.draft.dto.DraftTeamOperatorRequestDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
 import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
 import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
 import io.github.gyulbbe.user.entity.UserEntity;
@@ -34,8 +31,8 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,7 +56,6 @@ import static org.mockito.Mockito.verify;
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
-        DraftTeamOperatorEntity.class,
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
@@ -68,7 +64,6 @@ import static org.mockito.Mockito.verify;
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
-        DraftTeamOperatorRepository.class,
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,
@@ -100,7 +95,7 @@ class DraftEventPublisherTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void startSession후_afterCommit으로_session_started_이벤트를_발행한다() {
+    void startSession은_afterCommit으로_session_started_이벤트를_발행한다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A팀", 1);
         createOrder(sessionId, 1L, 1, teamAId);
@@ -119,32 +114,31 @@ class DraftEventPublisherTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void pick후_afterCommit으로_pick_completed_이벤트를_발행한다() {
-        Long captainAId = createUser("captain-event", "캡틴");
+    void pick은_afterCommit으로_pick_completed_이벤트를_발행한다() {
+        Long pickerId = createUser("picker-event", "픽커");
         Long candidate1Id = createUser("candidate-event", "후보1");
         Long candidate2Id = createUser("candidate-event-2", "후보2");
 
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "레드", 1);
         Long teamBId = createTeam(sessionId, "블루", 2);
-        createOperator(teamAId, captainAId, "CAPTAIN");
+        assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "PROTOSS");
         createOrder(sessionId, 1L, 1, teamAId);
         createOrder(sessionId, 2L, 1, teamBId);
-        draftAdminService.assignPicker(teamAId, captainAId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
         clearInvocations(simpMessagingTemplate);
 
-        draftLiveCommandService.pick(sessionId, candidate1Id, new AuthActor(captainAId, "captain-event", "ROLE_USER"));
+        draftLiveCommandService.pick(sessionId, candidate1Id, new AuthActor(pickerId, "picker-event", "ROLE_USER"));
 
         ArgumentCaptor<DraftLiveEventResponseDto> captor = ArgumentCaptor.forClass(DraftLiveEventResponseDto.class);
         verify(simpMessagingTemplate).convertAndSend(eq("/topic/drafts/" + sessionId), captor.capture());
 
         DraftLiveEventResponseDto event = captor.getValue();
         assertThat(event.getType()).isEqualTo(DraftLiveEventType.PICK_COMPLETED);
-        assertThat(event.getActorUserId()).isEqualTo(captainAId);
+        assertThat(event.getActorUserId()).isEqualTo(pickerId);
         assertThat(event.getSnapshot().getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(event.getSnapshot().getPermissions()).isNull();
     }
@@ -167,13 +161,8 @@ class DraftEventPublisherTest {
         return draftService.createTeam(requestDto).getData().getId();
     }
 
-    private void createOperator(Long teamId, Long operatorUserId, String role) {
-        DraftTeamOperatorRequestDto requestDto = new DraftTeamOperatorRequestDto();
-        requestDto.setDraftTeamId(teamId);
-        requestDto.setOperatorUserId(operatorUserId);
-        requestDto.setRole(role);
-        requestDto.setIsActive("Y");
-        draftService.createOperator(requestDto);
+    private void assignPicker(Long teamId, Long pickerUserId) {
+        draftAdminService.assignPicker(teamId, pickerUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
     }
 
     private void createCandidate(Long sessionId, Long candidateUserId, String candidateName, String race) {

@@ -11,6 +11,7 @@ public class DraftLiveTeamResponseDto {
     private Long draftSessionId;
     private String teamName;
     private Integer displayOrder;
-    private List<DraftTeamOperatorResponseDto> operators = new ArrayList<>();
+    private Long pickerUserId;
+    private String pickerName;
     private List<DraftLiveRosterItemResponseDto> roster = new ArrayList<>();
 }

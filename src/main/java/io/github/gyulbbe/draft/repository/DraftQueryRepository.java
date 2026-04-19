@@ -14,8 +14,6 @@ public interface DraftQueryRepository {
 
     List<DraftTeamResponseDto> findTeamsBySessionId(Long sessionId);
 
-    List<DraftTeamOperatorResponseDto> findOperatorsByTeamIds(List<Long> teamIds);
-
     List<DraftCandidateResponseDto> findCandidatesBySessionId(Long sessionId);
 
     Optional<DraftCandidateResponseDto> findCandidate(Long sessionId, Long candidateUserId);

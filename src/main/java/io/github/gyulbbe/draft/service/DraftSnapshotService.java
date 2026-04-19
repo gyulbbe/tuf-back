@@ -11,11 +11,8 @@ import io.github.gyulbbe.draft.dto.DraftLiveTeamResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
-import io.github.gyulbbe.draft.dto.DraftTeamOperatorResponseDto;
 import io.github.gyulbbe.draft.dto.DraftTeamResponseDto;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
 import io.github.gyulbbe.draft.repository.DraftQueryRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,22 +35,18 @@ public class DraftSnapshotService {
 
     private final DraftQueryRepository draftQueryRepository;
     private final DraftPermissionService draftPermissionService;
-    private final DraftTeamOperatorRepository draftTeamOperatorRepository;
 
     public DraftLiveSnapshotResponseDto getSnapshot(Long sessionId, AuthActor actor) {
         DraftSessionSummaryResponseDto sessionSummary = draftQueryRepository.findSessionSummary(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
 
         List<DraftTeamResponseDto> teamDtos = draftQueryRepository.findTeamsBySessionId(sessionId);
-        List<Long> teamIds = teamDtos.stream().map(DraftTeamResponseDto::getId).toList();
-        List<DraftTeamOperatorResponseDto> operators = draftQueryRepository.findOperatorsByTeamIds(teamIds);
         List<DraftCandidateResponseDto> candidates = draftQueryRepository.findCandidatesBySessionId(sessionId);
         List<DraftOrderResponseDto> orders = draftQueryRepository.findOrdersBySessionId(sessionId);
         List<DraftPickResponseDto> picks = draftQueryRepository.findPicksBySessionId(sessionId);
         LocalDateTime serverNow = LocalDateTime.now();
 
         Map<Long, DraftLiveTeamResponseDto> teamMap = buildTeams(teamDtos);
-        attachOperators(teamMap, operators);
         attachRoster(teamMap, picks);
 
         DraftLiveSnapshotResponseDto snapshot = new DraftLiveSnapshotResponseDto();
@@ -63,7 +56,7 @@ public class DraftSnapshotService {
         snapshot.setAvailableCandidates(filterCandidatesByStatus(candidates, "WAITING"));
         snapshot.setPickedCandidates(filterCandidatesByStatus(candidates, "PICKED"));
         snapshot.setRecentPicks(buildRecentPicks(picks));
-        snapshot.setPermissions(buildPermissions(actor, sessionSummary.getCurrentDraftTeamId(), teamIds));
+        snapshot.setPermissions(buildPermissions(actor, sessionSummary.getCurrentDraftTeamId(), snapshot.getTeams()));
         return snapshot;
     }
 
@@ -85,6 +78,8 @@ public class DraftSnapshotService {
                     responseDto.setDraftSessionId(team.getDraftSessionId());
                     responseDto.setTeamName(team.getTeamName());
                     responseDto.setDisplayOrder(team.getDisplayOrder());
+                    responseDto.setPickerUserId(team.getPickerUserId());
+                    responseDto.setPickerName(team.getPickerName());
                     return responseDto;
                 })
                 .collect(Collectors.toMap(
@@ -93,15 +88,6 @@ public class DraftSnapshotService {
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
-    }
-
-    private void attachOperators(Map<Long, DraftLiveTeamResponseDto> teamMap, List<DraftTeamOperatorResponseDto> operators) {
-        for (DraftTeamOperatorResponseDto operator : operators) {
-            DraftLiveTeamResponseDto team = teamMap.get(operator.getDraftTeamId());
-            if (team != null) {
-                team.getOperators().add(operator);
-            }
-        }
     }
 
     private void attachRoster(Map<Long, DraftLiveTeamResponseDto> teamMap, List<DraftPickResponseDto> picks) {
@@ -190,36 +176,38 @@ public class DraftSnapshotService {
         return recentPicks;
     }
 
-    private DraftLivePermissionsResponseDto buildPermissions(AuthActor actor, Long currentDraftTeamId, List<Long> sessionTeamIds) {
+    private DraftLivePermissionsResponseDto buildPermissions(
+            AuthActor actor,
+            Long currentDraftTeamId,
+            List<DraftLiveTeamResponseDto> teams
+    ) {
         DraftLivePermissionsResponseDto permissions = new DraftLivePermissionsResponseDto();
         permissions.setCanControl(draftPermissionService.isAdmin(actor));
 
-        if (actor == null || actor.userPk() == null || sessionTeamIds.isEmpty()) {
+        if (actor == null || actor.userPk() == null || teams.isEmpty()) {
             permissions.setCanPick(false);
             return permissions;
         }
 
-        List<DraftTeamOperatorEntity> activeOperators = draftTeamOperatorRepository
-                .findAllByOperatorUserIdAndIsActive(actor.userPk(), "Y")
-                .stream()
-                .filter(operator -> sessionTeamIds.contains(operator.getDraftTeamId()))
-                .toList();
-
-        DraftTeamOperatorEntity selectedOperator = activeOperators.stream()
-                .filter(operator -> Objects.equals(operator.getDraftTeamId(), currentDraftTeamId))
+        DraftLiveTeamResponseDto selectedTeam = teams.stream()
+                .filter(team -> Objects.equals(team.getPickerUserId(), actor.userPk()))
+                .filter(team -> currentDraftTeamId == null || Objects.equals(team.getId(), currentDraftTeamId))
                 .findFirst()
-                .orElse(activeOperators.stream().findFirst().orElse(null));
+                .orElseGet(() -> teams.stream()
+                        .filter(team -> Objects.equals(team.getPickerUserId(), actor.userPk()))
+                        .findFirst()
+                        .orElse(null));
 
-        if (selectedOperator == null) {
+        if (selectedTeam == null) {
             permissions.setCanPick(false);
             return permissions;
         }
 
-        permissions.setMyTeamId(selectedOperator.getDraftTeamId());
-        permissions.setMyRole(selectedOperator.getRole());
+        permissions.setMyTeamId(selectedTeam.getId());
+        permissions.setMyRole("PICKER");
         permissions.setCanPick(
                 currentDraftTeamId != null
-                        && Objects.equals(selectedOperator.getDraftTeamId(), currentDraftTeamId)
+                        && Objects.equals(selectedTeam.getId(), currentDraftTeamId)
                         && draftPermissionService.canPickForTeam(currentDraftTeamId, actor.userPk())
         );
         return permissions;

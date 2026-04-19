@@ -6,20 +6,17 @@ import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
-import io.github.gyulbbe.draft.dto.DraftTeamOperatorRequestDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
 import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
 import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
 import io.github.gyulbbe.user.entity.UserEntity;
@@ -32,10 +29,11 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @Import({
@@ -52,7 +50,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
-        DraftTeamOperatorEntity.class,
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
@@ -61,7 +58,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
-        DraftTeamOperatorRepository.class,
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,
@@ -117,28 +113,27 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void 지정된_픽권한자만_현재턴에서_픽할수있고_성공하면_다음턴으로_이동한다() {
-        Long captainAId = createUser("captainA", "캡틴A");
-        Long captainBId = createUser("captainB", "캡틴B");
+    void 지정된_픽커만_현재턴에서_픽할_수_있고_성공하면_다음턴으로_이동한다() {
+        Long pickerAId = createUser("pickerA", "픽커A");
+        Long pickerBId = createUser("pickerB", "픽커B");
         Long candidate1Id = createUser("candidate1", "후보1");
         Long candidate2Id = createUser("candidate2", "후보2");
 
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "레드", 1);
         Long teamBId = createTeam(sessionId, "블루", 2);
-        createOperator(teamAId, captainAId, "CAPTAIN");
-        createOperator(teamBId, captainBId, "CAPTAIN");
+        assignPicker(teamAId, pickerAId);
+        assignPicker(teamBId, pickerBId);
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "PROTOSS");
         createOrder(sessionId, 1L, 1, teamAId);
         createOrder(sessionId, 2L, 1, teamBId);
-        assignPicker(teamAId, captainAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(
                 sessionId,
                 candidate1Id,
-                new AuthActor(captainAId, "captainA", "ROLE_USER")
+                new AuthActor(pickerAId, "pickerA", "ROLE_USER")
         );
 
         assertThat(result.getSession().getCurrentPickNo()).isEqualTo(2);
@@ -154,44 +149,39 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void 지정된_픽권한자가_아니면_픽할수없다() {
-        Long captainAId = createUser("captainA2", "캡틴A2");
-        Long viceCaptainAId = createUser("viceA2", "부캡틴A2");
+    void 지정된_픽커가_아니면_픽할_수_없다() {
+        Long pickerId = createUser("pickerA2", "픽커A2");
+        Long otherUserId = createUser("otherA2", "다른유저");
         Long candidate1Id = createUser("candidate3", "후보3");
 
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "알파", 1);
-        createOperator(teamAId, captainAId, "CAPTAIN");
-        createOperator(teamAId, viceCaptainAId, "VICE_CAPTAIN");
+        assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보3", "TERRAN");
         createOrder(sessionId, 1L, 1, teamAId);
-        assignPicker(teamAId, captainAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
-        try {
-            draftLiveCommandService.pick(sessionId, candidate1Id, new AuthActor(viceCaptainAId, "viceA2", "ROLE_USER"));
-        } catch (Exception e) {
-            assertThat(e.getMessage()).contains("지정된 픽 권한자");
-        }
+        assertThatThrownBy(() ->
+                draftLiveCommandService.pick(sessionId, candidate1Id, new AuthActor(otherUserId, "otherA2", "ROLE_USER"))
+        ).hasMessageContaining("픽 권한");
     }
 
     @Test
-    void 마지막_픽이_끝나면_세션은_finished가_된다() {
-        Long captainAId = createUser("captainLast", "캡틴Last");
+    void 마지막_픽이면_세션은_finished가_된다() {
+        Long pickerId = createUser("pickerLast", "픽커Last");
         Long candidate1Id = createUser("candidateLast", "후보Last");
 
         Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "원팀", 1);
-        createOperator(teamAId, captainAId, "CAPTAIN");
+        Long teamAId = createTeam(sessionId, "마지막팀", 1);
+        assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보Last", "RANDOM");
         createOrder(sessionId, 1L, 1, teamAId);
-        assignPicker(teamAId, captainAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(
                 sessionId,
                 candidate1Id,
-                new AuthActor(captainAId, "captainLast", "ROLE_USER")
+                new AuthActor(pickerId, "pickerLast", "ROLE_USER")
         );
 
         assertThat(result.getSession().getStatus()).isEqualTo("FINISHED");
@@ -214,7 +204,7 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void forceSkip은_pick없이_다음순번으로_넘긴다() {
+    void forceSkip은_pick없이_다음턴으로_넘긴다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         Long teamBId = createTeam(sessionId, "B", 2);
@@ -232,7 +222,7 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void finishSession은_즉시_finished로_전환한다() {
+    void finishSession은_즉시_finished로_바꾼다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         createOrder(sessionId, 1L, 1, teamAId);
@@ -265,17 +255,8 @@ class DraftLiveCommandServiceTest {
         return draftService.createTeam(requestDto).getData().getId();
     }
 
-    private void createOperator(Long teamId, Long operatorUserId, String role) {
-        DraftTeamOperatorRequestDto requestDto = new DraftTeamOperatorRequestDto();
-        requestDto.setDraftTeamId(teamId);
-        requestDto.setOperatorUserId(operatorUserId);
-        requestDto.setRole(role);
-        requestDto.setIsActive("Y");
-        draftService.createOperator(requestDto);
-    }
-
-    private void assignPicker(Long teamId, Long operatorUserId) {
-        draftAdminService.assignPicker(teamId, operatorUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
+    private void assignPicker(Long teamId, Long pickerUserId) {
+        draftAdminService.assignPicker(teamId, pickerUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
     }
 
     private void createCandidate(Long sessionId, Long candidateUserId, String candidateName, String race) {

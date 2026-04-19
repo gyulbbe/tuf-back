@@ -2,11 +2,8 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.dto.DraftTeamOperatorResponseDto;
+import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorId;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
@@ -22,56 +19,42 @@ import org.springframework.transaction.annotation.Transactional;
 public class DraftAdminService {
 
     private final DraftTeamRepository draftTeamRepository;
-    private final DraftTeamOperatorRepository draftTeamOperatorRepository;
     private final DraftPermissionService draftPermissionService;
     private final UserRepository userRepository;
 
-    public ResponseDto<DraftTeamOperatorResponseDto> assignPicker(Long teamId, Long operatorUserId, AuthActor actor) {
+    public ResponseDto<DraftPickerResponseDto> assignPicker(Long teamId, Long pickerUserId, AuthActor actor) {
         try {
             draftPermissionService.assertAdmin(actor);
+            if (pickerUserId == null) {
+                throw new IllegalArgumentException("픽커 사용자 ID는 필수입니다.");
+            }
 
             DraftTeamEntity team = draftTeamRepository.findById(teamId)
                     .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
 
-            DraftTeamOperatorEntity target = draftTeamOperatorRepository
-                    .findById(new DraftTeamOperatorId(teamId, operatorUserId))
-                    .orElseThrow(() -> new IllegalArgumentException("팀 운영자를 찾을 수 없습니다."));
+            UserEntity picker = userRepository.findById(pickerUserId)
+                    .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
 
-            if (!"Y".equals(target.getIsActive())) {
-                throw new IllegalArgumentException("비활성 운영자는 픽 권한자로 지정할 수 없습니다.");
-            }
-            if (!"CAPTAIN".equals(target.getRole()) && !"VICE_CAPTAIN".equals(target.getRole())) {
-                throw new IllegalArgumentException("팀장 또는 부팀장만 픽 권한자로 지정할 수 있습니다.");
+            if (!"ACTIVE".equals(picker.getStatus())) {
+                throw new IllegalArgumentException("ACTIVE 상태 유저만 픽커로 지정할 수 있습니다.");
             }
 
-            DraftTeamOperatorEntity existingPicker = draftPermissionService.getCurrentPicker(teamId);
-            if (existingPicker != null && existingPicker.getOperatorUserId().equals(operatorUserId)) {
-                return ResponseDto.success(toResponse(target));
+            if (!pickerUserId.equals(team.getPickerUserId())) {
+                team.assignPicker(pickerUserId);
             }
 
-            if (existingPicker != null) {
-                existingPicker.clearPicker();
-            }
-
-            target.assignPicker();
-            return ResponseDto.success(toResponse(target));
+            return ResponseDto.success(toResponse(teamId, picker));
         } catch (Exception e) {
-            log.error("드래프트 픽 권한자 지정 실패. teamId={}, operatorUserId={}", teamId, operatorUserId, e);
+            log.error("드래프트 픽커 지정 실패. teamId={}, pickerUserId={}", teamId, pickerUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    private DraftTeamOperatorResponseDto toResponse(DraftTeamOperatorEntity entity) {
-        UserEntity user = userRepository.findById(entity.getOperatorUserId())
-                .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
-
-        DraftTeamOperatorResponseDto responseDto = new DraftTeamOperatorResponseDto();
-        responseDto.setDraftTeamId(entity.getDraftTeamId());
-        responseDto.setOperatorUserId(entity.getOperatorUserId());
-        responseDto.setOperatorName(user.getName());
-        responseDto.setRole(entity.getRole());
-        responseDto.setIsActive(entity.getIsActive());
-        responseDto.setCanPick(entity.getCanPick());
+    private DraftPickerResponseDto toResponse(Long teamId, UserEntity picker) {
+        DraftPickerResponseDto responseDto = new DraftPickerResponseDto();
+        responseDto.setDraftTeamId(teamId);
+        responseDto.setPickerUserId(picker.getId());
+        responseDto.setPickerName(picker.getName());
         return responseDto;
     }
 }

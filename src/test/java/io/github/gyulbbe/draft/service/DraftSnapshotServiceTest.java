@@ -2,9 +2,23 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.config.QueryDslConfig;
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.dto.*;
-import io.github.gyulbbe.draft.entity.*;
-import io.github.gyulbbe.draft.repository.*;
+import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
+import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
+import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
+import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
+import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
+import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
+import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
+import io.github.gyulbbe.draft.entity.DraftOrderEntity;
+import io.github.gyulbbe.draft.entity.DraftPickEntity;
+import io.github.gyulbbe.draft.entity.DraftSessionEntity;
+import io.github.gyulbbe.draft.entity.DraftTeamEntity;
+import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
+import io.github.gyulbbe.draft.repository.DraftOrderRepository;
+import io.github.gyulbbe.draft.repository.DraftPickRepository;
+import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
+import io.github.gyulbbe.draft.repository.DraftSessionRepository;
+import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -33,7 +47,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
-        DraftTeamOperatorEntity.class,
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
@@ -42,7 +55,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
-        DraftTeamOperatorRepository.class,
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,
@@ -70,64 +82,67 @@ class DraftSnapshotServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void snapshot은_현재턴_팀로스터_후보상태_권한을_함께_반환한다() {
-        Long captainAId = createUser("captainA", "캡틴A", "ROLE_USER");
-        Long captainBId = createUser("captainB", "캡틴B", "ROLE_USER");
+    void snapshot은_현재턴과_로스터_후보상태_권한을_반환한다() {
+        Long pickerAId = createUser("pickerA", "픽커A", "ROLE_USER");
+        Long pickerBId = createUser("pickerB", "픽커B", "ROLE_USER");
         Long candidate1Id = createUser("candidate1", "후보1", "ROLE_USER");
         Long candidate2Id = createUser("candidate2", "후보2", "ROLE_USER");
 
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "레드", 1);
         Long teamBId = createTeam(sessionId, "블루", 2);
-        createOperator(teamAId, captainAId, "CAPTAIN");
-        createOperator(teamBId, captainBId, "CAPTAIN");
-        assignPicker(teamAId, captainAId);
+        assignPicker(teamAId, pickerAId);
+        assignPicker(teamBId, pickerBId);
 
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "TERRAN");
         createOrder(sessionId, 1L, 1, teamAId);
         createOrder(sessionId, 2L, 1, teamBId);
         updateSession(sessionId, "LIVE", 1, teamAId, LocalDateTime.now().plusSeconds(30));
-        createPick(sessionId, 1L, 1, teamAId, candidate1Id, captainAId);
+        createPick(sessionId, 1L, 1, teamAId, candidate1Id, pickerAId);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
                 sessionId,
-                new AuthActor(captainBId, "captainB", "ROLE_USER")
+                new AuthActor(pickerBId, "pickerB", "ROLE_USER")
         );
 
         assertThat(snapshot.getSession().getId()).isEqualTo(sessionId);
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
         assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getTeams()).hasSize(2);
-        assertThat(snapshot.getTeams().stream().filter(team -> team.getId().equals(teamAId)).findFirst().orElseThrow().getRoster()).hasSize(1);
+        assertThat(snapshot.getTeams().stream()
+                .filter(team -> team.getId().equals(teamAId))
+                .findFirst()
+                .orElseThrow()
+                .getRoster()).hasSize(1);
         assertThat(snapshot.getAvailableCandidates()).hasSize(1);
         assertThat(snapshot.getPickedCandidates()).hasSize(1);
         assertThat(snapshot.getRecentPicks()).hasSize(1);
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamBId);
-        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
+        assertThat(snapshot.getPermissions().isCanPick()).isTrue();
     }
 
     @Test
-    void snapshot은_현재턴의_지정된_픽권한자에게_canPick_true를_준다() {
-        Long captainId = createUser("captain01", "캡틴", "ROLE_USER");
+    void snapshot은_현재턴의_지정된_픽커에게_canPick_true를_준다() {
+        Long pickerId = createUser("picker01", "픽커", "ROLE_USER");
         Long candidateId = createUser("candidate01", "후보", "ROLE_USER");
 
         Long sessionId = createSession();
         Long teamId = createTeam(sessionId, "알파", 1);
-        createOperator(teamId, captainId, "CAPTAIN");
-        assignPicker(teamId, captainId);
+        assignPicker(teamId, pickerId);
         createCandidate(sessionId, candidateId, "후보", "PROTOSS");
         createOrder(sessionId, 1L, 1, teamId);
         updateSession(sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(25));
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
                 sessionId,
-                new AuthActor(captainId, "captain01", "ROLE_USER")
+                new AuthActor(pickerId, "picker01", "ROLE_USER")
         );
 
         assertThat(snapshot.getPermissions().isCanPick()).isTrue();
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamId);
-        assertThat(snapshot.getPermissions().getMyRole()).isEqualTo("CAPTAIN");
+        assertThat(snapshot.getPermissions().getMyRole()).isEqualTo("PICKER");
+        assertThat(snapshot.getTeams().get(0).getPickerUserId()).isEqualTo(pickerId);
         assertThat(snapshot.getCurrentTurn().getRemainingSeconds()).isGreaterThanOrEqualTo(0L);
     }
 
@@ -149,17 +164,8 @@ class DraftSnapshotServiceTest {
         return draftService.createTeam(requestDto).getData().getId();
     }
 
-    private void createOperator(Long teamId, Long operatorUserId, String role) {
-        DraftTeamOperatorRequestDto requestDto = new DraftTeamOperatorRequestDto();
-        requestDto.setDraftTeamId(teamId);
-        requestDto.setOperatorUserId(operatorUserId);
-        requestDto.setRole(role);
-        requestDto.setIsActive("Y");
-        draftService.createOperator(requestDto);
-    }
-
-    private void assignPicker(Long teamId, Long operatorUserId) {
-        draftAdminService.assignPicker(teamId, operatorUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
+    private void assignPicker(Long teamId, Long pickerUserId) {
+        draftAdminService.assignPicker(teamId, pickerUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
     }
 
     private void createCandidate(Long sessionId, Long candidateUserId, String candidateName, String race) {

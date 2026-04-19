@@ -38,8 +38,15 @@ public class DraftTeamEntity {
     @Column(name = "DISPLAY_ORDER", nullable = false)
     private Integer displayOrder;
 
+    @Column(name = "PICKER_USER_ID")
+    private Long pickerUserId;
+
     public void update(String teamName, Integer displayOrder) {
         this.teamName = teamName;
         this.displayOrder = displayOrder;
+    }
+
+    public void assignPicker(Long pickerUserId) {
+        this.pickerUserId = pickerUserId;
     }
 }

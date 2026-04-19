@@ -72,30 +72,6 @@ public class DraftController {
         return ResponseEntity.ok(draftService.deleteTeam(teamId));
     }
 
-    @PostMapping("/team-operators")
-    public ResponseEntity<ResponseDto<DraftTeamOperatorResponseDto>> createOperator(@RequestBody DraftTeamOperatorRequestDto requestDto) {
-        return ResponseEntity.ok(draftService.createOperator(requestDto));
-    }
-
-    @GetMapping("/teams/{teamId}/operators")
-    public ResponseEntity<ResponseDto<List<DraftTeamOperatorResponseDto>>> listOperators(@PathVariable Long teamId) {
-        return ResponseEntity.ok(draftService.listOperators(teamId));
-    }
-
-    @PutMapping("/teams/{teamId}/operators/{operatorUserId}")
-    public ResponseEntity<ResponseDto<DraftTeamOperatorResponseDto>> updateOperator(
-            @PathVariable Long teamId,
-            @PathVariable Long operatorUserId,
-            @RequestBody DraftTeamOperatorRequestDto requestDto
-    ) {
-        return ResponseEntity.ok(draftService.updateOperator(teamId, operatorUserId, requestDto));
-    }
-
-    @DeleteMapping("/teams/{teamId}/operators/{operatorUserId}")
-    public ResponseEntity<ResponseDto<Void>> deleteOperator(@PathVariable Long teamId, @PathVariable Long operatorUserId) {
-        return ResponseEntity.ok(draftService.deleteOperator(teamId, operatorUserId));
-    }
-
     @PostMapping("/candidates")
     public ResponseEntity<ResponseDto<DraftCandidateResponseDto>> createCandidate(@RequestBody DraftCandidateRequestDto requestDto) {
         return ResponseEntity.ok(draftService.createCandidate(requestDto));

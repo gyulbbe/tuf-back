@@ -9,13 +9,11 @@ import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
-import io.github.gyulbbe.draft.entity.DraftTeamOperatorEntity;
 import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
 import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamOperatorRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
 import io.github.gyulbbe.user.entity.UserEntity;
@@ -50,7 +48,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
-        DraftTeamOperatorEntity.class,
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
@@ -59,7 +56,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
-        DraftTeamOperatorRepository.class,
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,

@@ -1,9 +1,31 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
-import io.github.gyulbbe.draft.dto.*;
-import io.github.gyulbbe.draft.entity.*;
-import io.github.gyulbbe.draft.repository.*;
+import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
+import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
+import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
+import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
+import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
+import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
+import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
+import io.github.gyulbbe.draft.dto.DraftTeamResponseDto;
+import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
+import io.github.gyulbbe.draft.entity.DraftCandidateId;
+import io.github.gyulbbe.draft.entity.DraftOrderEntity;
+import io.github.gyulbbe.draft.entity.DraftOrderId;
+import io.github.gyulbbe.draft.entity.DraftPickEntity;
+import io.github.gyulbbe.draft.entity.DraftPickId;
+import io.github.gyulbbe.draft.entity.DraftSessionEntity;
+import io.github.gyulbbe.draft.entity.DraftTeamEntity;
+import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
+import io.github.gyulbbe.draft.repository.DraftOrderRepository;
+import io.github.gyulbbe.draft.repository.DraftPickRepository;
+import io.github.gyulbbe.draft.repository.DraftQueryRepository;
+import io.github.gyulbbe.draft.repository.DraftSessionRepository;
+import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,9 +34,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -24,13 +47,10 @@ public class DraftService {
 
     private static final Set<String> SESSION_STATUSES = Set.of("READY", "LIVE", "PAUSED", "FINISHED", "CANCELLED");
     private static final Set<String> RACES = Set.of("ZERG", "TERRAN", "PROTOSS", "RANDOM");
-    private static final Set<String> OPERATOR_ROLES = Set.of("CAPTAIN", "VICE_CAPTAIN", "OPERATOR");
-    private static final Set<String> YN = Set.of("Y", "N");
     private static final Set<String> CANDIDATE_STATUSES = Set.of("WAITING", "PICKED", "SKIPPED", "EXCLUDED");
 
     private final DraftSessionRepository draftSessionRepository;
     private final DraftTeamRepository draftTeamRepository;
-    private final DraftTeamOperatorRepository draftTeamOperatorRepository;
     private final DraftCandidateRepository draftCandidateRepository;
     private final DraftOrderRepository draftOrderRepository;
     private final DraftPickRepository draftPickRepository;
@@ -92,7 +112,7 @@ public class DraftService {
 
             Long currentDraftTeamId = requestDto.getCurrentDraftTeamId();
             if (currentDraftTeamId != null && !draftTeamRepository.existsByIdAndDraftSessionId(currentDraftTeamId, sessionId)) {
-                throw new IllegalArgumentException("현재 드래프트 팀은 같은 세션 내부 팀이어야 합니다.");
+                throw new IllegalArgumentException("현재 드래프트 팀은 같은 세션 소속이어야 합니다.");
             }
 
             entity.update(
@@ -123,14 +143,6 @@ public class DraftService {
     public ResponseDto<Void> deleteSession(Long sessionId) {
         try {
             DraftSessionEntity session = getSessionEntity(sessionId);
-            List<Long> teamIds = draftTeamRepository.findAllByDraftSessionId(sessionId)
-                    .stream()
-                    .map(DraftTeamEntity::getId)
-                    .toList();
-
-            if (!teamIds.isEmpty()) {
-                draftTeamOperatorRepository.deleteAllByDraftTeamIdIn(teamIds);
-            }
             draftPickRepository.deleteAllByDraftSessionId(sessionId);
             draftOrderRepository.deleteAllByDraftSessionId(sessionId);
             draftCandidateRepository.deleteAllByDraftSessionId(sessionId);
@@ -154,6 +166,7 @@ public class DraftService {
                     .draftSessionId(requestDto.getDraftSessionId())
                     .teamName(requestDto.getTeamName())
                     .displayOrder(requestDto.getDisplayOrder())
+                    .pickerUserId(null)
                     .build();
 
             DraftTeamEntity saved = draftTeamRepository.save(entity);
@@ -189,7 +202,7 @@ public class DraftService {
         try {
             DraftTeamEntity entity = getTeamEntity(teamId);
             if (requestDto.getDisplayOrder() != null && requestDto.getDisplayOrder() <= 0) {
-                throw new IllegalArgumentException("팀 노출 순서는 1 이상이어야 합니다.");
+                throw new IllegalArgumentException("팀 표시 순서는 1 이상이어야 합니다.");
             }
 
             entity.update(
@@ -209,74 +222,13 @@ public class DraftService {
             DraftTeamEntity team = getTeamEntity(teamId);
             DraftSessionEntity session = getSessionEntity(team.getDraftSessionId());
             if (Objects.equals(session.getCurrentDraftTeamId(), teamId)) {
-                throw new IllegalArgumentException("현재 턴 팀은 삭제할 수 없습니다.");
+                throw new IllegalArgumentException("현재 차례 팀은 삭제할 수 없습니다.");
             }
 
-            draftTeamOperatorRepository.deleteAllByDraftTeamId(teamId);
             draftTeamRepository.delete(team);
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("드래프트 팀 삭제 실패", e);
-            return ResponseDto.fail(e.getMessage());
-        }
-    }
-
-    public ResponseDto<DraftTeamOperatorResponseDto> createOperator(DraftTeamOperatorRequestDto requestDto) {
-        try {
-            validateOperatorRequest(requestDto);
-            getTeamEntity(requestDto.getDraftTeamId());
-            getUserEntity(requestDto.getOperatorUserId());
-
-            DraftTeamOperatorEntity entity = DraftTeamOperatorEntity.builder()
-                    .draftTeamId(requestDto.getDraftTeamId())
-                    .operatorUserId(requestDto.getOperatorUserId())
-                    .role(requestDto.getRole())
-                    .isActive(defaultIfBlank(requestDto.getIsActive(), "Y"))
-                    .canPick("N")
-                    .build();
-
-            draftTeamOperatorRepository.save(entity);
-            return ResponseDto.success(requireOperator(requestDto.getDraftTeamId(), requestDto.getOperatorUserId()));
-        } catch (Exception e) {
-            log.error("드래프트 팀 운영자 생성 실패", e);
-            return ResponseDto.fail(e.getMessage());
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public ResponseDto<List<DraftTeamOperatorResponseDto>> listOperators(Long teamId) {
-        try {
-            getTeamEntity(teamId);
-            return ResponseDto.success(loadOperators(List.of(teamId)));
-        } catch (Exception e) {
-            log.error("드래프트 팀 운영자 목록 조회 실패", e);
-            return ResponseDto.fail(e.getMessage());
-        }
-    }
-
-    public ResponseDto<DraftTeamOperatorResponseDto> updateOperator(Long teamId, Long operatorUserId, DraftTeamOperatorRequestDto requestDto) {
-        try {
-            DraftTeamOperatorEntity entity = getOperatorEntity(teamId, operatorUserId);
-            String role = defaultIfBlank(requestDto.getRole(), entity.getRole());
-            String isActive = defaultIfBlank(requestDto.getIsActive(), entity.getIsActive());
-            validateOperatorRole(role);
-            validateYn(isActive, "운영자 활성값");
-            entity.update(role, isActive);
-
-            return ResponseDto.success(requireOperator(teamId, operatorUserId));
-        } catch (Exception e) {
-            log.error("드래프트 팀 운영자 수정 실패", e);
-            return ResponseDto.fail(e.getMessage());
-        }
-    }
-
-    public ResponseDto<Void> deleteOperator(Long teamId, Long operatorUserId) {
-        try {
-            DraftTeamOperatorEntity entity = getOperatorEntity(teamId, operatorUserId);
-            draftTeamOperatorRepository.delete(entity);
-            return ResponseDto.success(null);
-        } catch (Exception e) {
-            log.error("드래프트 팀 운영자 삭제 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -334,7 +286,7 @@ public class DraftService {
 
             boolean pickedExists = draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId);
             if (pickedExists && (requestDto.getStatus() != null || requestDto.getPickedDraftTeamId() != null || requestDto.getPickedAt() != null)) {
-                throw new IllegalArgumentException("이미 픽된 후보는 상태를 직접 수정할 수 없습니다.");
+                throw new IllegalArgumentException("이미 픽된 후보의 상태는 직접 수정할 수 없습니다.");
             }
 
             String status = requestDto.getStatus() != null ? requestDto.getStatus() : entity.getStatus();
@@ -388,7 +340,7 @@ public class DraftService {
             draftOrderRepository.save(entity);
             return ResponseDto.success(requireOrder(requestDto.getDraftSessionId(), requestDto.getPickNo()));
         } catch (Exception e) {
-            log.error("드래프트 순번 생성 실패", e);
+            log.error("드래프트 순서 생성 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -398,7 +350,7 @@ public class DraftService {
         try {
             return ResponseDto.success(requireOrder(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 순번 조회 실패", e);
+            log.error("드래프트 순서 조회 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -409,7 +361,7 @@ public class DraftService {
             getSessionEntity(sessionId);
             return ResponseDto.success(draftQueryRepository.findOrdersBySessionId(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 순번 목록 조회 실패", e);
+            log.error("드래프트 순서 목록 조회 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -418,7 +370,7 @@ public class DraftService {
         try {
             DraftOrderEntity entity = getOrderEntity(sessionId, pickNo);
             if (draftPickRepository.existsByDraftSessionIdAndPickNo(sessionId, pickNo)) {
-                throw new IllegalArgumentException("이미 픽된 순번은 수정할 수 없습니다.");
+                throw new IllegalArgumentException("이미 진행된 순서는 수정할 수 없습니다.");
             }
 
             Integer roundNo = requestDto.getRoundNo() != null ? requestDto.getRoundNo() : entity.getRoundNo();
@@ -430,7 +382,7 @@ public class DraftService {
 
             return ResponseDto.success(requireOrder(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 순번 수정 실패", e);
+            log.error("드래프트 순서 수정 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -439,12 +391,12 @@ public class DraftService {
         try {
             DraftOrderEntity entity = getOrderEntity(sessionId, pickNo);
             if (draftPickRepository.existsByDraftSessionIdAndPickNo(sessionId, pickNo)) {
-                throw new IllegalArgumentException("이미 픽된 순번은 삭제할 수 없습니다.");
+                throw new IllegalArgumentException("이미 진행된 순서는 삭제할 수 없습니다.");
             }
             draftOrderRepository.delete(entity);
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 순번 삭제 실패", e);
+            log.error("드래프트 순서 삭제 실패", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -570,21 +522,7 @@ public class DraftService {
     }
 
     private List<DraftTeamResponseDto> loadTeams(Long sessionId) {
-        List<DraftTeamResponseDto> teams = draftQueryRepository.findTeamsBySessionId(sessionId);
-        Map<Long, DraftTeamResponseDto> teamMap = teams.stream()
-                .collect(Collectors.toMap(DraftTeamResponseDto::getId, Function.identity(), (left, right) -> left, LinkedHashMap::new));
-        List<DraftTeamOperatorResponseDto> operators = loadOperators(new ArrayList<>(teamMap.keySet()));
-        for (DraftTeamOperatorResponseDto operator : operators) {
-            DraftTeamResponseDto team = teamMap.get(operator.getDraftTeamId());
-            if (team != null) {
-                team.getOperators().add(operator);
-            }
-        }
-        return teams;
-    }
-
-    private List<DraftTeamOperatorResponseDto> loadOperators(List<Long> teamIds) {
-        return draftQueryRepository.findOperatorsByTeamIds(teamIds);
+        return draftQueryRepository.findTeamsBySessionId(sessionId);
     }
 
     private DraftSessionSummaryResponseDto requireSessionSummary(Long sessionId) {
@@ -593,17 +531,8 @@ public class DraftService {
     }
 
     private DraftTeamResponseDto requireTeam(Long teamId) {
-        DraftTeamResponseDto team = draftQueryRepository.findTeam(teamId)
+        return draftQueryRepository.findTeam(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
-        team.setOperators(loadOperators(List.of(teamId)));
-        return team;
-    }
-
-    private DraftTeamOperatorResponseDto requireOperator(Long teamId, Long operatorUserId) {
-        return loadOperators(List.of(teamId)).stream()
-                .filter(operator -> Objects.equals(operator.getOperatorUserId(), operatorUserId))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 팀 운영자를 찾을 수 없습니다."));
     }
 
     private DraftCandidateResponseDto requireCandidate(Long sessionId, Long candidateUserId) {
@@ -613,7 +542,7 @@ public class DraftService {
 
     private DraftOrderResponseDto requireOrder(Long sessionId, Long pickNo) {
         return draftQueryRepository.findOrder(sessionId, pickNo)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 순번을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("드래프트 순서를 찾을 수 없습니다."));
     }
 
     private DraftPickResponseDto requirePick(Long sessionId, Long pickNo) {
@@ -631,11 +560,6 @@ public class DraftService {
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
     }
 
-    private DraftTeamOperatorEntity getOperatorEntity(Long teamId, Long operatorUserId) {
-        return draftTeamOperatorRepository.findById(new DraftTeamOperatorId(teamId, operatorUserId))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 팀 운영자를 찾을 수 없습니다."));
-    }
-
     private DraftCandidateEntity getCandidateEntity(Long sessionId, Long candidateUserId) {
         return draftCandidateRepository.findById(new DraftCandidateId(sessionId, candidateUserId))
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 후보를 찾을 수 없습니다."));
@@ -643,7 +567,7 @@ public class DraftService {
 
     private DraftOrderEntity getOrderEntity(Long sessionId, Long pickNo) {
         return draftOrderRepository.findById(new DraftOrderId(sessionId, pickNo))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 순번을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("드래프트 순서를 찾을 수 없습니다."));
     }
 
     private DraftPickEntity getPickEntity(Long sessionId, Long pickNo) {
@@ -670,7 +594,7 @@ public class DraftService {
             validatePositive(requestDto.getPickTimeSeconds(), "픽 제한 시간");
         }
         if (requestDto.getCurrentPickNo() != null) {
-            validatePositive(requestDto.getCurrentPickNo(), "현재 순번");
+            validatePositive(requestDto.getCurrentPickNo(), "현재 픽 순번");
         }
         if (requestDto.getStatus() != null) {
             validateSessionStatus(requestDto.getStatus());
@@ -682,17 +606,7 @@ public class DraftService {
             throw new IllegalArgumentException("세션 ID는 필수입니다.");
         }
         validateText(requestDto.getTeamName(), "팀 이름");
-        validatePositive(requestDto.getDisplayOrder(), "팀 노출 순서");
-    }
-
-    private void validateOperatorRequest(DraftTeamOperatorRequestDto requestDto) {
-        if (requestDto.getDraftTeamId() == null || requestDto.getOperatorUserId() == null) {
-            throw new IllegalArgumentException("팀 ID와 운영자 유저 ID는 필수입니다.");
-        }
-        validateOperatorRole(requestDto.getRole());
-        if (requestDto.getIsActive() != null) {
-            validateYn(requestDto.getIsActive(), "운영자 활성값");
-        }
+        validatePositive(requestDto.getDisplayOrder(), "팀 표시 순서");
     }
 
     private void validateCandidateRequest(DraftCandidateRequestDto requestDto, boolean allowPartial) {
@@ -717,7 +631,7 @@ public class DraftService {
 
     private void validateOrderRequest(DraftOrderRequestDto requestDto) {
         if (requestDto.getDraftSessionId() == null || requestDto.getPickNo() == null || requestDto.getDraftTeamId() == null) {
-            throw new IllegalArgumentException("세션 ID, 순번, 팀 ID는 필수입니다.");
+            throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID는 필수입니다.");
         }
         validatePositive(requestDto.getRoundNo(), "라운드");
         validatePositive(requestDto.getPickNo(), "픽 번호");
@@ -726,7 +640,7 @@ public class DraftService {
     private void validatePickRequest(DraftPickRequestDto requestDto) {
         if (requestDto.getDraftSessionId() == null || requestDto.getPickNo() == null || requestDto.getDraftTeamId() == null
                 || requestDto.getCandidateUserId() == null || requestDto.getPickedByUserId() == null) {
-            throw new IllegalArgumentException("세션 ID, 순번, 팀 ID, 후보 유저 ID, 픽 유저 ID는 필수입니다.");
+            throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID, 후보 유저 ID, 픽한 유저 ID는 필수입니다.");
         }
         validatePositive(requestDto.getRoundNo(), "라운드");
         validatePositive(requestDto.getPickNo(), "픽 번호");
@@ -772,16 +686,8 @@ public class DraftService {
         validateAllowed(race, RACES, "종족");
     }
 
-    private void validateOperatorRole(String role) {
-        validateAllowed(role, OPERATOR_ROLES, "운영자 역할");
-    }
-
     private void validateCandidateStatus(String status) {
         validateAllowed(status, CANDIDATE_STATUSES, "후보 상태");
-    }
-
-    private void validateYn(String value, String fieldName) {
-        validateAllowed(value, YN, fieldName);
     }
 
     private void validateAllowed(String value, Set<String> allowed, String fieldName) {
