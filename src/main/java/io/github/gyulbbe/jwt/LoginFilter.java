@@ -54,7 +54,7 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
         String role = auth.getAuthority();
         String photo = customUserDetails.getPhoto();
 
-        String token = jwtUtil.createJwt(username, role, photo, 60*60*1000L*2);
+        String token = jwtUtil.createJwt(username, role, photo, 60*60*1000L*12);
 
         // JWT 토큰을 헤더에 추가
         response.addHeader("Authorization", "Bearer " + token);
