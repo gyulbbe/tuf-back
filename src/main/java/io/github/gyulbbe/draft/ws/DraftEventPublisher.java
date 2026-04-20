@@ -3,6 +3,7 @@ package io.github.gyulbbe.draft.ws;
 import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftLiveEventResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventType;
+import io.github.gyulbbe.draft.dto.DraftLivePreviewPayloadDto;
 import io.github.gyulbbe.draft.service.DraftSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,20 @@ public class DraftEventPublisher {
                 .actorUserId(actor != null ? actor.userPk() : null)
                 .message(message)
                 .snapshot(draftSnapshotService.getBroadcastSnapshot(sessionId))
+                .build();
+
+        simpMessagingTemplate.convertAndSend(TOPIC_PREFIX + sessionId, event);
+    }
+
+    public void publishPreview(Long sessionId, AuthActor actor, DraftLivePreviewPayloadDto preview) {
+        LocalDateTime now = LocalDateTime.now();
+        DraftLiveEventResponseDto event = DraftLiveEventResponseDto.builder()
+                .type(DraftLiveEventType.DRAG_PREVIEW)
+                .sessionId(sessionId)
+                .occurredAt(now)
+                .serverNow(now)
+                .actorUserId(actor != null ? actor.userPk() : null)
+                .preview(preview)
                 .build();
 
         simpMessagingTemplate.convertAndSend(TOPIC_PREFIX + sessionId, event);

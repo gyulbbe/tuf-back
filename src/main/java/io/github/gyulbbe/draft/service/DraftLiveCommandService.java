@@ -2,6 +2,7 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftLiveEventType;
+import io.github.gyulbbe.draft.dto.DraftLivePreviewEndReason;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
 import io.github.gyulbbe.draft.entity.DraftCandidateId;
@@ -32,6 +33,7 @@ public class DraftLiveCommandService {
     private final DraftSnapshotService draftSnapshotService;
     private final DraftEventPublisher draftEventPublisher;
     private final DraftLiveSessionTracker draftLiveSessionTracker;
+    private final DraftLivePreviewRelayService draftLivePreviewRelayService;
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
         draftPermissionService.assertAdmin(actor);
@@ -61,6 +63,7 @@ public class DraftLiveCommandService {
 
         session.pause();
         draftLiveSessionTracker.refreshAfterCommit();
+        draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_PAUSED);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_PAUSED, actor, "Draft session paused.");
@@ -155,8 +158,10 @@ public class DraftLiveCommandService {
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
             draftLiveSessionTracker.refreshAfterCommit();
+            draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Final pick completed. Draft session finished.");
         } else {
+            draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
             publishAfterCommit(sessionId, DraftLiveEventType.PICK_COMPLETED, actor, "Pick completed.");
         }
         return snapshot;
@@ -176,8 +181,10 @@ public class DraftLiveCommandService {
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
             draftLiveSessionTracker.refreshAfterCommit();
+            draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Draft session finished.");
         } else {
+            draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
             String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;
             publishAfterCommit(sessionId, DraftLiveEventType.PICK_SKIPPED, actor, "Current pick skipped" + suffix + ".");
         }
@@ -194,6 +201,7 @@ public class DraftLiveCommandService {
 
         session.finish(LocalDateTime.now());
         draftLiveSessionTracker.refreshAfterCommit();
+        draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;

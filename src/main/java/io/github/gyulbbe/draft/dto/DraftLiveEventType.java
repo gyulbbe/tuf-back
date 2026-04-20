@@ -4,6 +4,7 @@ public enum DraftLiveEventType {
     SESSION_STARTED,
     SESSION_PAUSED,
     SESSION_RESUMED,
+    DRAG_PREVIEW,
     PICK_COMPLETED,
     TURN_CHANGED,
     TIMER_EXTENDED,

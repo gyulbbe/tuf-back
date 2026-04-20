@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         DraftAdminService.class,
         DraftSnapshotService.class,
         DraftEventPublisher.class,
+        DraftLivePreviewRelayService.class,
         DraftLiveCommandService.class
 })
 @EntityScan(basePackageClasses = {

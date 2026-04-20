@@ -15,4 +15,5 @@ public class DraftLiveEventResponseDto {
     private Long actorUserId;
     private String message;
     private DraftLiveSnapshotResponseDto snapshot;
+    private DraftLivePreviewPayloadDto preview;
 }

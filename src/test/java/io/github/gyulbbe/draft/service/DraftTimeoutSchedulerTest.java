@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         DraftPermissionService.class,
         DraftSnapshotService.class,
         DraftEventPublisher.class,
+        DraftLivePreviewRelayService.class,
         DraftLiveCommandService.class,
         DraftTimeoutScheduler.class
 })

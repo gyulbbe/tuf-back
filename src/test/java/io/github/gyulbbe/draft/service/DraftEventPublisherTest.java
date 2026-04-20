@@ -51,6 +51,7 @@ import static org.mockito.Mockito.verify;
         DraftAdminService.class,
         DraftSnapshotService.class,
         DraftEventPublisher.class,
+        DraftLivePreviewRelayService.class,
         DraftLiveCommandService.class
 })
 @EntityScan(basePackageClasses = {

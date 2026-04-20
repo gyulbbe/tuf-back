@@ -9,6 +9,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import java.security.Principal;
+
 @Component
 @RequiredArgsConstructor
 public class DraftActorResolver {
@@ -16,9 +18,20 @@ public class DraftActorResolver {
     private final UserRepository userRepository;
 
     public AuthActor resolve() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return resolve(SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    public AuthActor resolve(Principal principal) {
+        if (principal instanceof Authentication authentication) {
+            return resolve(authentication);
+        }
+
+        throw new IllegalArgumentException("Authenticated user could not be resolved.");
+    }
+
+    public AuthActor resolve(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
-            throw new IllegalArgumentException("로그인이 필요합니다.");
+            throw new IllegalArgumentException("Authentication is required.");
         }
 
         Object principal = authentication.getPrincipal();
@@ -34,11 +47,11 @@ public class DraftActorResolver {
 
             UserEntity user = userRepository.findByUserIdIgnoreCaseAndStatus(customUserDetails.getUsername(), "ACTIVE");
             if (user == null) {
-                throw new IllegalArgumentException("로그인 사용자를 찾을 수 없습니다.");
+                throw new IllegalArgumentException("Authenticated user could not be found.");
             }
             return new AuthActor(user.getId(), user.getUserId(), user.getUserType());
         }
 
-        throw new IllegalArgumentException("로그인 사용자를 확인할 수 없습니다.");
+        throw new IllegalArgumentException("Authenticated user could not be resolved.");
     }
 }
