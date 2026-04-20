@@ -179,7 +179,6 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 .select(Projections.bean(
                         DraftOrderResponseDto.class,
                         draftOrder.draftSessionId,
-                        draftOrder.roundNo,
                         draftOrder.pickNo,
                         draftOrder.draftTeamId,
                         draftTeam.teamName.as("draftTeamName")
@@ -205,7 +204,6 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         .select(Projections.bean(
                                 DraftOrderResponseDto.class,
                                 draftOrder.draftSessionId,
-                                draftOrder.roundNo,
                                 draftOrder.pickNo,
                                 draftOrder.draftTeamId,
                                 draftTeam.teamName.as("draftTeamName")
@@ -232,7 +230,6 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 .select(Projections.bean(
                         DraftPickResponseDto.class,
                         draftPick.draftSessionId,
-                        draftPick.roundNo,
                         draftPick.pickNo,
                         draftPick.draftTeamId,
                         draftTeam.teamName.as("draftTeamName"),
@@ -271,7 +268,6 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         .select(Projections.bean(
                                 DraftPickResponseDto.class,
                                 draftPick.draftSessionId,
-                                draftPick.roundNo,
                                 draftPick.pickNo,
                                 draftPick.draftTeamId,
                                 draftTeam.teamName.as("draftTeamName"),

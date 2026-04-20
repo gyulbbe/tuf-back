@@ -5,7 +5,6 @@ import lombok.Data;
 @Data
 public class DraftOrderRequestDto {
     private Long draftSessionId;
-    private Integer roundNo;
     private Long pickNo;
     private Long draftTeamId;
 }

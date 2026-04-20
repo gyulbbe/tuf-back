@@ -98,7 +98,7 @@ class DraftEventPublisherTest {
     void startSession은_afterCommit으로_session_started_이벤트를_발행한다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A팀", 1);
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
@@ -125,8 +125,8 @@ class DraftEventPublisherTest {
         assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "PROTOSS");
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
 
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
         clearInvocations(simpMessagingTemplate);
@@ -175,11 +175,10 @@ class DraftEventPublisherTest {
         draftService.createCandidate(requestDto);
     }
 
-    private void createOrder(Long sessionId, Long pickNo, int roundNo, Long teamId) {
+    private void createOrder(Long sessionId, Long pickNo, Long teamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto);
     }

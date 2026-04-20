@@ -108,7 +108,7 @@ class DraftServiceTest {
         createTeam(sessionId, "B팀", 2);
         assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidateId, "후보1", "TERRAN");
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         entityManager.flush();
         entityManager.clear();
@@ -136,14 +136,13 @@ class DraftServiceTest {
         assignPicker(teamBId, pickerBId);
         createCandidate(sessionId, candidate1Id, "후보A", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보B", "PROTOSS");
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
         updateSessionCurrentTurn(sessionId, teamAId);
 
         DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
         pickRequestDto.setDraftSessionId(sessionId);
         pickRequestDto.setPickNo(1L);
-        pickRequestDto.setRoundNo(1);
         pickRequestDto.setDraftTeamId(teamAId);
         pickRequestDto.setCandidateUserId(candidate1Id);
         pickRequestDto.setPickedByUserId(pickerAId);
@@ -172,7 +171,7 @@ class DraftServiceTest {
         Long teamId = createTeam(sessionId, "삭제팀", 1);
         assignPicker(teamId, pickerId);
         createCandidate(sessionId, candidateId, "후보2", "RANDOM");
-        createOrder(sessionId, 1L, 1, teamId);
+        createOrder(sessionId, 1L, teamId);
 
         ResponseDto<Void> response = draftService.deleteSession(sessionId);
 
@@ -196,14 +195,13 @@ class DraftServiceTest {
         assignPicker(teamAId, pickerAId);
         assignPicker(teamBId, pickerBId);
         createCandidate(sessionId, candidateId, "후보3", "TERRAN");
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
         updateSessionCurrentTurn(sessionId, teamAId);
 
         DraftPickRequestDto firstPick = new DraftPickRequestDto();
         firstPick.setDraftSessionId(sessionId);
         firstPick.setPickNo(1L);
-        firstPick.setRoundNo(1);
         firstPick.setDraftTeamId(teamAId);
         firstPick.setCandidateUserId(candidateId);
         firstPick.setPickedByUserId(pickerAId);
@@ -212,7 +210,6 @@ class DraftServiceTest {
         DraftPickRequestDto secondPick = new DraftPickRequestDto();
         secondPick.setDraftSessionId(sessionId);
         secondPick.setPickNo(2L);
-        secondPick.setRoundNo(1);
         secondPick.setDraftTeamId(teamBId);
         secondPick.setCandidateUserId(candidateId);
         secondPick.setPickedByUserId(pickerBId);
@@ -267,11 +264,10 @@ class DraftServiceTest {
         draftService.createCandidate(requestDto);
     }
 
-    private void createOrder(Long sessionId, Long pickNo, int roundNo, Long draftTeamId) {
+    private void createOrder(Long sessionId, Long pickNo, Long draftTeamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(draftTeamId);
         draftService.createOrder(requestDto);
     }

@@ -141,7 +141,6 @@ public class DraftLiveCommandService {
         LocalDateTime now = LocalDateTime.now();
         DraftPickEntity pick = DraftPickEntity.builder()
                 .draftSessionId(sessionId)
-                .roundNo(currentOrder.getRoundNo())
                 .pickNo(currentOrder.getPickNo())
                 .draftTeamId(currentDraftTeamId)
                 .candidateUserId(candidateUserId)

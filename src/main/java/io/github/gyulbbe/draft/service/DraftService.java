@@ -333,7 +333,6 @@ public class DraftService {
             DraftOrderEntity entity = DraftOrderEntity.builder()
                     .draftSessionId(requestDto.getDraftSessionId())
                     .pickNo(requestDto.getPickNo())
-                    .roundNo(requestDto.getRoundNo())
                     .draftTeamId(requestDto.getDraftTeamId())
                     .build();
 
@@ -373,12 +372,10 @@ public class DraftService {
                 throw new IllegalArgumentException("이미 진행된 순서는 수정할 수 없습니다.");
             }
 
-            Integer roundNo = requestDto.getRoundNo() != null ? requestDto.getRoundNo() : entity.getRoundNo();
             Long draftTeamId = requestDto.getDraftTeamId() != null ? requestDto.getDraftTeamId() : entity.getDraftTeamId();
 
-            validatePositive(roundNo, "라운드");
             validateTeamBelongsToSession(sessionId, draftTeamId);
-            entity.update(roundNo, draftTeamId);
+            entity.update(draftTeamId);
 
             return ResponseDto.success(requireOrder(sessionId, pickNo));
         } catch (Exception e) {
@@ -415,7 +412,6 @@ public class DraftService {
             DraftPickEntity entity = DraftPickEntity.builder()
                     .draftSessionId(requestDto.getDraftSessionId())
                     .pickNo(requestDto.getPickNo())
-                    .roundNo(requestDto.getRoundNo())
                     .draftTeamId(requestDto.getDraftTeamId())
                     .candidateUserId(requestDto.getCandidateUserId())
                     .pickedByUserId(requestDto.getPickedByUserId())
@@ -474,7 +470,6 @@ public class DraftService {
             LocalDateTime pickedAt = requestDto.getPickedAt() != null ? requestDto.getPickedAt() : entity.getPickedAt();
             newCandidate.markPicked(requestDto.getDraftTeamId(), pickedAt);
             entity.update(
-                    requestDto.getRoundNo(),
                     requestDto.getDraftTeamId(),
                     requestDto.getCandidateUserId(),
                     requestDto.getPickedByUserId(),
@@ -633,7 +628,6 @@ public class DraftService {
         if (requestDto.getDraftSessionId() == null || requestDto.getPickNo() == null || requestDto.getDraftTeamId() == null) {
             throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID는 필수입니다.");
         }
-        validatePositive(requestDto.getRoundNo(), "라운드");
         validatePositive(requestDto.getPickNo(), "픽 번호");
     }
 
@@ -642,7 +636,6 @@ public class DraftService {
                 || requestDto.getCandidateUserId() == null || requestDto.getPickedByUserId() == null) {
             throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID, 후보 유저 ID, 픽한 유저 ID는 필수입니다.");
         }
-        validatePositive(requestDto.getRoundNo(), "라운드");
         validatePositive(requestDto.getPickNo(), "픽 번호");
         getOrderEntity(requestDto.getDraftSessionId(), requestDto.getPickNo());
     }

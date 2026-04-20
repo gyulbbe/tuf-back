@@ -99,7 +99,6 @@ public class DraftSnapshotService {
 
             DraftLiveRosterItemResponseDto rosterItem = new DraftLiveRosterItemResponseDto();
             rosterItem.setPickNo(pick.getPickNo());
-            rosterItem.setRoundNo(pick.getRoundNo());
             rosterItem.setCandidateUserId(pick.getCandidateUserId());
             rosterItem.setCandidateName(pick.getCandidateName());
             rosterItem.setPickedByUserId(pick.getPickedByUserId());
@@ -146,7 +145,6 @@ public class DraftSnapshotService {
 
         DraftLiveCurrentTurnResponseDto responseDto = new DraftLiveCurrentTurnResponseDto();
         responseDto.setPickNo(currentOrder.getPickNo());
-        responseDto.setRoundNo(currentOrder.getRoundNo());
         responseDto.setTeamId(currentOrder.getDraftTeamId());
 
         DraftLiveTeamResponseDto team = teamMap.get(currentOrder.getDraftTeamId());

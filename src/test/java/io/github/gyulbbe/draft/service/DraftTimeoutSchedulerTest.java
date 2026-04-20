@@ -90,8 +90,8 @@ class DraftTimeoutSchedulerTest {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         Long teamBId = createTeam(sessionId, "B", 2);
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
 
         DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
         session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
@@ -109,7 +109,7 @@ class DraftTimeoutSchedulerTest {
     void paused_세션은_자동처리_대상이_아니다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
         session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
@@ -140,11 +140,10 @@ class DraftTimeoutSchedulerTest {
         return draftService.createTeam(requestDto).getData().getId();
     }
 
-    private void createOrder(Long sessionId, Long pickNo, int roundNo, Long teamId) {
+    private void createOrder(Long sessionId, Long pickNo, Long teamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto);
     }

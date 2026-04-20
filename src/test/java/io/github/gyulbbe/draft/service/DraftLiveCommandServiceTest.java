@@ -92,7 +92,7 @@ class DraftLiveCommandServiceTest {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A팀", 1);
         createTeam(sessionId, "B팀", 2);
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
 
@@ -126,8 +126,8 @@ class DraftLiveCommandServiceTest {
         assignPicker(teamBId, pickerBId);
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "PROTOSS");
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(
@@ -158,7 +158,7 @@ class DraftLiveCommandServiceTest {
         Long teamAId = createTeam(sessionId, "알파", 1);
         assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보3", "TERRAN");
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         assertThatThrownBy(() ->
@@ -175,7 +175,7 @@ class DraftLiveCommandServiceTest {
         Long teamAId = createTeam(sessionId, "마지막팀", 1);
         assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidate1Id, "후보Last", "RANDOM");
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(
@@ -193,7 +193,7 @@ class DraftLiveCommandServiceTest {
     void extendTime은_마감시간을_연장한다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "연장팀", 1);
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(sessionId, admin);
@@ -208,8 +208,8 @@ class DraftLiveCommandServiceTest {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         Long teamBId = createTeam(sessionId, "B", 2);
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         draftLiveCommandService.startSession(sessionId, admin);
@@ -225,7 +225,7 @@ class DraftLiveCommandServiceTest {
     void finishSession은_즉시_finished로_바꾼다() {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
-        createOrder(sessionId, 1L, 1, teamAId);
+        createOrder(sessionId, 1L, teamAId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         draftLiveCommandService.startSession(sessionId, admin);
@@ -269,11 +269,10 @@ class DraftLiveCommandServiceTest {
         draftService.createCandidate(requestDto);
     }
 
-    private void createOrder(Long sessionId, Long pickNo, int roundNo, Long teamId) {
+    private void createOrder(Long sessionId, Long pickNo, Long teamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto);
     }

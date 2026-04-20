@@ -32,9 +32,6 @@ public class DraftPickEntity {
     @Column(name = "PICK_NO", nullable = false)
     private Long pickNo;
 
-    @Column(name = "ROUND_NO", nullable = false)
-    private Integer roundNo;
-
     @Column(name = "DRAFT_TEAM_ID", nullable = false)
     private Long draftTeamId;
 
@@ -47,8 +44,7 @@ public class DraftPickEntity {
     @Column(name = "PICKED_AT", nullable = false)
     private LocalDateTime pickedAt;
 
-    public void update(Integer roundNo, Long draftTeamId, Long candidateUserId, Long pickedByUserId, LocalDateTime pickedAt) {
-        this.roundNo = roundNo;
+    public void update(Long draftTeamId, Long candidateUserId, Long pickedByUserId, LocalDateTime pickedAt) {
         this.draftTeamId = draftTeamId;
         this.candidateUserId = candidateUserId;
         this.pickedByUserId = pickedByUserId;

@@ -96,10 +96,10 @@ class DraftSnapshotServiceTest {
 
         createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
         createCandidate(sessionId, candidate2Id, "후보2", "TERRAN");
-        createOrder(sessionId, 1L, 1, teamAId);
-        createOrder(sessionId, 2L, 1, teamBId);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
         updateSession(sessionId, "LIVE", 1, teamAId, LocalDateTime.now().plusSeconds(30));
-        createPick(sessionId, 1L, 1, teamAId, candidate1Id, pickerAId);
+        createPick(sessionId, 1L, teamAId, candidate1Id, pickerAId);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
                 sessionId,
@@ -131,7 +131,7 @@ class DraftSnapshotServiceTest {
         Long teamId = createTeam(sessionId, "알파", 1);
         assignPicker(teamId, pickerId);
         createCandidate(sessionId, candidateId, "후보", "PROTOSS");
-        createOrder(sessionId, 1L, 1, teamId);
+        createOrder(sessionId, 1L, teamId);
         updateSession(sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(25));
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
@@ -178,11 +178,10 @@ class DraftSnapshotServiceTest {
         draftService.createCandidate(requestDto);
     }
 
-    private void createOrder(Long sessionId, Long pickNo, int roundNo, Long teamId) {
+    private void createOrder(Long sessionId, Long pickNo, Long teamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto);
     }
@@ -196,11 +195,10 @@ class DraftSnapshotServiceTest {
         draftService.updateSession(sessionId, requestDto);
     }
 
-    private void createPick(Long sessionId, Long pickNo, int roundNo, Long teamId, Long candidateUserId, Long pickedByUserId) {
+    private void createPick(Long sessionId, Long pickNo, Long teamId, Long candidateUserId, Long pickedByUserId) {
         DraftPickRequestDto requestDto = new DraftPickRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
-        requestDto.setRoundNo(roundNo);
         requestDto.setDraftTeamId(teamId);
         requestDto.setCandidateUserId(candidateUserId);
         requestDto.setPickedByUserId(pickedByUserId);
