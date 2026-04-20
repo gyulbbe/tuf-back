@@ -221,6 +221,46 @@ class DraftServiceTest {
         assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).hasSize(1);
     }
 
+    @Test
+    void deleteSession_removes_finished_session_and_all_children() {
+        Long pickerAId = createUser("picker05", "picker5");
+        Long pickerBId = createUser("picker06", "picker6");
+        Long candidateId = createUser("candidate04", "candidate4");
+
+        Long sessionId = createSession("delete finished session", 2, 30);
+        Long teamAId = createTeam(sessionId, "teamA", 1);
+        Long teamBId = createTeam(sessionId, "teamB", 2);
+        assignPicker(teamAId, pickerAId);
+        assignPicker(teamBId, pickerBId);
+        createCandidate(sessionId, candidateId, "candidate4", "ZERG");
+        createOrder(sessionId, 1L, teamAId);
+        updateSessionCurrentTurn(sessionId, teamAId);
+
+        DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
+        pickRequestDto.setDraftSessionId(sessionId);
+        pickRequestDto.setPickNo(1L);
+        pickRequestDto.setDraftTeamId(teamAId);
+        pickRequestDto.setCandidateUserId(candidateId);
+        pickRequestDto.setPickedByUserId(pickerAId);
+
+        ResponseDto<DraftPickResponseDto> pickResponse = draftService.createPick(pickRequestDto);
+
+        assertThat(pickResponse.getStatus()).isEqualTo(200);
+        assertThat(draftSessionRepository.findById(sessionId)).get()
+                .extracting(DraftSessionEntity::getStatus)
+                .isEqualTo("FINISHED");
+
+        ResponseDto<Void> deleteResponse = draftService.deleteSession(sessionId);
+
+        assertThat(deleteResponse.getStatus()).isEqualTo(200);
+        assertThat(draftSessionRepository.findById(sessionId)).isEmpty();
+        assertThat(draftTeamRepository.findAllByDraftSessionId(sessionId)).isEmpty();
+        assertThat(draftCandidateRepository.findAllByDraftSessionId(sessionId)).isEmpty();
+        assertThat(draftOrderRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
+        assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
+        assertThat(draftService.getSession(sessionId).getStatus()).isEqualTo(500);
+    }
+
     private Long createSession(String title, int teamCount, int pickTimeSeconds) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);

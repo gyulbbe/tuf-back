@@ -105,6 +105,10 @@ public class DraftSessionEntity {
         this.deadlineAt = deadlineAt;
     }
 
+    public void clearCurrentDraftTeam() {
+        this.currentDraftTeamId = null;
+    }
+
     public void finish(LocalDateTime endedAt) {
         this.status = "FINISHED";
         this.currentDraftTeamId = null;

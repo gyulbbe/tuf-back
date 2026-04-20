@@ -142,13 +142,37 @@ public class DraftService {
 
     public ResponseDto<Void> deleteSession(Long sessionId) {
         try {
-            DraftSessionEntity session = getSessionEntity(sessionId);
-            draftPickRepository.deleteAllByDraftSessionId(sessionId);
-            draftOrderRepository.deleteAllByDraftSessionId(sessionId);
-            draftCandidateRepository.deleteAllByDraftSessionId(sessionId);
-            draftTeamRepository.deleteAllByDraftSessionId(sessionId);
+            DraftSessionEntity session = getSessionEntityForUpdate(sessionId);
+            DraftSessionDeleteStats deleteStats = collectDeleteStats(session);
+            log.info(
+                    "Deleting draft session. sessionId={}, status={}, currentDraftTeamId={}, picks={}, orders={}, candidates={}, teams={}",
+                    deleteStats.sessionId(),
+                    deleteStats.status(),
+                    deleteStats.currentDraftTeamId(),
+                    deleteStats.pickCount(),
+                    deleteStats.orderCount(),
+                    deleteStats.candidateCount(),
+                    deleteStats.teamCount()
+            );
+
+            session.clearCurrentDraftTeam();
+            draftSessionRepository.flush();
+
+            int deletedPicks = draftPickRepository.deleteByDraftSessionId(sessionId);
+            int deletedOrders = draftOrderRepository.deleteByDraftSessionId(sessionId);
+            int deletedCandidates = draftCandidateRepository.deleteByDraftSessionId(sessionId);
+            int deletedTeams = draftTeamRepository.deleteByDraftSessionId(sessionId);
             draftSessionRepository.delete(session);
             draftLiveSessionTracker.refreshAfterCommit();
+
+            log.info(
+                    "Deleted draft session. sessionId={}, deletedPicks={}, deletedOrders={}, deletedCandidates={}, deletedTeams={}",
+                    sessionId,
+                    deletedPicks,
+                    deletedOrders,
+                    deletedCandidates,
+                    deletedTeams
+            );
 
             return ResponseDto.success(null);
         } catch (Exception e) {
@@ -525,6 +549,19 @@ public class DraftService {
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
     }
 
+    private DraftSessionDeleteStats collectDeleteStats(DraftSessionEntity session) {
+        Long sessionId = session.getId();
+        return new DraftSessionDeleteStats(
+                sessionId,
+                session.getStatus(),
+                session.getCurrentDraftTeamId(),
+                draftTeamRepository.countByDraftSessionId(sessionId),
+                draftCandidateRepository.countByDraftSessionId(sessionId),
+                draftOrderRepository.countByDraftSessionId(sessionId),
+                draftPickRepository.countByDraftSessionId(sessionId)
+        );
+    }
+
     private DraftTeamResponseDto requireTeam(Long teamId) {
         return draftQueryRepository.findTeam(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
@@ -547,6 +584,11 @@ public class DraftService {
 
     private DraftSessionEntity getSessionEntity(Long sessionId) {
         return draftSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+    }
+
+    private DraftSessionEntity getSessionEntityForUpdate(Long sessionId) {
+        return draftSessionRepository.findByIdForUpdate(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
     }
 
@@ -703,5 +745,16 @@ public class DraftService {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private record DraftSessionDeleteStats(
+            Long sessionId,
+            String status,
+            Long currentDraftTeamId,
+            long teamCount,
+            long candidateCount,
+            long orderCount,
+            long pickCount
+    ) {
     }
 }
