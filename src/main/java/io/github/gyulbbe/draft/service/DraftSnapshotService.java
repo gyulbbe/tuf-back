@@ -115,6 +115,7 @@ public class DraftSnapshotService {
         responseDto.setStatus(sessionSummary.getStatus());
         responseDto.setTeamCount(sessionSummary.getTeamCount());
         responseDto.setPickTimeSeconds(sessionSummary.getPickTimeSeconds());
+        responseDto.setDraftMode(sessionSummary.getDraftMode());
         responseDto.setCurrentPickNo(sessionSummary.getCurrentPickNo());
         responseDto.setCurrentDraftTeamId(sessionSummary.getCurrentDraftTeamId());
         responseDto.setDeadlineAt(sessionSummary.getDeadlineAt());
@@ -130,7 +131,7 @@ public class DraftSnapshotService {
             Map<Long, DraftLiveTeamResponseDto> teamMap,
             LocalDateTime serverNow
     ) {
-        if (sessionSummary.getCurrentPickNo() == null) {
+        if (sessionSummary.getCurrentPickNo() == null || sessionSummary.getCurrentDraftTeamId() == null) {
             return null;
         }
 

@@ -23,6 +23,9 @@ import java.time.LocalDateTime;
 )
 public class DraftSessionEntity {
 
+    public static final String MODE_FIXED_ORDER = "FIXED_ORDER";
+    public static final String MODE_MANUAL_CAPTAIN = "MANUAL_CAPTAIN";
+
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "draft_sessions_seq_gen")
     private Long id;
@@ -38,6 +41,10 @@ public class DraftSessionEntity {
 
     @Column(name = "PICK_TIME_SECONDS", nullable = false)
     private Integer pickTimeSeconds;
+
+    @Builder.Default
+    @Column(name = "DRAFT_MODE", nullable = false)
+    private String draftMode = MODE_FIXED_ORDER;
 
     @Column(name = "CURRENT_PICK_NO", nullable = false)
     private Integer currentPickNo;
@@ -59,6 +66,7 @@ public class DraftSessionEntity {
             String status,
             Integer teamCount,
             Integer pickTimeSeconds,
+            String draftMode,
             Integer currentPickNo,
             Long currentDraftTeamId,
             LocalDateTime deadlineAt,
@@ -69,6 +77,7 @@ public class DraftSessionEntity {
         this.status = status;
         this.teamCount = teamCount;
         this.pickTimeSeconds = pickTimeSeconds;
+        this.draftMode = draftMode;
         this.currentPickNo = currentPickNo;
         this.currentDraftTeamId = currentDraftTeamId;
         this.deadlineAt = deadlineAt;
@@ -91,6 +100,15 @@ public class DraftSessionEntity {
         this.endedAt = null;
     }
 
+    public void startManual(LocalDateTime startedAt) {
+        this.status = "LIVE";
+        this.currentPickNo = 1;
+        this.currentDraftTeamId = null;
+        this.startedAt = startedAt;
+        this.deadlineAt = null;
+        this.endedAt = null;
+    }
+
     public void pause() {
         this.status = "PAUSED";
         this.deadlineAt = null;
@@ -105,6 +123,12 @@ public class DraftSessionEntity {
         this.deadlineAt = deadlineAt;
     }
 
+    public void waitForNextManualTurn(Integer nextPickNo) {
+        this.currentPickNo = nextPickNo;
+        this.currentDraftTeamId = null;
+        this.deadlineAt = null;
+    }
+
     public void clearCurrentDraftTeam() {
         this.currentDraftTeamId = null;
     }
@@ -114,5 +138,9 @@ public class DraftSessionEntity {
         this.currentDraftTeamId = null;
         this.deadlineAt = null;
         this.endedAt = endedAt;
+    }
+
+    public boolean usesManualCaptainMode() {
+        return MODE_MANUAL_CAPTAIN.equals(this.draftMode);
     }
 }

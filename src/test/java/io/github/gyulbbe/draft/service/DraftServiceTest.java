@@ -99,15 +99,15 @@ class DraftServiceTest {
     private TestEntityManager entityManager;
 
     @Test
-    void 세션_상세_조회는_팀_픽커_후보_순서를_함께_반환한다() {
-        Long pickerId = createUser("picker01", "픽커");
-        Long candidateId = createUser("candidate01", "후보1");
+    void getSession_returns_teams_candidates_and_orders_together() {
+        Long pickerId = createUser("picker01", "picker01");
+        Long candidateId = createUser("candidate01", "candidate01");
 
-        Long sessionId = createSession("테스트 드래프트", 2, 60);
-        Long teamAId = createTeam(sessionId, "A팀", 1);
-        createTeam(sessionId, "B팀", 2);
+        Long sessionId = createSession("draft session", 2, 60, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "teamA", 1);
+        createTeam(sessionId, "teamB", 2);
         assignPicker(teamAId, pickerId);
-        createCandidate(sessionId, candidateId, "후보1", "TERRAN");
+        createCandidate(sessionId, candidateId, "candidate01", "TERRAN");
         createOrder(sessionId, 1L, teamAId);
 
         entityManager.flush();
@@ -116,6 +116,7 @@ class DraftServiceTest {
         ResponseDto<DraftSessionDetailResponseDto> response = draftService.getSession(sessionId);
 
         assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_FIXED_ORDER);
         assertThat(response.getData().getTeams()).hasSize(2);
         assertThat(response.getData().getTeams().get(0).getPickerUserId()).isEqualTo(pickerId);
         assertThat(response.getData().getCandidates()).hasSize(1);
@@ -123,19 +124,19 @@ class DraftServiceTest {
     }
 
     @Test
-    void 픽을_생성하면_후보상태와_세션의_현재턴이_함께_갱신된다() {
-        Long pickerAId = createUser("pickerA", "픽커A");
-        Long pickerBId = createUser("pickerB", "픽커B");
-        Long candidate1Id = createUser("candidateA", "후보A");
-        Long candidate2Id = createUser("candidateB", "후보B");
+    void createPick_updates_candidate_and_advances_session_in_fixed_order_mode() {
+        Long pickerAId = createUser("pickerA", "pickerA");
+        Long pickerBId = createUser("pickerB", "pickerB");
+        Long candidate1Id = createUser("candidateA", "candidateA");
+        Long candidate2Id = createUser("candidateB", "candidateB");
 
-        Long sessionId = createSession("진행중 드래프트", 2, 90);
-        Long teamAId = createTeam(sessionId, "레드", 1);
-        Long teamBId = createTeam(sessionId, "블루", 2);
+        Long sessionId = createSession("active draft", 2, 90, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "red", 1);
+        Long teamBId = createTeam(sessionId, "blue", 2);
         assignPicker(teamAId, pickerAId);
         assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidate1Id, "후보A", "ZERG");
-        createCandidate(sessionId, candidate2Id, "후보B", "PROTOSS");
+        createCandidate(sessionId, candidate1Id, "candidateA", "ZERG");
+        createCandidate(sessionId, candidate2Id, "candidateB", "PROTOSS");
         createOrder(sessionId, 1L, teamAId);
         createOrder(sessionId, 2L, teamBId);
         updateSessionCurrentTurn(sessionId, teamAId);
@@ -163,14 +164,48 @@ class DraftServiceTest {
     }
 
     @Test
-    void 세션_삭제는_하위_데이터도_같이_정리한다() {
-        Long pickerId = createUser("picker02", "픽커2");
-        Long candidateId = createUser("candidate02", "후보2");
+    void createPick_waits_for_next_assignment_in_manual_captain_mode() {
+        Long pickerAId = createUser("manualPickerA", "manualPickerA");
+        Long candidate1Id = createUser("manualCandidate1", "manualCandidate1");
+        Long candidate2Id = createUser("manualCandidate2", "manualCandidate2");
 
-        Long sessionId = createSession("삭제용 드래프트", 2, 45);
-        Long teamId = createTeam(sessionId, "삭제팀", 1);
+        Long sessionId = createSession("manual draft", 2, 45, DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        Long teamAId = createTeam(sessionId, "manualA", 1);
+        createTeam(sessionId, "manualB", 2);
+        assignPicker(teamAId, pickerAId);
+        createCandidate(sessionId, candidate1Id, "manualCandidate1", "ZERG");
+        createCandidate(sessionId, candidate2Id, "manualCandidate2", "PROTOSS");
+        createOrder(sessionId, 1L, teamAId);
+        updateSessionCurrentTurn(sessionId, teamAId);
+
+        DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
+        pickRequestDto.setDraftSessionId(sessionId);
+        pickRequestDto.setPickNo(1L);
+        pickRequestDto.setDraftTeamId(teamAId);
+        pickRequestDto.setCandidateUserId(candidate1Id);
+        pickRequestDto.setPickedByUserId(pickerAId);
+
+        ResponseDto<DraftPickResponseDto> response = draftService.createPick(pickRequestDto);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+
+        ResponseDto<DraftSessionDetailResponseDto> sessionResponse = draftService.getSession(sessionId);
+        assertThat(sessionResponse.getData().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        assertThat(sessionResponse.getData().getStatus()).isEqualTo("LIVE");
+        assertThat(sessionResponse.getData().getCurrentPickNo()).isEqualTo(2);
+        assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isNull();
+        assertThat(sessionResponse.getData().getDeadlineAt()).isNull();
+    }
+
+    @Test
+    void deleteSession_removes_session_and_all_related_data() {
+        Long pickerId = createUser("picker02", "picker02");
+        Long candidateId = createUser("candidate02", "candidate02");
+
+        Long sessionId = createSession("delete draft", 2, 45, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamId = createTeam(sessionId, "deleteTeam", 1);
         assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "후보2", "RANDOM");
+        createCandidate(sessionId, candidateId, "candidate02", "RANDOM");
         createOrder(sessionId, 1L, teamId);
 
         ResponseDto<Void> response = draftService.deleteSession(sessionId);
@@ -184,17 +219,17 @@ class DraftServiceTest {
     }
 
     @Test
-    void 같은_후보는_같은_세션에서_두번_픽할_수_없다() {
-        Long pickerAId = createUser("picker03", "픽커3");
-        Long pickerBId = createUser("picker04", "픽커4");
-        Long candidateId = createUser("candidate03", "후보3");
+    void createPick_rejects_duplicate_candidate_in_same_session() {
+        Long pickerAId = createUser("picker03", "picker03");
+        Long pickerBId = createUser("picker04", "picker04");
+        Long candidateId = createUser("candidate03", "candidate03");
 
-        Long sessionId = createSession("중복 방지", 2, 75);
-        Long teamAId = createTeam(sessionId, "1팀", 1);
-        Long teamBId = createTeam(sessionId, "2팀", 2);
+        Long sessionId = createSession("duplicate guard", 2, 75, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "team1", 1);
+        Long teamBId = createTeam(sessionId, "team2", 2);
         assignPicker(teamAId, pickerAId);
         assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidateId, "후보3", "TERRAN");
+        createCandidate(sessionId, candidateId, "candidate03", "TERRAN");
         createOrder(sessionId, 1L, teamAId);
         createOrder(sessionId, 2L, teamBId);
         updateSessionCurrentTurn(sessionId, teamAId);
@@ -223,11 +258,11 @@ class DraftServiceTest {
 
     @Test
     void deleteSession_removes_finished_session_and_all_children() {
-        Long pickerAId = createUser("picker05", "picker5");
-        Long pickerBId = createUser("picker06", "picker6");
-        Long candidateId = createUser("candidate04", "candidate4");
+        Long pickerAId = createUser("picker05", "picker05");
+        Long pickerBId = createUser("picker06", "picker06");
+        Long candidateId = createUser("candidate04", "candidate04");
 
-        Long sessionId = createSession("delete finished session", 2, 30);
+        Long sessionId = createSession("delete finished session", 2, 30, DraftSessionEntity.MODE_FIXED_ORDER);
         Long teamAId = createTeam(sessionId, "teamA", 1);
         Long teamBId = createTeam(sessionId, "teamB", 2);
         assignPicker(teamAId, pickerAId);
@@ -261,12 +296,13 @@ class DraftServiceTest {
         assertThat(draftService.getSession(sessionId).getStatus()).isEqualTo(500);
     }
 
-    private Long createSession(String title, int teamCount, int pickTimeSeconds) {
+    private Long createSession(String title, int teamCount, int pickTimeSeconds, String draftMode) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
         requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(pickTimeSeconds);
+        requestDto.setDraftMode(draftMode);
         requestDto.setCurrentPickNo(1);
 
         ResponseDto<DraftSessionSummaryResponseDto> response = draftService.createSession(requestDto);

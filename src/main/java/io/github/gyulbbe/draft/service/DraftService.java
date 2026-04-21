@@ -46,6 +46,10 @@ import java.util.Set;
 public class DraftService {
 
     private static final Set<String> SESSION_STATUSES = Set.of("READY", "LIVE", "PAUSED", "FINISHED", "CANCELLED");
+    private static final Set<String> DRAFT_MODES = Set.of(
+            DraftSessionEntity.MODE_FIXED_ORDER,
+            DraftSessionEntity.MODE_MANUAL_CAPTAIN
+    );
     private static final Set<String> RACES = Set.of("ZERG", "TERRAN", "PROTOSS", "RANDOM");
     private static final Set<String> CANDIDATE_STATUSES = Set.of("WAITING", "PICKED", "SKIPPED", "EXCLUDED");
 
@@ -67,6 +71,7 @@ public class DraftService {
                     .status(defaultIfBlank(requestDto.getStatus(), "READY"))
                     .teamCount(requestDto.getTeamCount())
                     .pickTimeSeconds(requestDto.getPickTimeSeconds())
+                    .draftMode(defaultIfBlank(requestDto.getDraftMode(), DraftSessionEntity.MODE_FIXED_ORDER))
                     .currentPickNo(requestDto.getCurrentPickNo() != null ? requestDto.getCurrentPickNo() : 1)
                     .currentDraftTeamId(null)
                     .deadlineAt(requestDto.getDeadlineAt())
@@ -120,6 +125,7 @@ public class DraftService {
                     defaultIfBlank(requestDto.getStatus(), entity.getStatus()),
                     requestDto.getTeamCount() != null ? requestDto.getTeamCount() : entity.getTeamCount(),
                     requestDto.getPickTimeSeconds() != null ? requestDto.getPickTimeSeconds() : entity.getPickTimeSeconds(),
+                    defaultIfBlank(requestDto.getDraftMode(), entity.getDraftMode()),
                     requestDto.getCurrentPickNo() != null ? requestDto.getCurrentPickNo() : entity.getCurrentPickNo(),
                     requestDto.getCurrentDraftTeamId() != null ? requestDto.getCurrentDraftTeamId() : entity.getCurrentDraftTeamId(),
                     requestDto.getDeadlineAt() != null ? requestDto.getDeadlineAt() : entity.getDeadlineAt(),
@@ -528,6 +534,7 @@ public class DraftService {
         detail.setStatus(summary.getStatus());
         detail.setTeamCount(summary.getTeamCount());
         detail.setPickTimeSeconds(summary.getPickTimeSeconds());
+        detail.setDraftMode(summary.getDraftMode());
         detail.setCurrentPickNo(summary.getCurrentPickNo());
         detail.setCurrentDraftTeamId(summary.getCurrentDraftTeamId());
         detail.setDeadlineAt(summary.getDeadlineAt());
@@ -636,6 +643,9 @@ public class DraftService {
         if (requestDto.getStatus() != null) {
             validateSessionStatus(requestDto.getStatus());
         }
+        if (requestDto.getDraftMode() != null) {
+            validateDraftMode(requestDto.getDraftMode());
+        }
     }
 
     private void validateTeamRequest(DraftTeamRequestDto requestDto) {
@@ -692,6 +702,16 @@ public class DraftService {
     }
 
     private void advanceSessionAfterPick(DraftSessionEntity session, Long currentPickNo, LocalDateTime pickedAt) {
+        if (session.usesManualCaptainMode()) {
+            long waitingCandidates = draftCandidateRepository.countByDraftSessionIdAndStatus(session.getId(), "WAITING");
+            if (waitingCandidates <= 0) {
+                session.finish(pickedAt);
+                return;
+            }
+            session.waitForNextManualTurn(currentPickNo.intValue() + 1);
+            return;
+        }
+
         long nextPickNo = currentPickNo + 1;
         Optional<DraftOrderEntity> nextOrder = draftOrderRepository.findById(new DraftOrderId(session.getId(), nextPickNo));
         if (nextOrder.isPresent()) {
@@ -715,6 +735,10 @@ public class DraftService {
 
     private void validateSessionStatus(String status) {
         validateAllowed(status, SESSION_STATUSES, "세션 상태");
+    }
+
+    private void validateDraftMode(String draftMode) {
+        validateAllowed(draftMode, DRAFT_MODES, "드래프트 모드");
     }
 
     private void validateRace(String race) {

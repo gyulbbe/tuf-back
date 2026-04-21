@@ -12,6 +12,7 @@ public class DraftSessionDetailResponseDto {
     private String status;
     private Integer teamCount;
     private Integer pickTimeSeconds;
+    private String draftMode;
     private Integer currentPickNo;
     private Long currentDraftTeamId;
     private java.time.LocalDateTime deadlineAt;

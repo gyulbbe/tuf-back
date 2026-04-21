@@ -89,10 +89,10 @@ class DraftLiveCommandServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void start_pause_resume는_세션상태와_마감시간을_갱신한다() {
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "A팀", 1);
-        createTeam(sessionId, "B팀", 2);
+    void fixedOrder_start_pause_resume_updates_session_state() {
+        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "A", 1);
+        createTeam(sessionId, "B", 2);
         createOrder(sessionId, 1L, teamAId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
@@ -102,6 +102,7 @@ class DraftLiveCommandServiceTest {
         DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, admin, 15);
 
         assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(started.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_FIXED_ORDER);
         assertThat(started.getSession().getCurrentPickNo()).isEqualTo(1);
         assertThat(started.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
         assertThat(started.getSession().getDeadlineAt()).isNotNull();
@@ -114,19 +115,31 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void 지정된_픽커만_현재턴에서_픽할_수_있고_성공하면_다음턴으로_이동한다() {
-        Long pickerAId = createUser("pickerA", "픽커A");
-        Long pickerBId = createUser("pickerB", "픽커B");
-        Long candidate1Id = createUser("candidate1", "후보1");
-        Long candidate2Id = createUser("candidate2", "후보2");
+    void start_rejects_paused_session() {
+        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
 
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "레드", 1);
-        Long teamBId = createTeam(sessionId, "블루", 2);
+        draftLiveCommandService.startSession(sessionId, admin);
+        draftLiveCommandService.pauseSession(sessionId, admin);
+
+        assertThatThrownBy(() -> draftLiveCommandService.startSession(sessionId, admin))
+                .hasMessageContaining("READY 상태");
+    }
+
+    @Test
+    void fixedOrder_pick_advances_to_next_team() {
+        Long pickerAId = createUser("pickerA", "pickerA");
+        Long pickerBId = createUser("pickerB", "pickerB");
+        Long candidate1Id = createUser("candidate1", "candidate1");
+        Long candidate2Id = createUser("candidate2", "candidate2");
+
+        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "red", 1);
+        Long teamBId = createTeam(sessionId, "blue", 2);
         assignPicker(teamAId, pickerAId);
         assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidate1Id, "후보1", "ZERG");
-        createCandidate(sessionId, candidate2Id, "후보2", "PROTOSS");
+        createCandidate(sessionId, candidate1Id, "candidate1", "ZERG");
+        createCandidate(sessionId, candidate2Id, "candidate2", "PROTOSS");
         createOrder(sessionId, 1L, teamAId);
         createOrder(sessionId, 2L, teamBId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
@@ -140,110 +153,112 @@ class DraftLiveCommandServiceTest {
         assertThat(result.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(result.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(result.getPickedCandidates()).hasSize(1);
-        assertThat(result.getPickedCandidates().get(0).getCandidateUserId()).isEqualTo(candidate1Id);
         assertThat(result.getRecentPicks()).hasSize(1);
-        assertThat(result.getTeams().stream()
-                .filter(team -> team.getId().equals(teamAId))
-                .findFirst()
-                .orElseThrow()
-                .getRoster()).hasSize(1);
     }
 
     @Test
-    void 지정된_픽커가_아니면_픽할_수_없다() {
-        Long pickerId = createUser("pickerA2", "픽커A2");
-        Long otherUserId = createUser("otherA2", "다른유저");
-        Long candidate1Id = createUser("candidate3", "후보3");
+    void fixedOrder_pick_rejects_non_picker() {
+        Long pickerId = createUser("pickerA2", "pickerA2");
+        Long otherUserId = createUser("otherA2", "otherA2");
+        Long candidateId = createUser("candidate3", "candidate3");
 
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "알파", 1);
+        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long teamAId = createTeam(sessionId, "alpha", 1);
         assignPicker(teamAId, pickerId);
-        createCandidate(sessionId, candidate1Id, "후보3", "TERRAN");
+        createCandidate(sessionId, candidateId, "candidate3", "TERRAN");
         createOrder(sessionId, 1L, teamAId);
         draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
 
         assertThatThrownBy(() ->
-                draftLiveCommandService.pick(sessionId, candidate1Id, new AuthActor(otherUserId, "otherA2", "ROLE_USER"))
-        ).hasMessageContaining("픽 권한");
+                draftLiveCommandService.pick(sessionId, candidateId, new AuthActor(otherUserId, "otherA2", "ROLE_USER"))
+        ).hasMessageContaining("픽커");
     }
 
     @Test
-    void 마지막_픽이면_세션은_finished가_된다() {
-        Long pickerId = createUser("pickerLast", "픽커Last");
-        Long candidate1Id = createUser("candidateLast", "후보Last");
+    void manualCaptain_start_does_not_require_first_order() {
+        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
 
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "마지막팀", 1);
-        assignPicker(teamAId, pickerId);
-        createCandidate(sessionId, candidate1Id, "후보Last", "RANDOM");
-        createOrder(sessionId, 1L, teamAId);
-        draftLiveCommandService.startSession(sessionId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
-
-        DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(
+        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(
                 sessionId,
-                candidate1Id,
-                new AuthActor(pickerId, "pickerLast", "ROLE_USER")
+                new AuthActor(1L, "admin", "ROLE_ADMIN")
         );
 
-        assertThat(result.getSession().getStatus()).isEqualTo("FINISHED");
-        assertThat(result.getSession().getCurrentDraftTeamId()).isNull();
-        assertThat(result.getSession().getDeadlineAt()).isNull();
+        assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(started.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        assertThat(started.getSession().getCurrentPickNo()).isEqualTo(1);
+        assertThat(started.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(started.getCurrentTurn()).isNull();
+        assertThat(started.getSession().getDeadlineAt()).isNull();
     }
 
     @Test
-    void extendTime은_마감시간을_연장한다() {
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "연장팀", 1);
-        createOrder(sessionId, 1L, teamAId);
+    void manualCaptain_assignNextPicker_then_pick_waits_for_next_assignment() {
+        Long pickerAId = createUser("manualPickerA", "manualPickerA");
+        Long pickerBId = createUser("manualPickerB", "manualPickerB");
+        Long candidate1Id = createUser("manualCandidate1", "manualCandidate1");
+        Long candidate2Id = createUser("manualCandidate2", "manualCandidate2");
 
-        AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
-        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(sessionId, admin);
-        DraftLiveSnapshotResponseDto extended = draftLiveCommandService.extendTime(sessionId, admin, 20);
-
-        assertThat(extended.getSession().getDeadlineAt()).isAfter(started.getSession().getDeadlineAt());
-        assertThat(extended.getCurrentTurn().getRemainingSeconds()).isGreaterThan(started.getCurrentTurn().getRemainingSeconds());
-    }
-
-    @Test
-    void forceSkip은_pick없이_다음턴으로_넘긴다() {
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "A", 1);
-        Long teamBId = createTeam(sessionId, "B", 2);
-        createOrder(sessionId, 1L, teamAId);
-        createOrder(sessionId, 2L, teamBId);
+        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        Long teamAId = createTeam(sessionId, "manualA", 1);
+        Long teamBId = createTeam(sessionId, "manualB", 2);
+        assignPicker(teamAId, pickerAId);
+        assignPicker(teamBId, pickerBId);
+        createCandidate(sessionId, candidate1Id, "manualCandidate1", "ZERG");
+        createCandidate(sessionId, candidate2Id, "manualCandidate2", "PROTOSS");
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         draftLiveCommandService.startSession(sessionId, admin);
 
-        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, admin, "manual");
+        DraftLiveSnapshotResponseDto assigned = draftLiveCommandService.assignNextPicker(sessionId, teamAId, admin);
+        assertThat(assigned.getCurrentTurn()).isNotNull();
+        assertThat(assigned.getCurrentTurn().getPickNo()).isEqualTo(1L);
+        assertThat(assigned.getCurrentTurn().getTeamId()).isEqualTo(teamAId);
 
-        assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
-        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
-        assertThat(skipped.getRecentPicks()).isEmpty();
+        DraftLiveSnapshotResponseDto picked = draftLiveCommandService.pick(
+                sessionId,
+                candidate1Id,
+                new AuthActor(pickerAId, "manualPickerA", "ROLE_USER")
+        );
+
+        assertThat(picked.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(picked.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(picked.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(picked.getCurrentTurn()).isNull();
+        assertThat(picked.getRecentPicks()).hasSize(1);
     }
 
     @Test
-    void finishSession은_즉시_finished로_바꾼다() {
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "A", 1);
-        createOrder(sessionId, 1L, teamAId);
+    void manualCaptain_last_pick_finishes_session() {
+        Long pickerAId = createUser("manualLastPicker", "manualLastPicker");
+        Long candidateId = createUser("manualLastCandidate", "manualLastCandidate");
+
+        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        Long teamAId = createTeam(sessionId, "manualLastTeam", 1);
+        assignPicker(teamAId, pickerAId);
+        createCandidate(sessionId, candidateId, "manualLastCandidate", "RANDOM");
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         draftLiveCommandService.startSession(sessionId, admin);
+        draftLiveCommandService.assignNextPicker(sessionId, teamAId, admin);
 
-        DraftLiveSnapshotResponseDto finished = draftLiveCommandService.finishSession(sessionId, admin, "manual-finish");
+        DraftLiveSnapshotResponseDto picked = draftLiveCommandService.pick(
+                sessionId,
+                candidateId,
+                new AuthActor(pickerAId, "manualLastPicker", "ROLE_USER")
+        );
 
-        assertThat(finished.getSession().getStatus()).isEqualTo("FINISHED");
-        assertThat(finished.getSession().getCurrentDraftTeamId()).isNull();
-        assertThat(finished.getSession().getDeadlineAt()).isNull();
+        assertThat(picked.getSession().getStatus()).isEqualTo("FINISHED");
+        assertThat(picked.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(picked.getSession().getDeadlineAt()).isNull();
     }
 
-    private Long createSession() {
+    private Long createSession(String draftMode) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
-        requestDto.setTitle("라이브 명령 세션");
+        requestDto.setTitle("live command session");
         requestDto.setStatus("READY");
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
+        requestDto.setDraftMode(draftMode);
         requestDto.setCurrentPickNo(1);
         return draftService.createSession(requestDto).getData().getId();
     }

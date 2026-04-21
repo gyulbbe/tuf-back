@@ -4,6 +4,7 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.DraftActorResolver;
 import io.github.gyulbbe.draft.dto.DraftExtendTimeRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
+import io.github.gyulbbe.draft.dto.DraftNextPickerRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickerAssignRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.dto.DraftReasonRequestDto;
@@ -38,6 +39,24 @@ public class DraftAdminController {
         try {
             return ResponseEntity.ok(ResponseDto.success(
                     draftLiveCommandService.startSession(sessionId, draftActorResolver.resolve())
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sessions/{sessionId}/next-picker")
+    public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> assignNextPicker(
+            @PathVariable Long sessionId,
+            @RequestBody DraftNextPickerRequestDto requestDto
+    ) {
+        try {
+            return ResponseEntity.ok(ResponseDto.success(
+                    draftLiveCommandService.assignNextPicker(
+                            sessionId,
+                            requestDto.getDraftTeamId(),
+                            draftActorResolver.resolve()
+                    )
             ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));

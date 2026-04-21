@@ -12,6 +12,8 @@ import java.util.List;
 public interface DraftCandidateRepository extends JpaRepository<DraftCandidateEntity, DraftCandidateId> {
     long countByDraftSessionId(Long draftSessionId);
 
+    long countByDraftSessionIdAndStatus(Long draftSessionId, String status);
+
     List<DraftCandidateEntity> findAllByDraftSessionId(Long draftSessionId);
 
     boolean existsByDraftSessionIdAndCandidateUserId(Long draftSessionId, Long candidateUserId);
