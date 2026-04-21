@@ -3,6 +3,7 @@ package io.github.gyulbbe.board.service;
 import io.github.gyulbbe.board.dto.BoardCommentCreateRequestDto;
 import io.github.gyulbbe.board.dto.BoardCommentResponseDto;
 import io.github.gyulbbe.board.dto.BoardCommentUpdateRequestDto;
+import io.github.gyulbbe.board.dto.BoardCommentsSnapshotResponseDto;
 import io.github.gyulbbe.board.dto.BoardCreateRequestDto;
 import io.github.gyulbbe.board.dto.BoardDetailResponseDto;
 import io.github.gyulbbe.board.dto.BoardListResponseDto;
@@ -102,7 +103,7 @@ public class BoardService {
         }
     }
 
-    public ResponseDto<List<BoardCommentResponseDto>> listComments(Long boardId, Authentication authentication) {
+    public ResponseDto<BoardCommentsSnapshotResponseDto> listComments(Long boardId, Authentication authentication) {
         try {
             if (!boardRepository.existsById(boardId)) {
                 return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "게시글을 찾을 수 없습니다.");
@@ -110,11 +111,7 @@ public class BoardService {
 
             BoardActor actor = resolveActor(authentication);
             List<BoardCommentEntity> comments = boardCommentRepository.findAllByBoardIdOrderByRegDateAscIdAsc(boardId);
-            return ResponseDto.success(buildCommentTree(
-                    comments,
-                    actor,
-                    resolveAuthorUserIdMap(extractAuthorUserPks(comments))
-            ));
+            return ResponseDto.success(toCommentsSnapshot(boardId, comments, actor));
         } catch (Exception e) {
             log.error("댓글 목록 조회 실패", e);
             return ResponseDto.fail("댓글 목록 조회에 실패했습니다.");
@@ -200,7 +197,7 @@ public class BoardService {
     }
 
     @Transactional
-    public ResponseDto<BoardCommentResponseDto> createComment(
+    public ResponseDto<BoardCommentsSnapshotResponseDto> createComment(
             Long boardId,
             BoardCommentCreateRequestDto requestDto,
             Authentication authentication
@@ -224,7 +221,7 @@ public class BoardService {
                 depth = parent.getDepth() + 1;
             }
 
-            BoardCommentEntity comment = boardCommentRepository.save(BoardCommentEntity.builder()
+            boardCommentRepository.save(BoardCommentEntity.builder()
                     .boardId(boardId)
                     .userId(authorInfo.userId())
                     .authorName(authorInfo.authorName())
@@ -233,12 +230,8 @@ public class BoardService {
                     .content(content)
                     .build());
 
-            return ResponseDto.success(toCommentResponse(
-                    comment,
-                    actor,
-                    Collections.emptyList(),
-                    resolveAuthorUserIdMap(extractAuthorUserPks(Collections.singletonList(comment)))
-            ));
+            List<BoardCommentEntity> comments = boardCommentRepository.findAllByBoardIdOrderByRegDateAscIdAsc(boardId);
+            return ResponseDto.success(toCommentsSnapshot(boardId, comments, actor));
         } catch (IllegalArgumentException e) {
             return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
@@ -248,7 +241,7 @@ public class BoardService {
     }
 
     @Transactional
-    public ResponseDto<BoardCommentResponseDto> updateComment(
+    public ResponseDto<BoardCommentsSnapshotResponseDto> updateComment(
             Long boardId,
             Long commentId,
             BoardCommentUpdateRequestDto requestDto,
@@ -266,12 +259,8 @@ public class BoardService {
             }
 
             comment.updateContent(validateCommentContent(requestDto.getContent()));
-            return ResponseDto.success(toCommentResponse(
-                    comment,
-                    actor,
-                    Collections.emptyList(),
-                    resolveAuthorUserIdMap(extractAuthorUserPks(Collections.singletonList(comment)))
-            ));
+            List<BoardCommentEntity> comments = boardCommentRepository.findAllByBoardIdOrderByRegDateAscIdAsc(boardId);
+            return ResponseDto.success(toCommentsSnapshot(boardId, comments, actor));
         } catch (IllegalArgumentException e) {
             return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
@@ -281,7 +270,7 @@ public class BoardService {
     }
 
     @Transactional
-    public ResponseDto<Void> deleteComment(Long boardId, Long commentId, Authentication authentication) {
+    public ResponseDto<BoardCommentsSnapshotResponseDto> deleteComment(Long boardId, Long commentId, Authentication authentication) {
         try {
             BoardCommentEntity comment = boardCommentRepository.findByIdAndBoardId(commentId, boardId).orElse(null);
             if (comment == null) {
@@ -299,7 +288,8 @@ public class BoardService {
             collectCommentIds(commentId, childrenMap, deleteIds);
             boardCommentRepository.deleteAllByIdInBatch(deleteIds);
 
-            return ResponseDto.success(null);
+            List<BoardCommentEntity> remainingComments = boardCommentRepository.findAllByBoardIdOrderByRegDateAscIdAsc(boardId);
+            return ResponseDto.success(toCommentsSnapshot(boardId, remainingComments, actor));
         } catch (Exception e) {
             log.error("댓글 삭제 실패", e);
             return ResponseDto.fail("댓글 삭제에 실패했습니다.");
@@ -462,7 +452,7 @@ public class BoardService {
 
     private BoardDetailResponseDto toBoardDetail(BoardEntity board, List<BoardCommentEntity> comments, BoardActor actor) {
         Map<Long, String> authorUserIdMap = resolveAuthorUserIdMap(extractAuthorUserPks(board, comments));
-        List<BoardCommentResponseDto> commentTree = buildCommentTree(comments, actor, authorUserIdMap);
+        BoardCommentsSnapshotResponseDto commentsSnapshot = toCommentsSnapshot(board.getId(), comments, actor, authorUserIdMap);
         String authorUserId = resolveAuthorUserId(board.getUserId(), authorUserIdMap);
 
         return BoardDetailResponseDto.builder()
@@ -473,10 +463,36 @@ public class BoardService {
                 .text(board.getText())
                 .regDate(board.getRegDate())
                 .updateDate(board.getUpdateDate())
-                .commentCount(comments.size())
+                .commentCount(commentsSnapshot.getCommentCount())
                 .editable(canModify(actor, board.getUserId()))
                 .deletable(canModify(actor, board.getUserId()))
-                .comments(commentTree)
+                .comments(commentsSnapshot.getComments())
+                .build();
+    }
+
+    private BoardCommentsSnapshotResponseDto toCommentsSnapshot(
+            Long boardId,
+            List<BoardCommentEntity> comments,
+            BoardActor actor
+    ) {
+        return toCommentsSnapshot(
+                boardId,
+                comments,
+                actor,
+                resolveAuthorUserIdMap(extractAuthorUserPks(comments))
+        );
+    }
+
+    private BoardCommentsSnapshotResponseDto toCommentsSnapshot(
+            Long boardId,
+            List<BoardCommentEntity> comments,
+            BoardActor actor,
+            Map<Long, String> authorUserIdMap
+    ) {
+        return BoardCommentsSnapshotResponseDto.builder()
+                .boardId(boardId)
+                .commentCount(comments.size())
+                .comments(buildCommentTree(comments, actor, authorUserIdMap))
                 .build();
     }
 

@@ -1,8 +1,8 @@
 package io.github.gyulbbe.board.controller;
 
 import io.github.gyulbbe.board.dto.BoardCommentCreateRequestDto;
-import io.github.gyulbbe.board.dto.BoardCommentResponseDto;
 import io.github.gyulbbe.board.dto.BoardCommentUpdateRequestDto;
+import io.github.gyulbbe.board.dto.BoardCommentsSnapshotResponseDto;
 import io.github.gyulbbe.board.dto.BoardCreateRequestDto;
 import io.github.gyulbbe.board.dto.BoardDetailResponseDto;
 import io.github.gyulbbe.board.dto.BoardListResponseDto;
@@ -21,9 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/boards")
@@ -76,7 +73,7 @@ public class BoardController {
     }
 
     @GetMapping("/{boardId}/comments")
-    public ResponseEntity<ResponseDto<List<BoardCommentResponseDto>>> listComments(
+    public ResponseEntity<ResponseDto<BoardCommentsSnapshotResponseDto>> listComments(
             @PathVariable Long boardId,
             Authentication authentication
     ) {
@@ -84,7 +81,7 @@ public class BoardController {
     }
 
     @PostMapping("/{boardId}/comments")
-    public ResponseEntity<ResponseDto<BoardCommentResponseDto>> createComment(
+    public ResponseEntity<ResponseDto<BoardCommentsSnapshotResponseDto>> createComment(
             @PathVariable Long boardId,
             @RequestBody BoardCommentCreateRequestDto requestDto,
             Authentication authentication
@@ -93,7 +90,7 @@ public class BoardController {
     }
 
     @PutMapping("/{boardId}/comments/{commentId}")
-    public ResponseEntity<ResponseDto<BoardCommentResponseDto>> updateComment(
+    public ResponseEntity<ResponseDto<BoardCommentsSnapshotResponseDto>> updateComment(
             @PathVariable Long boardId,
             @PathVariable Long commentId,
             @RequestBody BoardCommentUpdateRequestDto requestDto,
@@ -103,7 +100,7 @@ public class BoardController {
     }
 
     @DeleteMapping("/{boardId}/comments/{commentId}")
-    public ResponseEntity<ResponseDto<Void>> deleteComment(
+    public ResponseEntity<ResponseDto<BoardCommentsSnapshotResponseDto>> deleteComment(
             @PathVariable Long boardId,
             @PathVariable Long commentId,
             Authentication authentication
