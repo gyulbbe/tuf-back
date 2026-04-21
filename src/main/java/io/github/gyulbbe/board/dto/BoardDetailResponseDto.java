@@ -15,6 +15,8 @@ import java.util.List;
 public class BoardDetailResponseDto {
 
     private Long id;
+    private String authorUserId;
+    @Deprecated
     private String authorName;
     private String title;
     private String text;

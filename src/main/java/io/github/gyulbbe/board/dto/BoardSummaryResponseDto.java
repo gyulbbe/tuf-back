@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 public class BoardSummaryResponseDto {
 
     private Long id;
+    private String authorUserId;
+    @Deprecated
     private String authorName;
     private String title;
     private String summaryText;

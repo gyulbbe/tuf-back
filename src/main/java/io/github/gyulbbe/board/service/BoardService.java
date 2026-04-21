@@ -31,6 +31,7 @@ import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,9 +68,10 @@ public class BoardService {
             Pageable pageable = toPageable(page, size);
             Page<BoardEntity> boardPage = boardRepository.search(resolvedSearchType, normalizeKeyword(keyword), pageable);
             BoardActor actor = resolveActor(authentication);
+            Map<Long, String> authorUserIdMap = resolveAuthorUserIdMap(extractAuthorUserPks(boardPage.getContent()));
 
             List<BoardSummaryResponseDto> boards = boardPage.getContent().stream()
-                    .map(board -> toBoardSummary(board, actor))
+                    .map(board -> toBoardSummary(board, actor, authorUserIdMap))
                     .toList();
 
             return ResponseDto.success(BoardListResponseDto.builder()
@@ -108,7 +110,11 @@ public class BoardService {
 
             BoardActor actor = resolveActor(authentication);
             List<BoardCommentEntity> comments = boardCommentRepository.findAllByBoardIdOrderByRegDateAscIdAsc(boardId);
-            return ResponseDto.success(buildCommentTree(comments, actor));
+            return ResponseDto.success(buildCommentTree(
+                    comments,
+                    actor,
+                    resolveAuthorUserIdMap(extractAuthorUserPks(comments))
+            ));
         } catch (Exception e) {
             log.error("댓글 목록 조회 실패", e);
             return ResponseDto.fail("댓글 목록 조회에 실패했습니다.");
@@ -227,7 +233,12 @@ public class BoardService {
                     .content(content)
                     .build());
 
-            return ResponseDto.success(toCommentResponse(comment, actor, Collections.emptyList()));
+            return ResponseDto.success(toCommentResponse(
+                    comment,
+                    actor,
+                    Collections.emptyList(),
+                    resolveAuthorUserIdMap(extractAuthorUserPks(Collections.singletonList(comment)))
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
@@ -255,7 +266,12 @@ public class BoardService {
             }
 
             comment.updateContent(validateCommentContent(requestDto.getContent()));
-            return ResponseDto.success(toCommentResponse(comment, actor, Collections.emptyList()));
+            return ResponseDto.success(toCommentResponse(
+                    comment,
+                    actor,
+                    Collections.emptyList(),
+                    resolveAuthorUserIdMap(extractAuthorUserPks(Collections.singletonList(comment)))
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
@@ -362,9 +378,10 @@ public class BoardService {
                 throw new IllegalArgumentException("작성자 정보를 찾을 수 없습니다.");
             }
 
-            String resolvedAuthorName = StringUtils.hasText(user.getName())
-                    ? user.getName().trim()
-                    : user.getUserId();
+            if (!StringUtils.hasText(user.getUserId())) {
+                throw new IllegalArgumentException("?묒꽦???붾줈洹몄씤 ?꾩씠?붽? ?덉뼱???⑸땲??");
+            }
+            String resolvedAuthorName = user.getUserId().trim();
 
             return new AuthorInfo(user.getId(), truncateAuthorName(resolvedAuthorName));
         }
@@ -416,10 +433,12 @@ public class BoardService {
         return ownerUserId != null && ownerUserId.equals(actor.userId());
     }
 
-    private BoardSummaryResponseDto toBoardSummary(BoardEntity board, BoardActor actor) {
+    private BoardSummaryResponseDto toBoardSummary(BoardEntity board, BoardActor actor, Map<Long, String> authorUserIdMap) {
+        String authorUserId = resolveAuthorUserId(board.getUserId(), authorUserIdMap);
         return BoardSummaryResponseDto.builder()
                 .id(board.getId())
-                .authorName(board.getAuthorName())
+                .authorUserId(authorUserId)
+                .authorName(resolveResponseAuthorName(board.getAuthorName(), authorUserId))
                 .title(board.getTitle())
                 .summaryText(createSummaryText(board.getText()))
                 .regDate(board.getRegDate())
@@ -442,11 +461,14 @@ public class BoardService {
     }
 
     private BoardDetailResponseDto toBoardDetail(BoardEntity board, List<BoardCommentEntity> comments, BoardActor actor) {
-        List<BoardCommentResponseDto> commentTree = buildCommentTree(comments, actor);
+        Map<Long, String> authorUserIdMap = resolveAuthorUserIdMap(extractAuthorUserPks(board, comments));
+        List<BoardCommentResponseDto> commentTree = buildCommentTree(comments, actor, authorUserIdMap);
+        String authorUserId = resolveAuthorUserId(board.getUserId(), authorUserIdMap);
 
         return BoardDetailResponseDto.builder()
                 .id(board.getId())
-                .authorName(board.getAuthorName())
+                .authorUserId(authorUserId)
+                .authorName(resolveResponseAuthorName(board.getAuthorName(), authorUserId))
                 .title(board.getTitle())
                 .text(board.getText())
                 .regDate(board.getRegDate())
@@ -458,13 +480,17 @@ public class BoardService {
                 .build();
     }
 
-    private List<BoardCommentResponseDto> buildCommentTree(List<BoardCommentEntity> comments, BoardActor actor) {
+    private List<BoardCommentResponseDto> buildCommentTree(
+            List<BoardCommentEntity> comments,
+            BoardActor actor,
+            Map<Long, String> authorUserIdMap
+    ) {
         if (comments.isEmpty()) {
             return Collections.emptyList();
         }
 
         Map<Long, List<BoardCommentEntity>> childrenMap = buildChildrenMap(comments);
-        return buildChildren(null, childrenMap, actor);
+        return buildChildren(null, childrenMap, actor, authorUserIdMap);
     }
 
     private Map<Long, List<BoardCommentEntity>> buildChildrenMap(List<BoardCommentEntity> comments) {
@@ -478,12 +504,18 @@ public class BoardService {
     private List<BoardCommentResponseDto> buildChildren(
             Long parentId,
             Map<Long, List<BoardCommentEntity>> childrenMap,
-            BoardActor actor
+            BoardActor actor,
+            Map<Long, String> authorUserIdMap
     ) {
         List<BoardCommentEntity> children = childrenMap.getOrDefault(parentId, Collections.emptyList());
         List<BoardCommentResponseDto> response = new ArrayList<>();
         for (BoardCommentEntity child : children) {
-            response.add(toCommentResponse(child, actor, buildChildren(child.getId(), childrenMap, actor)));
+            response.add(toCommentResponse(
+                    child,
+                    actor,
+                    buildChildren(child.getId(), childrenMap, actor, authorUserIdMap),
+                    authorUserIdMap
+            ));
         }
         return response;
     }
@@ -491,13 +523,16 @@ public class BoardService {
     private BoardCommentResponseDto toCommentResponse(
             BoardCommentEntity comment,
             BoardActor actor,
-            List<BoardCommentResponseDto> children
+            List<BoardCommentResponseDto> children,
+            Map<Long, String> authorUserIdMap
     ) {
+        String authorUserId = resolveAuthorUserId(comment.getUserId(), authorUserIdMap);
         return BoardCommentResponseDto.builder()
                 .id(comment.getId())
                 .parentId(comment.getParentId())
                 .depth(comment.getDepth())
-                .authorName(comment.getAuthorName())
+                .authorUserId(authorUserId)
+                .authorName(resolveResponseAuthorName(comment.getAuthorName(), authorUserId))
                 .content(comment.getContent())
                 .regDate(comment.getRegDate())
                 .updateDate(comment.getUpdateDate())
@@ -505,6 +540,60 @@ public class BoardService {
                 .deletable(canModify(actor, comment.getUserId()))
                 .children(children)
                 .build();
+    }
+
+    private List<Long> extractAuthorUserPks(List<?> sources) {
+        LinkedHashSet<Long> userIds = new LinkedHashSet<>();
+        for (Object source : sources) {
+            if (source instanceof BoardEntity board && board.getUserId() != null) {
+                userIds.add(board.getUserId());
+            }
+            if (source instanceof BoardCommentEntity comment && comment.getUserId() != null) {
+                userIds.add(comment.getUserId());
+            }
+        }
+        return new ArrayList<>(userIds);
+    }
+
+    private List<Long> extractAuthorUserPks(BoardEntity board, List<BoardCommentEntity> comments) {
+        LinkedHashSet<Long> userIds = new LinkedHashSet<>();
+        if (board.getUserId() != null) {
+            userIds.add(board.getUserId());
+        }
+        for (BoardCommentEntity comment : comments) {
+            if (comment.getUserId() != null) {
+                userIds.add(comment.getUserId());
+            }
+        }
+        return new ArrayList<>(userIds);
+    }
+
+    private Map<Long, String> resolveAuthorUserIdMap(List<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, String> authorUserIdMap = new LinkedHashMap<>();
+        for (UserEntity user : userRepository.findAllById(userIds)) {
+            if (StringUtils.hasText(user.getUserId())) {
+                authorUserIdMap.put(user.getId(), user.getUserId());
+            }
+        }
+        return authorUserIdMap;
+    }
+
+    private String resolveAuthorUserId(Long userPk, Map<Long, String> authorUserIdMap) {
+        if (userPk == null) {
+            return null;
+        }
+        return authorUserIdMap.get(userPk);
+    }
+
+    private String resolveResponseAuthorName(String storedAuthorName, String authorUserId) {
+        if (StringUtils.hasText(authorUserId)) {
+            return authorUserId;
+        }
+        return storedAuthorName;
     }
 
     private void collectCommentIds(

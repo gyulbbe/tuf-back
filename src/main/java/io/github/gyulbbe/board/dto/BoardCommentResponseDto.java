@@ -17,6 +17,8 @@ public class BoardCommentResponseDto {
     private Long id;
     private Long parentId;
     private Integer depth;
+    private String authorUserId;
+    @Deprecated
     private String authorName;
     private String content;
     private LocalDateTime regDate;
