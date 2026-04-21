@@ -17,7 +17,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -44,7 +46,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.cors(cors -> cors.configurationSource(request -> {
             CorsConfiguration corsConfiguration = new CorsConfiguration();
-            corsConfiguration.setAllowedOrigins(Collections.singletonList(frontUrl));
+            corsConfiguration.setAllowedOrigins(parseAllowedOrigins(frontUrl));
             corsConfiguration.setAllowCredentials(true);
             corsConfiguration.setAllowedHeaders(Collections.singletonList("*"));
             corsConfiguration.setAllowedMethods(Collections.singletonList("*"));
@@ -75,5 +77,12 @@ public class SecurityConfig {
         http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
         return http.build();
+    }
+
+    private List<String> parseAllowedOrigins(String configuredOrigins) {
+        return Arrays.stream(configuredOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
     }
 }
