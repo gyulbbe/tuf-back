@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.SequenceGenerator;
@@ -24,16 +23,19 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @SequenceGenerator(
-        name = "boards_seq_gen",
-        sequenceName = "BOARDS_SEQ",
+        name = "comments_seq_gen",
+        sequenceName = "COMMENTS_SEQ",
         allocationSize = 1
 )
-@Table(name = "BOARDS")
-public class BoardEntity {
+@Table(name = "COMMENTS")
+public class BoardCommentEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "boards_seq_gen")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "comments_seq_gen")
     private Long id;
+
+    @Column(name = "BOARD_ID", nullable = false)
+    private Long boardId;
 
     @Column(name = "USER_ID")
     private Long userId;
@@ -41,12 +43,15 @@ public class BoardEntity {
     @Column(name = "AUTHOR_NAME", nullable = false)
     private String authorName;
 
-    @Column(name = "TITLE", nullable = false)
-    private String title;
+    @Column(name = "PARENT_ID")
+    private Long parentId;
 
-    @Lob
-    @Column(name = "TEXT", nullable = false)
-    private String text;
+    @Builder.Default
+    @Column(name = "DEPTH", nullable = false)
+    private Integer depth = 0;
+
+    @Column(name = "CONTENT", nullable = false, length = 4000)
+    private String content;
 
     @Column(name = "REG_DATE", updatable = false)
     private LocalDateTime regDate;
@@ -54,9 +59,8 @@ public class BoardEntity {
     @Column(name = "UPDATE_DATE")
     private LocalDateTime updateDate;
 
-    public void update(String title, String text) {
-        this.title = title;
-        this.text = text;
+    public void updateContent(String content) {
+        this.content = content;
     }
 
     @PrePersist
