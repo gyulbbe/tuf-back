@@ -5,7 +5,9 @@ import io.github.gyulbbe.draft.dto.DraftLiveNormalizedPositionDto;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewEndReason;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewPayloadDto;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewPhase;
+import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
+import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DraftLivePreviewRelayService {
 
     private final DraftSessionRepository draftSessionRepository;
+    private final DraftOrderRepository draftOrderRepository;
     private final DraftPermissionService draftPermissionService;
     private final DraftEventPublisher draftEventPublisher;
 
@@ -172,7 +175,7 @@ public class DraftLivePreviewRelayService {
             throw new IllegalArgumentException("Drag preview can only be sent while the session is LIVE.");
         }
 
-        Long currentDraftTeamId = session.getCurrentDraftTeamId();
+        Long currentDraftTeamId = resolveCurrentDraftTeamId(session);
         if (currentDraftTeamId == null || !draftPermissionService.canPickForTeam(currentDraftTeamId, actor.userPk())) {
             throw new IllegalArgumentException("Only the current picker can send drag preview.");
         }
@@ -193,6 +196,16 @@ public class DraftLivePreviewRelayService {
     private DraftSessionEntity loadSession(Long sessionId) {
         return draftSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Draft session not found."));
+    }
+
+    private Long resolveCurrentDraftTeamId(DraftSessionEntity session) {
+        if (session.getCurrentPickNo() == null || session.getCurrentPickNo() <= 0) {
+            return session.getCurrentDraftTeamId();
+        }
+
+        return draftOrderRepository.findByDraftSessionIdAndPickNo(session.getId(), session.getCurrentPickNo().longValue())
+                .map(DraftOrderEntity::getDraftTeamId)
+                .orElse(session.getCurrentDraftTeamId());
     }
 
     private DraftLivePreviewPhase requirePhase(DraftLivePreviewPhase phase) {

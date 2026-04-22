@@ -35,6 +35,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
@@ -103,7 +105,7 @@ class DraftServiceTest {
         Long pickerId = createUser("picker01", "picker01");
         Long candidateId = createUser("candidate01", "candidate01");
 
-        Long sessionId = createSession("draft session", 2, 60, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession("draft session", 2, 60);
         Long teamAId = createTeam(sessionId, "teamA", 1);
         createTeam(sessionId, "teamB", 2);
         assignPicker(teamAId, pickerId);
@@ -116,7 +118,6 @@ class DraftServiceTest {
         ResponseDto<DraftSessionDetailResponseDto> response = draftService.getSession(sessionId);
 
         assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getData().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_FIXED_ORDER);
         assertThat(response.getData().getTeams()).hasSize(2);
         assertThat(response.getData().getTeams().get(0).getPickerUserId()).isEqualTo(pickerId);
         assertThat(response.getData().getCandidates()).hasSize(1);
@@ -124,13 +125,13 @@ class DraftServiceTest {
     }
 
     @Test
-    void createPick_updates_candidate_and_advances_session_in_fixed_order_mode() {
+    void createPick_updates_candidate_and_advances_session() {
         Long pickerAId = createUser("pickerA", "pickerA");
         Long pickerBId = createUser("pickerB", "pickerB");
         Long candidate1Id = createUser("candidateA", "candidateA");
         Long candidate2Id = createUser("candidateB", "candidateB");
 
-        Long sessionId = createSession("active draft", 2, 90, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession("active draft", 2, 90);
         Long teamAId = createTeam(sessionId, "red", 1);
         Long teamBId = createTeam(sessionId, "blue", 2);
         assignPicker(teamAId, pickerAId);
@@ -164,37 +165,80 @@ class DraftServiceTest {
     }
 
     @Test
-    void createPick_waits_for_next_assignment_in_manual_captain_mode() {
-        Long pickerAId = createUser("manualPickerA", "manualPickerA");
-        Long candidate1Id = createUser("manualCandidate1", "manualCandidate1");
-        Long candidate2Id = createUser("manualCandidate2", "manualCandidate2");
+    void createPick_finishes_session_when_no_next_order() {
+        Long pickerId = createUser("lastPicker", "lastPicker");
+        Long candidateId = createUser("lastCandidate", "lastCandidate");
 
-        Long sessionId = createSession("manual draft", 2, 45, DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        Long teamAId = createTeam(sessionId, "manualA", 1);
-        createTeam(sessionId, "manualB", 2);
-        assignPicker(teamAId, pickerAId);
-        createCandidate(sessionId, candidate1Id, "manualCandidate1", "ZERG");
-        createCandidate(sessionId, candidate2Id, "manualCandidate2", "PROTOSS");
-        createOrder(sessionId, 1L, teamAId);
-        updateSessionCurrentTurn(sessionId, teamAId);
+        Long sessionId = createSession("last pick draft", 2, 45);
+        Long teamId = createTeam(sessionId, "lastTeam", 1);
+        assignPicker(teamId, pickerId);
+        createCandidate(sessionId, candidateId, "lastCandidate", "RANDOM");
+        createOrder(sessionId, 1L, teamId);
+        updateSessionCurrentTurn(sessionId, teamId);
 
         DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
         pickRequestDto.setDraftSessionId(sessionId);
         pickRequestDto.setPickNo(1L);
-        pickRequestDto.setDraftTeamId(teamAId);
-        pickRequestDto.setCandidateUserId(candidate1Id);
-        pickRequestDto.setPickedByUserId(pickerAId);
+        pickRequestDto.setDraftTeamId(teamId);
+        pickRequestDto.setCandidateUserId(candidateId);
+        pickRequestDto.setPickedByUserId(pickerId);
 
         ResponseDto<DraftPickResponseDto> response = draftService.createPick(pickRequestDto);
 
         assertThat(response.getStatus()).isEqualTo(200);
-
         ResponseDto<DraftSessionDetailResponseDto> sessionResponse = draftService.getSession(sessionId);
-        assertThat(sessionResponse.getData().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        assertThat(sessionResponse.getData().getStatus()).isEqualTo("LIVE");
-        assertThat(sessionResponse.getData().getCurrentPickNo()).isEqualTo(2);
+        assertThat(sessionResponse.getData().getStatus()).isEqualTo("FINISHED");
         assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isNull();
         assertThat(sessionResponse.getData().getDeadlineAt()).isNull();
+    }
+
+    @Test
+    void listSessions_and_getSession_keep_different_titled_sessions_independent() {
+        Long sharedCandidateId = createUser("sharedCandidate", "sharedCandidate");
+
+        Long proSessionId = createSession("프로리그 드래프트", 2, 60);
+        Long teamContentSessionId = createSession("팀배/컨텐츠 드래프트", 2, 60);
+
+        Long proTeamId = createTeam(proSessionId, "프로A", 1);
+        Long contentTeamId = createTeam(teamContentSessionId, "컨텐츠A", 1);
+
+        createCandidate(proSessionId, sharedCandidateId, "sharedCandidate", "ZERG");
+        createCandidate(teamContentSessionId, sharedCandidateId, "sharedCandidate", "ZERG");
+        createOrder(proSessionId, 1L, proTeamId);
+        createOrder(teamContentSessionId, 1L, contentTeamId);
+
+        ResponseDto<List<DraftSessionSummaryResponseDto>> listResponse = draftService.listSessions();
+        ResponseDto<DraftSessionDetailResponseDto> proSession = draftService.getSession(proSessionId);
+        ResponseDto<DraftSessionDetailResponseDto> contentSession = draftService.getSession(teamContentSessionId);
+
+        assertThat(listResponse.getStatus()).isEqualTo(200);
+        assertThat(listResponse.getData())
+                .extracting(DraftSessionSummaryResponseDto::getTitle)
+                .contains("프로리그 드래프트", "팀배/컨텐츠 드래프트");
+
+        assertThat(proSession.getStatus()).isEqualTo(200);
+        assertThat(proSession.getData().getTitle()).isEqualTo("프로리그 드래프트");
+        assertThat(proSession.getData().getTeams())
+                .extracting(team -> team.getTeamName())
+                .containsExactly("프로A");
+        assertThat(proSession.getData().getCandidates())
+                .extracting(DraftCandidateResponseDto::getCandidateUserId)
+                .containsExactly(sharedCandidateId);
+        assertThat(proSession.getData().getOrders())
+                .extracting(order -> order.getDraftTeamId())
+                .containsExactly(proTeamId);
+
+        assertThat(contentSession.getStatus()).isEqualTo(200);
+        assertThat(contentSession.getData().getTitle()).isEqualTo("팀배/컨텐츠 드래프트");
+        assertThat(contentSession.getData().getTeams())
+                .extracting(team -> team.getTeamName())
+                .containsExactly("컨텐츠A");
+        assertThat(contentSession.getData().getCandidates())
+                .extracting(DraftCandidateResponseDto::getCandidateUserId)
+                .containsExactly(sharedCandidateId);
+        assertThat(contentSession.getData().getOrders())
+                .extracting(order -> order.getDraftTeamId())
+                .containsExactly(contentTeamId);
     }
 
     @Test
@@ -202,7 +246,7 @@ class DraftServiceTest {
         Long pickerId = createUser("picker02", "picker02");
         Long candidateId = createUser("candidate02", "candidate02");
 
-        Long sessionId = createSession("delete draft", 2, 45, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession("delete draft", 2, 45);
         Long teamId = createTeam(sessionId, "deleteTeam", 1);
         assignPicker(teamId, pickerId);
         createCandidate(sessionId, candidateId, "candidate02", "RANDOM");
@@ -224,7 +268,7 @@ class DraftServiceTest {
         Long pickerBId = createUser("picker04", "picker04");
         Long candidateId = createUser("candidate03", "candidate03");
 
-        Long sessionId = createSession("duplicate guard", 2, 75, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession("duplicate guard", 2, 75);
         Long teamAId = createTeam(sessionId, "team1", 1);
         Long teamBId = createTeam(sessionId, "team2", 2);
         assignPicker(teamAId, pickerAId);
@@ -262,7 +306,7 @@ class DraftServiceTest {
         Long pickerBId = createUser("picker06", "picker06");
         Long candidateId = createUser("candidate04", "candidate04");
 
-        Long sessionId = createSession("delete finished session", 2, 30, DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession("delete finished session", 2, 30);
         Long teamAId = createTeam(sessionId, "teamA", 1);
         Long teamBId = createTeam(sessionId, "teamB", 2);
         assignPicker(teamAId, pickerAId);
@@ -296,13 +340,12 @@ class DraftServiceTest {
         assertThat(draftService.getSession(sessionId).getStatus()).isEqualTo(500);
     }
 
-    private Long createSession(String title, int teamCount, int pickTimeSeconds, String draftMode) {
+    private Long createSession(String title, int teamCount, int pickTimeSeconds) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
         requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(pickTimeSeconds);
-        requestDto.setDraftMode(draftMode);
         requestDto.setCurrentPickNo(1);
 
         ResponseDto<DraftSessionSummaryResponseDto> response = draftService.createSession(requestDto);

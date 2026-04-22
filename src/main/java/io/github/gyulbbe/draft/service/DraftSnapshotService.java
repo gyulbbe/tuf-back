@@ -48,15 +48,16 @@ public class DraftSnapshotService {
 
         Map<Long, DraftLiveTeamResponseDto> teamMap = buildTeams(teamDtos);
         attachRoster(teamMap, picks);
+        DraftLiveCurrentTurnResponseDto currentTurn = buildCurrentTurn(sessionSummary, orders, teamMap, serverNow);
 
         DraftLiveSnapshotResponseDto snapshot = new DraftLiveSnapshotResponseDto();
         snapshot.setSession(buildSessionInfo(sessionSummary, serverNow));
-        snapshot.setCurrentTurn(buildCurrentTurn(sessionSummary, orders, teamMap, serverNow));
+        snapshot.setCurrentTurn(currentTurn);
         snapshot.setTeams(new ArrayList<>(teamMap.values()));
         snapshot.setAvailableCandidates(filterCandidatesByStatus(candidates, "WAITING"));
         snapshot.setPickedCandidates(filterCandidatesByStatus(candidates, "PICKED"));
         snapshot.setRecentPicks(buildRecentPicks(picks));
-        snapshot.setPermissions(buildPermissions(actor, sessionSummary.getCurrentDraftTeamId(), snapshot.getTeams()));
+        snapshot.setPermissions(buildPermissions(actor, currentTurn != null ? currentTurn.getTeamId() : null, snapshot.getTeams()));
         return snapshot;
     }
 
@@ -115,7 +116,6 @@ public class DraftSnapshotService {
         responseDto.setStatus(sessionSummary.getStatus());
         responseDto.setTeamCount(sessionSummary.getTeamCount());
         responseDto.setPickTimeSeconds(sessionSummary.getPickTimeSeconds());
-        responseDto.setDraftMode(sessionSummary.getDraftMode());
         responseDto.setCurrentPickNo(sessionSummary.getCurrentPickNo());
         responseDto.setCurrentDraftTeamId(sessionSummary.getCurrentDraftTeamId());
         responseDto.setDeadlineAt(sessionSummary.getDeadlineAt());
@@ -131,7 +131,7 @@ public class DraftSnapshotService {
             Map<Long, DraftLiveTeamResponseDto> teamMap,
             LocalDateTime serverNow
     ) {
-        if (sessionSummary.getCurrentPickNo() == null || sessionSummary.getCurrentDraftTeamId() == null) {
+        if (sessionSummary.getCurrentPickNo() == null) {
             return null;
         }
 
@@ -177,7 +177,7 @@ public class DraftSnapshotService {
 
     private DraftLivePermissionsResponseDto buildPermissions(
             AuthActor actor,
-            Long currentDraftTeamId,
+            Long currentTurnTeamId,
             List<DraftLiveTeamResponseDto> teams
     ) {
         DraftLivePermissionsResponseDto permissions = new DraftLivePermissionsResponseDto();
@@ -190,12 +190,8 @@ public class DraftSnapshotService {
 
         DraftLiveTeamResponseDto selectedTeam = teams.stream()
                 .filter(team -> Objects.equals(team.getPickerUserId(), actor.userPk()))
-                .filter(team -> currentDraftTeamId == null || Objects.equals(team.getId(), currentDraftTeamId))
                 .findFirst()
-                .orElseGet(() -> teams.stream()
-                        .filter(team -> Objects.equals(team.getPickerUserId(), actor.userPk()))
-                        .findFirst()
-                        .orElse(null));
+                .orElse(null);
 
         if (selectedTeam == null) {
             permissions.setCanPick(false);
@@ -205,9 +201,9 @@ public class DraftSnapshotService {
         permissions.setMyTeamId(selectedTeam.getId());
         permissions.setMyRole("PICKER");
         permissions.setCanPick(
-                currentDraftTeamId != null
-                        && Objects.equals(selectedTeam.getId(), currentDraftTeamId)
-                        && draftPermissionService.canPickForTeam(currentDraftTeamId, actor.userPk())
+                currentTurnTeamId != null
+                        && Objects.equals(selectedTeam.getId(), currentTurnTeamId)
+                        && draftPermissionService.canPickForTeam(currentTurnTeamId, actor.userPk())
         );
         return permissions;
     }

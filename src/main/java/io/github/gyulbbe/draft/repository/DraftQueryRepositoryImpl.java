@@ -21,33 +21,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public Optional<DraftSessionSummaryResponseDto> findSessionSummary(Long sessionId) {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
 
-        return Optional.ofNullable(
-                queryFactory
-                        .select(Projections.bean(
-                                DraftSessionSummaryResponseDto.class,
-                                draftSession.id,
-                                draftSession.title,
-                                draftSession.status,
-                                draftSession.teamCount,
-                                draftSession.pickTimeSeconds,
-                                draftSession.draftMode,
-                                draftSession.currentPickNo,
-                                draftSession.currentDraftTeamId,
-                                draftSession.deadlineAt,
-                                draftSession.startedAt,
-                                draftSession.endedAt
-                        ))
-                        .from(draftSession)
-                        .where(draftSession.id.eq(sessionId))
-                        .fetchOne()
-        );
-    }
-
-    @Override
-    public List<DraftSessionSummaryResponseDto> findSessionSummaries() {
-        QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
-
-        return queryFactory
+        DraftSessionSummaryResponseDto summary = queryFactory
                 .select(Projections.bean(
                         DraftSessionSummaryResponseDto.class,
                         draftSession.id,
@@ -55,7 +29,30 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.status,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
-                        draftSession.draftMode,
+                        draftSession.currentPickNo,
+                        draftSession.currentDraftTeamId,
+                        draftSession.deadlineAt,
+                        draftSession.startedAt,
+                        draftSession.endedAt
+                ))
+                .from(draftSession)
+                .where(draftSession.id.eq(sessionId))
+                .fetchOne();
+        return Optional.ofNullable(summary);
+    }
+
+    @Override
+    public List<DraftSessionSummaryResponseDto> findSessionSummaries() {
+        QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
+
+        List<DraftSessionSummaryResponseDto> summaries = queryFactory
+                .select(Projections.bean(
+                        DraftSessionSummaryResponseDto.class,
+                        draftSession.id,
+                        draftSession.title,
+                        draftSession.status,
+                        draftSession.teamCount,
+                        draftSession.pickTimeSeconds,
                         draftSession.currentPickNo,
                         draftSession.currentDraftTeamId,
                         draftSession.deadlineAt,
@@ -65,6 +62,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 .from(draftSession)
                 .orderBy(draftSession.id.desc())
                 .fetch();
+        return summaries;
     }
 
     @Override

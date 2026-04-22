@@ -79,6 +79,9 @@ class DraftSnapshotServiceTest {
     private DraftSnapshotService draftSnapshotService;
 
     @Autowired
+    private DraftSessionRepository draftSessionRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Test
@@ -88,7 +91,7 @@ class DraftSnapshotServiceTest {
         Long candidate1Id = createUser("candidate1", "candidate1", "ROLE_USER");
         Long candidate2Id = createUser("candidate2", "candidate2", "ROLE_USER");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "red", 1);
         Long teamBId = createTeam(sessionId, "blue", 2);
         assignPicker(teamAId, pickerAId);
@@ -107,7 +110,6 @@ class DraftSnapshotServiceTest {
         );
 
         assertThat(snapshot.getSession().getId()).isEqualTo(sessionId);
-        assertThat(snapshot.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_FIXED_ORDER);
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
         assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getTeams()).hasSize(2);
@@ -128,7 +130,7 @@ class DraftSnapshotServiceTest {
         Long pickerId = createUser("picker01", "picker01", "ROLE_USER");
         Long candidateId = createUser("candidate01", "candidate01", "ROLE_USER");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession();
         Long teamId = createTeam(sessionId, "alpha", 1);
         assignPicker(teamId, pickerId);
         createCandidate(sessionId, candidateId, "candidate01", "PROTOSS");
@@ -148,36 +150,49 @@ class DraftSnapshotServiceTest {
     }
 
     @Test
-    void manualCaptain_snapshot_returns_null_currentTurn_while_waiting_for_next_picker() {
-        Long pickerId = createUser("manualPicker", "manualPicker", "ROLE_USER");
-        Long candidateId = createUser("manualCandidate", "manualCandidate", "ROLE_USER");
+    void snapshot_uses_order_based_current_turn_when_current_team_is_null() {
+        Long pickerId = createUser("orderPicker", "orderPicker", "ROLE_USER");
+        Long candidateId = createUser("orderCandidate", "orderCandidate", "ROLE_USER");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        Long teamId = createTeam(sessionId, "manualTeam", 1);
+        Long sessionId = createSession();
+        Long teamId = createTeam(sessionId, "orderTeam", 1);
         assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "manualCandidate", "ZERG");
-        updateSession(sessionId, "LIVE", 2, null, null);
+        createCandidate(sessionId, candidateId, "orderCandidate", "ZERG");
+        createOrder(sessionId, 2L, teamId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.update(
+                session.getTitle(),
+                "LIVE",
+                session.getTeamCount(),
+                session.getPickTimeSeconds(),
+                2,
+                null,
+                LocalDateTime.now().plusSeconds(25),
+                LocalDateTime.now().minusMinutes(1),
+                null
+        );
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
                 sessionId,
-                new AuthActor(pickerId, "manualPicker", "ROLE_USER")
+                new AuthActor(pickerId, "orderPicker", "ROLE_USER")
         );
 
-        assertThat(snapshot.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
         assertThat(snapshot.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(snapshot.getSession().getCurrentDraftTeamId()).isNull();
-        assertThat(snapshot.getCurrentTurn()).isNull();
+        assertThat(snapshot.getCurrentTurn()).isNotNull();
+        assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
+        assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamId);
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamId);
-        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
+        assertThat(snapshot.getPermissions().isCanPick()).isTrue();
     }
 
-    private Long createSession(String draftMode) {
+    private Long createSession() {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle("live snapshot session");
         requestDto.setStatus("READY");
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
-        requestDto.setDraftMode(draftMode);
         requestDto.setCurrentPickNo(1);
         return draftService.createSession(requestDto).getData().getId();
     }

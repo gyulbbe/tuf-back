@@ -32,6 +32,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -86,11 +88,14 @@ class DraftLiveCommandServiceTest {
     private DraftLiveCommandService draftLiveCommandService;
 
     @Autowired
+    private DraftSessionRepository draftSessionRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Test
-    void fixedOrder_start_pause_resume_updates_session_state() {
-        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+    void start_pause_resume_updates_session_state() {
+        Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         createTeam(sessionId, "B", 2);
         createOrder(sessionId, 1L, teamAId);
@@ -102,7 +107,6 @@ class DraftLiveCommandServiceTest {
         DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, admin, 15);
 
         assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
-        assertThat(started.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_FIXED_ORDER);
         assertThat(started.getSession().getCurrentPickNo()).isEqualTo(1);
         assertThat(started.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
         assertThat(started.getSession().getDeadlineAt()).isNotNull();
@@ -116,24 +120,26 @@ class DraftLiveCommandServiceTest {
 
     @Test
     void start_rejects_paused_session() {
-        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "pausedA", 1);
+        createOrder(sessionId, 1L, teamAId);
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
 
         draftLiveCommandService.startSession(sessionId, admin);
         draftLiveCommandService.pauseSession(sessionId, admin);
 
         assertThatThrownBy(() -> draftLiveCommandService.startSession(sessionId, admin))
-                .hasMessageContaining("READY 상태");
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void fixedOrder_pick_advances_to_next_team() {
+    void pick_advances_to_next_team() {
         Long pickerAId = createUser("pickerA", "pickerA");
         Long pickerBId = createUser("pickerB", "pickerB");
         Long candidate1Id = createUser("candidate1", "candidate1");
         Long candidate2Id = createUser("candidate2", "candidate2");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "red", 1);
         Long teamBId = createTeam(sessionId, "blue", 2);
         assignPicker(teamAId, pickerAId);
@@ -157,12 +163,12 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
-    void fixedOrder_pick_rejects_non_picker() {
+    void pick_rejects_non_picker() {
         Long pickerId = createUser("pickerA2", "pickerA2");
         Long otherUserId = createUser("otherA2", "otherA2");
         Long candidateId = createUser("candidate3", "candidate3");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_FIXED_ORDER);
+        Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "alpha", 1);
         assignPicker(teamAId, pickerId);
         createCandidate(sessionId, candidateId, "candidate3", "TERRAN");
@@ -171,80 +177,37 @@ class DraftLiveCommandServiceTest {
 
         assertThatThrownBy(() ->
                 draftLiveCommandService.pick(sessionId, candidateId, new AuthActor(otherUserId, "otherA2", "ROLE_USER"))
-        ).hasMessageContaining("픽커");
+        ).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void manualCaptain_start_does_not_require_first_order() {
-        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
+    void start_requires_first_order_to_start() {
+        Long sessionId = createSession();
 
-        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(
+        assertThatThrownBy(() -> draftLiveCommandService.startSession(
                 sessionId,
                 new AuthActor(1L, "admin", "ROLE_ADMIN")
-        );
-
-        assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
-        assertThat(started.getSession().getDraftMode()).isEqualTo(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        assertThat(started.getSession().getCurrentPickNo()).isEqualTo(1);
-        assertThat(started.getSession().getCurrentDraftTeamId()).isNull();
-        assertThat(started.getCurrentTurn()).isNull();
-        assertThat(started.getSession().getDeadlineAt()).isNull();
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void manualCaptain_assignNextPicker_then_pick_waits_for_next_assignment() {
-        Long pickerAId = createUser("manualPickerA", "manualPickerA");
-        Long pickerBId = createUser("manualPickerB", "manualPickerB");
-        Long candidate1Id = createUser("manualCandidate1", "manualCandidate1");
-        Long candidate2Id = createUser("manualCandidate2", "manualCandidate2");
+    void last_pick_finishes_session_when_no_next_order() {
+        Long pickerId = createUser("lastPicker", "lastPicker");
+        Long candidateId = createUser("lastCandidate", "lastCandidate");
 
-        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        Long teamAId = createTeam(sessionId, "manualA", 1);
-        Long teamBId = createTeam(sessionId, "manualB", 2);
-        assignPicker(teamAId, pickerAId);
-        assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidate1Id, "manualCandidate1", "ZERG");
-        createCandidate(sessionId, candidate2Id, "manualCandidate2", "PROTOSS");
+        Long sessionId = createSession();
+        Long teamId = createTeam(sessionId, "lastTeam", 1);
+        assignPicker(teamId, pickerId);
+        createCandidate(sessionId, candidateId, "lastCandidate", "RANDOM");
+        createOrder(sessionId, 1L, teamId);
 
         AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
         draftLiveCommandService.startSession(sessionId, admin);
-
-        DraftLiveSnapshotResponseDto assigned = draftLiveCommandService.assignNextPicker(sessionId, teamAId, admin);
-        assertThat(assigned.getCurrentTurn()).isNotNull();
-        assertThat(assigned.getCurrentTurn().getPickNo()).isEqualTo(1L);
-        assertThat(assigned.getCurrentTurn().getTeamId()).isEqualTo(teamAId);
-
-        DraftLiveSnapshotResponseDto picked = draftLiveCommandService.pick(
-                sessionId,
-                candidate1Id,
-                new AuthActor(pickerAId, "manualPickerA", "ROLE_USER")
-        );
-
-        assertThat(picked.getSession().getStatus()).isEqualTo("LIVE");
-        assertThat(picked.getSession().getCurrentPickNo()).isEqualTo(2);
-        assertThat(picked.getSession().getCurrentDraftTeamId()).isNull();
-        assertThat(picked.getCurrentTurn()).isNull();
-        assertThat(picked.getRecentPicks()).hasSize(1);
-    }
-
-    @Test
-    void manualCaptain_last_pick_finishes_session() {
-        Long pickerAId = createUser("manualLastPicker", "manualLastPicker");
-        Long candidateId = createUser("manualLastCandidate", "manualLastCandidate");
-
-        Long sessionId = createSession(DraftSessionEntity.MODE_MANUAL_CAPTAIN);
-        Long teamAId = createTeam(sessionId, "manualLastTeam", 1);
-        assignPicker(teamAId, pickerAId);
-        createCandidate(sessionId, candidateId, "manualLastCandidate", "RANDOM");
-
-        AuthActor admin = new AuthActor(1L, "admin", "ROLE_ADMIN");
-        draftLiveCommandService.startSession(sessionId, admin);
-        draftLiveCommandService.assignNextPicker(sessionId, teamAId, admin);
 
         DraftLiveSnapshotResponseDto picked = draftLiveCommandService.pick(
                 sessionId,
                 candidateId,
-                new AuthActor(pickerAId, "manualLastPicker", "ROLE_USER")
+                new AuthActor(pickerId, "lastPicker", "ROLE_USER")
         );
 
         assertThat(picked.getSession().getStatus()).isEqualTo("FINISHED");
@@ -252,13 +215,47 @@ class DraftLiveCommandServiceTest {
         assertThat(picked.getSession().getDeadlineAt()).isNull();
     }
 
-    private Long createSession(String draftMode) {
+    @Test
+    void resume_aligns_current_team_from_order_when_current_team_is_null() {
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "legacyA", 1);
+        Long teamBId = createTeam(sessionId, "legacyB", 2);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.update(
+                session.getTitle(),
+                "PAUSED",
+                session.getTeamCount(),
+                session.getPickTimeSeconds(),
+                2,
+                null,
+                null,
+                LocalDateTime.now().minusMinutes(1),
+                null
+        );
+
+        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(
+                sessionId,
+                new AuthActor(1L, "admin", "ROLE_ADMIN"),
+                20
+        );
+
+        assertThat(resumed.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(resumed.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(resumed.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(resumed.getCurrentTurn()).isNotNull();
+        assertThat(resumed.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
+        assertThat(resumed.getSession().getDeadlineAt()).isNotNull();
+    }
+
+    private Long createSession() {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle("live command session");
         requestDto.setStatus("READY");
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
-        requestDto.setDraftMode(draftMode);
         requestDto.setCurrentPickNo(1);
         return draftService.createSession(requestDto).getData().getId();
     }

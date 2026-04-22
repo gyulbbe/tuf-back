@@ -7,20 +7,19 @@ import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
 import io.github.gyulbbe.draft.entity.DraftCandidateId;
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
-import io.github.gyulbbe.draft.entity.DraftOrderId;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
 import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
-import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Service
 @Transactional
@@ -33,7 +32,6 @@ public class DraftLiveCommandService {
     private final DraftOrderRepository draftOrderRepository;
     private final DraftCandidateRepository draftCandidateRepository;
     private final DraftPickRepository draftPickRepository;
-    private final DraftTeamRepository draftTeamRepository;
     private final DraftPermissionService draftPermissionService;
     private final DraftSnapshotService draftSnapshotService;
     private final DraftEventPublisher draftEventPublisher;
@@ -45,59 +43,17 @@ public class DraftLiveCommandService {
 
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         if (!"READY".equals(session.getStatus())) {
-            throw new IllegalArgumentException("READY 상태의 세션만 시작할 수 있습니다.");
+            throw new IllegalArgumentException("READY ?곹깭???몄뀡留??쒖옉?????덉뒿?덈떎.");
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (session.usesManualCaptainMode()) {
-            session.startManual(now);
-        } else {
-            DraftOrderEntity firstOrder = draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 1L)
-                    .orElseThrow(() -> new IllegalArgumentException("첫 번째 드래프트 순서가 없습니다."));
-            session.start(firstOrder.getDraftTeamId(), now, now.plusSeconds(session.getPickTimeSeconds()));
-        }
+        DraftOrderEntity firstOrder = requireOrder(sessionId, 1L);
+        session.start(firstOrder.getDraftTeamId(), now, now.plusSeconds(session.getPickTimeSeconds()));
 
         draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_STARTED, actor, "Draft session started.");
-        return snapshot;
-    }
-
-    public DraftLiveSnapshotResponseDto assignNextPicker(Long sessionId, Long draftTeamId, AuthActor actor) {
-        draftPermissionService.assertAdmin(actor);
-        if (draftTeamId == null) {
-            throw new IllegalArgumentException("팀 ID는 필수입니다.");
-        }
-
-        DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        assertLiveSession(session);
-        assertManualCaptainMode(session);
-        validateTeamBelongsToSession(sessionId, draftTeamId);
-
-        long currentPickNo = requireCurrentPickNo(session);
-        if (draftPickRepository.existsByDraftSessionIdAndPickNo(sessionId, currentPickNo)) {
-            throw new IllegalArgumentException("이미 완료된 픽에는 다음 팀을 지정할 수 없습니다.");
-        }
-
-        DraftOrderId orderId = new DraftOrderId(sessionId, currentPickNo);
-        DraftOrderEntity order = draftOrderRepository.findById(orderId)
-                .map(existing -> {
-                    existing.update(draftTeamId);
-                    return existing;
-                })
-                .orElseGet(() -> DraftOrderEntity.builder()
-                        .draftSessionId(sessionId)
-                        .pickNo(currentPickNo)
-                        .draftTeamId(draftTeamId)
-                        .build());
-        draftOrderRepository.save(order);
-
-        session.advanceTurn((int) currentPickNo, draftTeamId, null);
-
-        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
-        publishAfterCommit(sessionId, DraftLiveEventType.TURN_CHANGED, actor, "Next picker assigned.");
         return snapshot;
     }
 
@@ -121,19 +77,17 @@ public class DraftLiveCommandService {
 
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         if (!"PAUSED".equals(session.getStatus())) {
-            throw new IllegalArgumentException("PAUSED 상태의 세션만 재개할 수 있습니다.");
+            throw new IllegalArgumentException("PAUSED ?곹깭???몄뀡留??ш컻?????덉뒿?덈떎.");
         }
 
-        if (session.usesManualCaptainMode()) {
-            session.resume(null);
-        } else {
-            int resumeSeconds = seconds != null ? seconds : session.getPickTimeSeconds();
-            if (resumeSeconds <= 0) {
-                throw new IllegalArgumentException("재개 시간은 1초 이상이어야 합니다.");
-            }
-            session.resume(LocalDateTime.now().plusSeconds(resumeSeconds));
+        DraftOrderEntity currentOrder = requireCurrentOrder(session);
+        int resumeSeconds = seconds != null ? seconds : session.getPickTimeSeconds();
+        if (resumeSeconds <= 0) {
+            throw new IllegalArgumentException("?ш컻 ?쒓컙? 1珥??댁긽?댁뼱???⑸땲??");
         }
 
+        session.synchronizeCurrentDraftTeam(currentOrder.getDraftTeamId());
+        session.resume(LocalDateTime.now().plusSeconds(resumeSeconds));
         draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
@@ -148,10 +102,10 @@ public class DraftLiveCommandService {
         assertLiveSession(session);
 
         if (seconds == null || seconds <= 0) {
-            throw new IllegalArgumentException("연장 시간은 1초 이상이어야 합니다.");
+            throw new IllegalArgumentException("?곗옣 ?쒓컙? 1珥??댁긽?댁뼱???⑸땲??");
         }
         if (session.getDeadlineAt() == null) {
-            throw new IllegalArgumentException("현재 마감 시간이 없습니다.");
+            throw new IllegalArgumentException("?꾩옱 留덇컧 ?쒓컙???놁뒿?덈떎.");
         }
 
         session.extendDeadlineAt(session.getDeadlineAt().plusSeconds(seconds));
@@ -163,32 +117,26 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto pick(Long sessionId, Long candidateUserId, AuthActor actor) {
         if (candidateUserId == null) {
-            throw new IllegalArgumentException("후보 유저 ID는 필수입니다.");
+            throw new IllegalArgumentException("?꾨낫 ?좎? ID???꾩닔?낅땲??");
         }
         if (actor == null || actor.userPk() == null) {
-            throw new IllegalArgumentException("로그인이 필요합니다.");
+            throw new IllegalArgumentException("濡쒓렇?몄씠 ?꾩슂?⑸땲??");
         }
 
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         assertLiveSession(session);
 
-        Long currentDraftTeamId = session.getCurrentDraftTeamId();
-        if (currentDraftTeamId == null) {
-            throw new IllegalArgumentException("현재 선택 가능한 팀이 없습니다.");
-        }
+        DraftOrderEntity currentOrder = requireCurrentOrder(session);
+        Long currentDraftTeamId = synchronizeCurrentTurnWithOrder(session, currentOrder);
         if (!draftPermissionService.canPickForTeam(currentDraftTeamId, actor.userPk())) {
-            throw new IllegalArgumentException("현재 팀에 지정된 픽커만 선택할 수 있습니다.");
+            throw new IllegalArgumentException("?꾩옱 ???吏?뺣맂 ?쎌빱留??좏깮?????덉뒿?덈떎.");
         }
-
-        DraftOrderEntity currentOrder = draftOrderRepository
-                .findByDraftSessionIdAndPickNo(sessionId, requireCurrentPickNo(session))
-                .orElseThrow(() -> new IllegalArgumentException("현재 드래프트 순서를 찾을 수 없습니다."));
         if (!currentDraftTeamId.equals(currentOrder.getDraftTeamId())) {
-            throw new IllegalArgumentException("세션의 현재 팀과 드래프트 순서가 일치하지 않습니다.");
+            throw new IllegalArgumentException("?몄뀡???꾩옱 ?怨??쒕옒?꾪듃 ?쒖꽌媛 ?쇱튂?섏? ?딆뒿?덈떎.");
         }
 
         DraftCandidateEntity candidate = draftCandidateRepository.findById(new DraftCandidateId(sessionId, candidateUserId))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 후보를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("?쒕옒?꾪듃 ?꾨낫瑜?李얠쓣 ???놁뒿?덈떎."));
         assertCandidatePickable(candidate, sessionId, candidateUserId);
 
         LocalDateTime now = LocalDateTime.now();
@@ -203,11 +151,7 @@ public class DraftLiveCommandService {
         draftPickRepository.save(pick);
 
         candidate.markPicked(currentDraftTeamId, now);
-        if (session.usesManualCaptainMode()) {
-            advanceManualTurnOrFinish(session, now);
-        } else {
-            advanceTurnOrFinish(session, now);
-        }
+        advanceTurnOrFinish(session, now);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
@@ -227,14 +171,8 @@ public class DraftLiveCommandService {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         assertLiveSession(session);
 
-        draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, requireCurrentPickNo(session))
-                .orElseThrow(() -> new IllegalArgumentException("현재 드래프트 순서를 찾을 수 없습니다."));
-
-        if (session.usesManualCaptainMode()) {
-            advanceManualTurnOrFinish(session, LocalDateTime.now());
-        } else {
-            advanceTurnOrFinish(session, LocalDateTime.now());
-        }
+        synchronizeCurrentTurnWithOrder(session, requireCurrentOrder(session));
+        advanceTurnOrFinish(session, LocalDateTime.now());
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
@@ -254,7 +192,7 @@ public class DraftLiveCommandService {
 
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         if ("FINISHED".equals(session.getStatus())) {
-            throw new IllegalArgumentException("이미 종료된 세션입니다.");
+            throw new IllegalArgumentException("?대? 醫낅즺???몄뀡?낅땲??");
         }
 
         session.finish(LocalDateTime.now());
@@ -269,27 +207,21 @@ public class DraftLiveCommandService {
 
     private DraftSessionEntity loadSessionForUpdate(Long sessionId) {
         return draftSessionRepository.findByIdForUpdate(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("?쒕옒?꾪듃 ?몄뀡??李얠쓣 ???놁뒿?덈떎."));
     }
 
     private void assertLiveSession(DraftSessionEntity session) {
         if (!"LIVE".equals(session.getStatus())) {
-            throw new IllegalArgumentException("LIVE 상태의 세션에서만 실행할 수 있습니다.");
-        }
-    }
-
-    private void assertManualCaptainMode(DraftSessionEntity session) {
-        if (!session.usesManualCaptainMode()) {
-            throw new IllegalArgumentException("MANUAL_CAPTAIN 모드 세션에서만 사용할 수 있습니다.");
+            throw new IllegalArgumentException("LIVE ?곹깭???몄뀡?먯꽌留??ㅽ뻾?????덉뒿?덈떎.");
         }
     }
 
     private void assertCandidatePickable(DraftCandidateEntity candidate, Long sessionId, Long candidateUserId) {
         if (draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId)) {
-            throw new IllegalArgumentException("이미 선택된 후보입니다.");
+            throw new IllegalArgumentException("?대? ?좏깮???꾨낫?낅땲??");
         }
         if (!CANDIDATE_WAITING.equals(candidate.getStatus())) {
-            throw new IllegalArgumentException("대기 상태 후보만 선택할 수 있습니다.");
+            throw new IllegalArgumentException("?湲??곹깭 ?꾨낫留??좏깮?????덉뒿?덈떎.");
         }
     }
 
@@ -304,26 +236,28 @@ public class DraftLiveCommandService {
         session.advanceTurn((int) nextPickNo, nextOrder.getDraftTeamId(), now.plusSeconds(session.getPickTimeSeconds()));
     }
 
-    private void advanceManualTurnOrFinish(DraftSessionEntity session, LocalDateTime now) {
-        long waitingCandidates = draftCandidateRepository.countByDraftSessionIdAndStatus(session.getId(), CANDIDATE_WAITING);
-        if (waitingCandidates <= 0) {
-            session.finish(now);
-            return;
-        }
-        session.waitForNextManualTurn(session.getCurrentPickNo() + 1);
-    }
-
     private long requireCurrentPickNo(DraftSessionEntity session) {
         if (session.getCurrentPickNo() == null || session.getCurrentPickNo() <= 0) {
-            throw new IllegalArgumentException("현재 픽 번호가 올바르지 않습니다.");
+            throw new IllegalArgumentException("?꾩옱 ??踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.");
         }
         return session.getCurrentPickNo().longValue();
     }
 
-    private void validateTeamBelongsToSession(Long sessionId, Long draftTeamId) {
-        if (!draftTeamRepository.existsByIdAndDraftSessionId(draftTeamId, sessionId)) {
-            throw new IllegalArgumentException("세션에 속한 팀만 지정할 수 있습니다.");
+    private DraftOrderEntity requireCurrentOrder(DraftSessionEntity session) {
+        return requireOrder(session.getId(), requireCurrentPickNo(session));
+    }
+
+    private DraftOrderEntity requireOrder(Long sessionId, long pickNo) {
+        return draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, pickNo)
+                .orElseThrow(() -> new IllegalArgumentException("?꾩옱 ?쒕옒?꾪듃 ?쒖꽌瑜?李얠쓣 ???놁뒿?덈떎."));
+    }
+
+    private Long synchronizeCurrentTurnWithOrder(DraftSessionEntity session, DraftOrderEntity currentOrder) {
+        Long currentDraftTeamId = currentOrder.getDraftTeamId();
+        if (!Objects.equals(session.getCurrentDraftTeamId(), currentDraftTeamId)) {
+            session.synchronizeCurrentDraftTeam(currentDraftTeamId);
         }
+        return currentDraftTeamId;
     }
 
     private void publishAfterCommit(Long sessionId, DraftLiveEventType type, AuthActor actor, String message) {
