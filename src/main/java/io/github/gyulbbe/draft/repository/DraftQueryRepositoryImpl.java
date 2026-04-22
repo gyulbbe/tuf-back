@@ -2,8 +2,16 @@ package io.github.gyulbbe.draft.repository;
 
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import io.github.gyulbbe.draft.dto.*;
-import io.github.gyulbbe.draft.entity.*;
+import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
+import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
+import io.github.gyulbbe.draft.dto.DraftTeamResponseDto;
+import io.github.gyulbbe.draft.entity.QDraftCandidateEntity;
+import io.github.gyulbbe.draft.entity.QDraftOrderEntity;
+import io.github.gyulbbe.draft.entity.QDraftPickEntity;
+import io.github.gyulbbe.draft.entity.QDraftSessionEntity;
+import io.github.gyulbbe.draft.entity.QDraftTeamEntity;
 import io.github.gyulbbe.user.entity.QUserEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -20,12 +28,15 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     @Override
     public Optional<DraftSessionSummaryResponseDto> findSessionSummary(Long sessionId) {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
+        QUserEntity owner = new QUserEntity("draftSessionOwner");
 
         DraftSessionSummaryResponseDto summary = queryFactory
                 .select(Projections.bean(
                         DraftSessionSummaryResponseDto.class,
                         draftSession.id,
                         draftSession.title,
+                        draftSession.ownerUserId,
+                        owner.name.as("ownerName"),
                         draftSession.status,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
@@ -36,6 +47,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.endedAt
                 ))
                 .from(draftSession)
+                .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
                 .where(draftSession.id.eq(sessionId))
                 .fetchOne();
         return Optional.ofNullable(summary);
@@ -44,12 +56,15 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     @Override
     public List<DraftSessionSummaryResponseDto> findSessionSummaries() {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
+        QUserEntity owner = new QUserEntity("draftSessionOwner");
 
-        List<DraftSessionSummaryResponseDto> summaries = queryFactory
+        return queryFactory
                 .select(Projections.bean(
                         DraftSessionSummaryResponseDto.class,
                         draftSession.id,
                         draftSession.title,
+                        draftSession.ownerUserId,
+                        owner.name.as("ownerName"),
                         draftSession.status,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
@@ -60,9 +75,9 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.endedAt
                 ))
                 .from(draftSession)
+                .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
                 .orderBy(draftSession.id.desc())
                 .fetch();
-        return summaries;
     }
 
     @Override

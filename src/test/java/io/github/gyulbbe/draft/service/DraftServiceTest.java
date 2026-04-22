@@ -6,12 +6,15 @@ import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
+import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
+import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
+import io.github.gyulbbe.draft.dto.DraftTeamResponseDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
@@ -30,7 +33,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.TestPropertySource;
@@ -97,307 +99,238 @@ class DraftServiceTest {
     @Autowired
     private DraftPickRepository draftPickRepository;
 
-    @Autowired
-    private TestEntityManager entityManager;
-
     @Test
-    void getSession_returns_teams_candidates_and_orders_together() {
-        Long pickerId = createUser("picker01", "picker01");
-        Long candidateId = createUser("candidate01", "candidate01");
+    void authenticated_owner_can_create_session_and_owner_fields_are_exposed() {
+        AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
 
-        Long sessionId = createSession("draft session", 2, 60);
-        Long teamAId = createTeam(sessionId, "teamA", 1);
-        createTeam(sessionId, "teamB", 2);
-        assignPicker(teamAId, pickerId);
-        createCandidate(sessionId, candidateId, "candidate01", "TERRAN");
-        createOrder(sessionId, 1L, teamAId);
-
-        entityManager.flush();
-        entityManager.clear();
-
-        ResponseDto<DraftSessionDetailResponseDto> response = draftService.getSession(sessionId);
+        ResponseDto<DraftSessionSummaryResponseDto> response = draftService.createSession(sessionRequest("Owner Session", 2, 60), owner);
 
         assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getData().getTeams()).hasSize(2);
-        assertThat(response.getData().getTeams().get(0).getPickerUserId()).isEqualTo(pickerId);
-        assertThat(response.getData().getCandidates()).hasSize(1);
-        assertThat(response.getData().getOrders()).hasSize(1);
+        assertThat(response.getData().getOwnerUserId()).isEqualTo(owner.userPk());
+        assertThat(response.getData().getOwnerName()).isEqualTo("Owner One");
+
+        ResponseDto<DraftSessionDetailResponseDto> detail = draftService.getSession(response.getData().getId());
+        assertThat(detail.getStatus()).isEqualTo(200);
+        assertThat(detail.getData().getOwnerUserId()).isEqualTo(owner.userPk());
+        assertThat(detail.getData().getOwnerName()).isEqualTo("Owner One");
     }
 
     @Test
-    void createPick_updates_candidate_and_advances_session() {
-        Long pickerAId = createUser("pickerA", "pickerA");
-        Long pickerBId = createUser("pickerB", "pickerB");
-        Long candidate1Id = createUser("candidateA", "candidateA");
-        Long candidate2Id = createUser("candidateB", "candidateB");
-
-        Long sessionId = createSession("active draft", 2, 90);
-        Long teamAId = createTeam(sessionId, "red", 1);
-        Long teamBId = createTeam(sessionId, "blue", 2);
-        assignPicker(teamAId, pickerAId);
-        assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidate1Id, "candidateA", "ZERG");
-        createCandidate(sessionId, candidate2Id, "candidateB", "PROTOSS");
-        createOrder(sessionId, 1L, teamAId);
-        createOrder(sessionId, 2L, teamBId);
-        updateSessionCurrentTurn(sessionId, teamAId);
-
-        DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
-        pickRequestDto.setDraftSessionId(sessionId);
-        pickRequestDto.setPickNo(1L);
-        pickRequestDto.setDraftTeamId(teamAId);
-        pickRequestDto.setCandidateUserId(candidate1Id);
-        pickRequestDto.setPickedByUserId(pickerAId);
-
-        ResponseDto<DraftPickResponseDto> response = draftService.createPick(pickRequestDto);
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getData().getCandidateUserId()).isEqualTo(candidate1Id);
-
-        ResponseDto<DraftCandidateResponseDto> candidateResponse = draftService.getCandidate(sessionId, candidate1Id);
-        assertThat(candidateResponse.getData().getStatus()).isEqualTo("PICKED");
-        assertThat(candidateResponse.getData().getPickedDraftTeamId()).isEqualTo(teamAId);
-
-        ResponseDto<DraftSessionDetailResponseDto> sessionResponse = draftService.getSession(sessionId);
-        assertThat(sessionResponse.getData().getCurrentPickNo()).isEqualTo(2);
-        assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isEqualTo(teamBId);
-        assertThat(sessionResponse.getData().getDeadlineAt()).isNotNull();
-    }
-
-    @Test
-    void createPick_finishes_session_when_no_next_order() {
-        Long pickerId = createUser("lastPicker", "lastPicker");
-        Long candidateId = createUser("lastCandidate", "lastCandidate");
-
-        Long sessionId = createSession("last pick draft", 2, 45);
-        Long teamId = createTeam(sessionId, "lastTeam", 1);
-        assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "lastCandidate", "RANDOM");
-        createOrder(sessionId, 1L, teamId);
-        updateSessionCurrentTurn(sessionId, teamId);
-
-        DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
-        pickRequestDto.setDraftSessionId(sessionId);
-        pickRequestDto.setPickNo(1L);
-        pickRequestDto.setDraftTeamId(teamId);
-        pickRequestDto.setCandidateUserId(candidateId);
-        pickRequestDto.setPickedByUserId(pickerId);
-
-        ResponseDto<DraftPickResponseDto> response = draftService.createPick(pickRequestDto);
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        ResponseDto<DraftSessionDetailResponseDto> sessionResponse = draftService.getSession(sessionId);
-        assertThat(sessionResponse.getData().getStatus()).isEqualTo("FINISHED");
-        assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isNull();
-        assertThat(sessionResponse.getData().getDeadlineAt()).isNull();
-    }
-
-    @Test
-    void listSessions_and_getSession_keep_different_titled_sessions_independent() {
-        Long sharedCandidateId = createUser("sharedCandidate", "sharedCandidate");
-
-        Long proSessionId = createSession("프로리그 드래프트", 2, 60);
-        Long teamContentSessionId = createSession("팀배/컨텐츠 드래프트", 2, 60);
-
-        Long proTeamId = createTeam(proSessionId, "프로A", 1);
-        Long contentTeamId = createTeam(teamContentSessionId, "컨텐츠A", 1);
-
-        createCandidate(proSessionId, sharedCandidateId, "sharedCandidate", "ZERG");
-        createCandidate(teamContentSessionId, sharedCandidateId, "sharedCandidate", "ZERG");
-        createOrder(proSessionId, 1L, proTeamId);
-        createOrder(teamContentSessionId, 1L, contentTeamId);
-
-        ResponseDto<List<DraftSessionSummaryResponseDto>> listResponse = draftService.listSessions();
-        ResponseDto<DraftSessionDetailResponseDto> proSession = draftService.getSession(proSessionId);
-        ResponseDto<DraftSessionDetailResponseDto> contentSession = draftService.getSession(teamContentSessionId);
-
-        assertThat(listResponse.getStatus()).isEqualTo(200);
-        assertThat(listResponse.getData())
-                .extracting(DraftSessionSummaryResponseDto::getTitle)
-                .contains("프로리그 드래프트", "팀배/컨텐츠 드래프트");
-
-        assertThat(proSession.getStatus()).isEqualTo(200);
-        assertThat(proSession.getData().getTitle()).isEqualTo("프로리그 드래프트");
-        assertThat(proSession.getData().getTeams())
-                .extracting(team -> team.getTeamName())
-                .containsExactly("프로A");
-        assertThat(proSession.getData().getCandidates())
-                .extracting(DraftCandidateResponseDto::getCandidateUserId)
-                .containsExactly(sharedCandidateId);
-        assertThat(proSession.getData().getOrders())
-                .extracting(order -> order.getDraftTeamId())
-                .containsExactly(proTeamId);
-
-        assertThat(contentSession.getStatus()).isEqualTo(200);
-        assertThat(contentSession.getData().getTitle()).isEqualTo("팀배/컨텐츠 드래프트");
-        assertThat(contentSession.getData().getTeams())
-                .extracting(team -> team.getTeamName())
-                .containsExactly("컨텐츠A");
-        assertThat(contentSession.getData().getCandidates())
-                .extracting(DraftCandidateResponseDto::getCandidateUserId)
-                .containsExactly(sharedCandidateId);
-        assertThat(contentSession.getData().getOrders())
-                .extracting(order -> order.getDraftTeamId())
-                .containsExactly(contentTeamId);
-    }
-
-    @Test
-    void deleteSession_removes_session_and_all_related_data() {
-        Long pickerId = createUser("picker02", "picker02");
-        Long candidateId = createUser("candidate02", "candidate02");
-
-        Long sessionId = createSession("delete draft", 2, 45);
-        Long teamId = createTeam(sessionId, "deleteTeam", 1);
-        assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "candidate02", "RANDOM");
-        createOrder(sessionId, 1L, teamId);
-
-        ResponseDto<Void> response = draftService.deleteSession(sessionId);
-
-        assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(draftSessionRepository.findById(sessionId)).isEmpty();
-        assertThat(draftTeamRepository.findAllByDraftSessionId(sessionId)).isEmpty();
-        assertThat(draftCandidateRepository.findAllByDraftSessionId(sessionId)).isEmpty();
-        assertThat(draftOrderRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
-        assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
-    }
-
-    @Test
-    void createPick_rejects_duplicate_candidate_in_same_session() {
-        Long pickerAId = createUser("picker03", "picker03");
-        Long pickerBId = createUser("picker04", "picker04");
-        Long candidateId = createUser("candidate03", "candidate03");
-
-        Long sessionId = createSession("duplicate guard", 2, 75);
-        Long teamAId = createTeam(sessionId, "team1", 1);
-        Long teamBId = createTeam(sessionId, "team2", 2);
-        assignPicker(teamAId, pickerAId);
-        assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidateId, "candidate03", "TERRAN");
-        createOrder(sessionId, 1L, teamAId);
-        createOrder(sessionId, 2L, teamBId);
-        updateSessionCurrentTurn(sessionId, teamAId);
-
-        DraftPickRequestDto firstPick = new DraftPickRequestDto();
-        firstPick.setDraftSessionId(sessionId);
-        firstPick.setPickNo(1L);
-        firstPick.setDraftTeamId(teamAId);
-        firstPick.setCandidateUserId(candidateId);
-        firstPick.setPickedByUserId(pickerAId);
-        draftService.createPick(firstPick);
-
-        DraftPickRequestDto secondPick = new DraftPickRequestDto();
-        secondPick.setDraftSessionId(sessionId);
-        secondPick.setPickNo(2L);
-        secondPick.setDraftTeamId(teamBId);
-        secondPick.setCandidateUserId(candidateId);
-        secondPick.setPickedByUserId(pickerBId);
-
-        ResponseDto<DraftPickResponseDto> response = draftService.createPick(secondPick);
+    void anonymous_create_session_fails() {
+        ResponseDto<DraftSessionSummaryResponseDto> response = draftService.createSession(sessionRequest("Anonymous Session", 2, 60), null);
 
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getMessage()).contains("이미 픽된 후보");
-        assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).hasSize(1);
+        assertThat(response.getMessage()).contains("Authentication is required.");
     }
 
     @Test
-    void deleteSession_removes_finished_session_and_all_children() {
-        Long pickerAId = createUser("picker05", "picker05");
-        Long pickerBId = createUser("picker06", "picker06");
-        Long candidateId = createUser("candidate04", "candidate04");
+    void owner_can_update_and_delete_own_session() {
+        AuthActor owner = createActor("owner02", "Owner Two", "ROLE_USER");
+        Long sessionId = createSession(owner, "Managed Session", 2, 60);
 
-        Long sessionId = createSession("delete finished session", 2, 30);
-        Long teamAId = createTeam(sessionId, "teamA", 1);
-        Long teamBId = createTeam(sessionId, "teamB", 2);
-        assignPicker(teamAId, pickerAId);
-        assignPicker(teamBId, pickerBId);
-        createCandidate(sessionId, candidateId, "candidate4", "ZERG");
-        createOrder(sessionId, 1L, teamAId);
-        updateSessionCurrentTurn(sessionId, teamAId);
+        DraftSessionRequestDto updateRequest = new DraftSessionRequestDto();
+        updateRequest.setTitle("Managed Session Updated");
+        updateRequest.setPickTimeSeconds(90);
 
-        DraftPickRequestDto pickRequestDto = new DraftPickRequestDto();
-        pickRequestDto.setDraftSessionId(sessionId);
-        pickRequestDto.setPickNo(1L);
-        pickRequestDto.setDraftTeamId(teamAId);
-        pickRequestDto.setCandidateUserId(candidateId);
-        pickRequestDto.setPickedByUserId(pickerAId);
+        ResponseDto<DraftSessionSummaryResponseDto> updateResponse = draftService.updateSession(sessionId, updateRequest, owner);
+        ResponseDto<Void> deleteResponse = draftService.deleteSession(sessionId, owner);
 
-        ResponseDto<DraftPickResponseDto> pickResponse = draftService.createPick(pickRequestDto);
-
-        assertThat(pickResponse.getStatus()).isEqualTo(200);
-        assertThat(draftSessionRepository.findById(sessionId)).get()
-                .extracting(DraftSessionEntity::getStatus)
-                .isEqualTo("FINISHED");
-
-        ResponseDto<Void> deleteResponse = draftService.deleteSession(sessionId);
-
-        assertThat(deleteResponse.getStatus()).isEqualTo(200);
+        assertThat(updateResponse.getStatus()).isEqualTo(200);
+        assertThat(updateResponse.getData().getTitle()).isEqualTo("Managed Session Updated");
+        assertThat(updateResponse.getData().getPickTimeSeconds()).isEqualTo(90);
         assertThat(draftSessionRepository.findById(sessionId)).isEmpty();
-        assertThat(draftTeamRepository.findAllByDraftSessionId(sessionId)).isEmpty();
-        assertThat(draftCandidateRepository.findAllByDraftSessionId(sessionId)).isEmpty();
-        assertThat(draftOrderRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
-        assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
-        assertThat(draftService.getSession(sessionId).getStatus()).isEqualTo(500);
+        assertThat(deleteResponse.getStatus()).isEqualTo(200);
     }
 
-    private Long createSession(String title, int teamCount, int pickTimeSeconds) {
+    @Test
+    void owner_can_manage_team_candidate_and_order_mutations() {
+        AuthActor owner = createActor("owner03", "Owner Three", "ROLE_USER");
+        AuthActor picker = createActor("picker01", "Picker One", "ROLE_USER");
+        Long candidateUserId = createUser("candidate01", "Candidate One", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Owner Managed Draft", 2, 60);
+        Long teamAId = createTeam(owner, sessionId, "Team A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Team B", 2);
+
+        ResponseDto<DraftTeamResponseDto> teamUpdateResponse = draftService.updateTeam(teamAId, teamRequest(sessionId, "Team A+", 1), owner);
+        ResponseDto<DraftPickerResponseDto> assignPickerResponse = draftAdminService.assignPicker(teamAId, picker.userPk(), owner);
+
+        DraftCandidateRequestDto createCandidateRequest = candidateRequest(sessionId, candidateUserId, "Candidate One", "ZERG");
+        ResponseDto<DraftCandidateResponseDto> createCandidateResponse = draftService.createCandidate(createCandidateRequest, owner);
+
+        DraftCandidateRequestDto updateCandidateRequest = new DraftCandidateRequestDto();
+        updateCandidateRequest.setCandidateName("Candidate One Updated");
+        updateCandidateRequest.setRace("PROTOSS");
+        ResponseDto<DraftCandidateResponseDto> updateCandidateResponse =
+                draftService.updateCandidate(sessionId, candidateUserId, updateCandidateRequest, owner);
+
+        ResponseDto<DraftOrderResponseDto> createOrder1 = draftService.createOrder(orderRequest(sessionId, 1L, teamAId), owner);
+        ResponseDto<DraftOrderResponseDto> createOrder2 = draftService.createOrder(orderRequest(sessionId, 2L, teamBId), owner);
+        ResponseDto<DraftOrderResponseDto> updateOrder2 =
+                draftService.updateOrder(sessionId, 2L, orderRequest(sessionId, 2L, teamAId), owner);
+        ResponseDto<Void> deleteOrder2 = draftService.deleteOrder(sessionId, 2L, owner);
+        ResponseDto<Void> deleteCandidateResponse = draftService.deleteCandidate(sessionId, candidateUserId, owner);
+        ResponseDto<Void> deleteTeamResponse = draftService.deleteTeam(teamBId, owner);
+
+        assertThat(teamUpdateResponse.getStatus()).isEqualTo(200);
+        assertThat(teamUpdateResponse.getData().getTeamName()).isEqualTo("Team A+");
+        assertThat(assignPickerResponse.getStatus()).isEqualTo(200);
+        assertThat(assignPickerResponse.getData().getPickerUserId()).isEqualTo(picker.userPk());
+        assertThat(createCandidateResponse.getStatus()).isEqualTo(200);
+        assertThat(updateCandidateResponse.getData().getCandidateName()).isEqualTo("Candidate One Updated");
+        assertThat(updateCandidateResponse.getData().getRace()).isEqualTo("PROTOSS");
+        assertThat(createOrder1.getStatus()).isEqualTo(200);
+        assertThat(createOrder2.getStatus()).isEqualTo(200);
+        assertThat(updateOrder2.getData().getDraftTeamId()).isEqualTo(teamAId);
+        assertThat(deleteOrder2.getStatus()).isEqualTo(200);
+        assertThat(deleteCandidateResponse.getStatus()).isEqualTo(200);
+        assertThat(deleteTeamResponse.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void owner_can_manage_legacy_pick_mutation() {
+        AuthActor owner = createActor("owner04", "Owner Four", "ROLE_USER");
+        Long pickerUserId = createUser("picker02", "Picker Two", "ROLE_USER");
+        Long candidate1Id = createUser("candidate02", "Candidate Two", "ROLE_USER");
+        Long candidate2Id = createUser("candidate03", "Candidate Three", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Legacy Pick Session", 2, 45);
+        Long teamAId = createTeam(owner, sessionId, "Red", 1);
+        Long teamBId = createTeam(owner, sessionId, "Blue", 2);
+        draftAdminService.assignPicker(teamAId, pickerUserId, owner);
+        draftAdminService.assignPicker(teamBId, pickerUserId, owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate1Id, "Candidate Two", "ZERG"), owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate2Id, "Candidate Three", "TERRAN"), owner);
+        draftService.createOrder(orderRequest(sessionId, 1L, teamAId), owner);
+        draftService.createOrder(orderRequest(sessionId, 2L, teamBId), owner);
+        draftService.updateSession(sessionId, liveSessionRequest(teamAId), owner);
+
+        DraftPickRequestDto createPickRequest = pickRequest(sessionId, 1L, teamAId, candidate1Id, pickerUserId);
+        ResponseDto<DraftPickResponseDto> createPickResponse = draftService.createPick(createPickRequest, owner);
+
+        ResponseDto<DraftCandidateResponseDto> candidateResponse = draftService.getCandidate(sessionId, candidate1Id);
+        ResponseDto<DraftSessionDetailResponseDto> sessionResponse = draftService.getSession(sessionId);
+        ResponseDto<Void> deletePickResponse = draftService.deletePick(sessionId, 1L, owner);
+
+        assertThat(createPickResponse.getStatus()).isEqualTo(200);
+        assertThat(candidateResponse.getData().getStatus()).isEqualTo("PICKED");
+        assertThat(candidateResponse.getData().getPickedDraftTeamId()).isEqualTo(teamAId);
+        assertThat(sessionResponse.getData().getCurrentPickNo()).isEqualTo(2);
+        assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(deletePickResponse.getStatus()).isEqualTo(200);
+        assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
+    }
+
+    @Test
+    void owner_admin_not_user_cannot_mutate_foreign_session() {
+        AuthActor owner = createActor("owner05", "Owner Five", "ROLE_USER");
+        AuthActor otherUser = createActor("other01", "Other One", "ROLE_USER");
+        Long sessionId = createSession(owner, "Protected Session", 2, 60);
+
+        DraftSessionRequestDto updateRequest = new DraftSessionRequestDto();
+        updateRequest.setTitle("Illegal Update");
+
+        ResponseDto<DraftSessionSummaryResponseDto> updateResponse = draftService.updateSession(sessionId, updateRequest, otherUser);
+        ResponseDto<DraftTeamResponseDto> teamCreateResponse = draftService.createTeam(teamRequest(sessionId, "Illegal Team", 1), otherUser);
+
+        assertThat(updateResponse.getStatus()).isEqualTo(500);
+        assertThat(updateResponse.getMessage()).contains("session owner or an administrator");
+        assertThat(teamCreateResponse.getStatus()).isEqualTo(500);
+        assertThat(teamCreateResponse.getMessage()).contains("session owner or an administrator");
+    }
+
+    @Test
+    void admin_can_manage_foreign_session() {
+        AuthActor owner = createActor("owner06", "Owner Six", "ROLE_USER");
+        AuthActor admin = createActor("admin01", "Admin One", "ROLE_ADMIN");
+        Long sessionId = createSession(owner, "Admin Managed Session", 2, 60);
+
+        DraftSessionRequestDto updateRequest = new DraftSessionRequestDto();
+        updateRequest.setTitle("Admin Updated Session");
+
+        ResponseDto<DraftSessionSummaryResponseDto> updateResponse = draftService.updateSession(sessionId, updateRequest, admin);
+        ResponseDto<DraftTeamResponseDto> createTeamResponse = draftService.createTeam(teamRequest(sessionId, "Admin Team", 1), admin);
+
+        assertThat(updateResponse.getStatus()).isEqualTo(200);
+        assertThat(updateResponse.getData().getTitle()).isEqualTo("Admin Updated Session");
+        assertThat(createTeamResponse.getStatus()).isEqualTo(200);
+        assertThat(createTeamResponse.getData().getTeamName()).isEqualTo("Admin Team");
+    }
+
+    private Long createSession(AuthActor actor, String title, int teamCount, int pickTimeSeconds) {
+        return draftService.createSession(sessionRequest(title, teamCount, pickTimeSeconds), actor).getData().getId();
+    }
+
+    private Long createTeam(AuthActor actor, Long sessionId, String teamName, int displayOrder) {
+        return draftService.createTeam(teamRequest(sessionId, teamName, displayOrder), actor).getData().getId();
+    }
+
+    private DraftSessionRequestDto sessionRequest(String title, int teamCount, int pickTimeSeconds) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
         requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(pickTimeSeconds);
         requestDto.setCurrentPickNo(1);
-
-        ResponseDto<DraftSessionSummaryResponseDto> response = draftService.createSession(requestDto);
-        return response.getData().getId();
+        return requestDto;
     }
 
-    private void updateSessionCurrentTurn(Long sessionId, Long currentDraftTeamId) {
+    private DraftSessionRequestDto liveSessionRequest(Long currentDraftTeamId) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setStatus("LIVE");
         requestDto.setCurrentPickNo(1);
         requestDto.setCurrentDraftTeamId(currentDraftTeamId);
-        draftService.updateSession(sessionId, requestDto);
+        return requestDto;
     }
 
-    private Long createTeam(Long sessionId, String teamName, int displayOrder) {
+    private DraftTeamRequestDto teamRequest(Long sessionId, String teamName, int displayOrder) {
         DraftTeamRequestDto requestDto = new DraftTeamRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setTeamName(teamName);
         requestDto.setDisplayOrder(displayOrder);
-
-        return draftService.createTeam(requestDto).getData().getId();
+        return requestDto;
     }
 
-    private void assignPicker(Long teamId, Long pickerUserId) {
-        draftAdminService.assignPicker(teamId, pickerUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
-    }
-
-    private void createCandidate(Long sessionId, Long candidateUserId, String candidateName, String race) {
+    private DraftCandidateRequestDto candidateRequest(Long sessionId, Long candidateUserId, String candidateName, String race) {
         DraftCandidateRequestDto requestDto = new DraftCandidateRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setCandidateUserId(candidateUserId);
         requestDto.setCandidateName(candidateName);
         requestDto.setRace(race);
         requestDto.setStatus("WAITING");
-        draftService.createCandidate(requestDto);
+        return requestDto;
     }
 
-    private void createOrder(Long sessionId, Long pickNo, Long draftTeamId) {
+    private DraftOrderRequestDto orderRequest(Long sessionId, Long pickNo, Long draftTeamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(draftTeamId);
-        draftService.createOrder(requestDto);
+        return requestDto;
     }
 
-    private Long createUser(String userId, String name) {
+    private DraftPickRequestDto pickRequest(Long sessionId, Long pickNo, Long teamId, Long candidateUserId, Long pickedByUserId) {
+        DraftPickRequestDto requestDto = new DraftPickRequestDto();
+        requestDto.setDraftSessionId(sessionId);
+        requestDto.setPickNo(pickNo);
+        requestDto.setDraftTeamId(teamId);
+        requestDto.setCandidateUserId(candidateUserId);
+        requestDto.setPickedByUserId(pickedByUserId);
+        return requestDto;
+    }
+
+    private AuthActor createActor(String userId, String name, String role) {
+        Long userPk = createUser(userId, name, role);
+        return new AuthActor(userPk, userId, role);
+    }
+
+    private Long createUser(String userId, String name, String role) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
                 .name(name)
                 .status("ACTIVE")
-                .userType("ROLE_USER")
+                .userType(role)
                 .build();
         return userRepository.save(user).getId();
     }

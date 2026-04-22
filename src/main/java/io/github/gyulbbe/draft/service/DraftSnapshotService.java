@@ -38,7 +38,7 @@ public class DraftSnapshotService {
 
     public DraftLiveSnapshotResponseDto getSnapshot(Long sessionId, AuthActor actor) {
         DraftSessionSummaryResponseDto sessionSummary = draftQueryRepository.findSessionSummary(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
 
         List<DraftTeamResponseDto> teamDtos = draftQueryRepository.findTeamsBySessionId(sessionId);
         List<DraftCandidateResponseDto> candidates = draftQueryRepository.findCandidatesBySessionId(sessionId);
@@ -57,7 +57,7 @@ public class DraftSnapshotService {
         snapshot.setAvailableCandidates(filterCandidatesByStatus(candidates, "WAITING"));
         snapshot.setPickedCandidates(filterCandidatesByStatus(candidates, "PICKED"));
         snapshot.setRecentPicks(buildRecentPicks(picks));
-        snapshot.setPermissions(buildPermissions(actor, currentTurn != null ? currentTurn.getTeamId() : null, snapshot.getTeams()));
+        snapshot.setPermissions(buildPermissions(sessionSummary, actor, currentTurn != null ? currentTurn.getTeamId() : null, snapshot.getTeams()));
         return snapshot;
     }
 
@@ -176,12 +176,18 @@ public class DraftSnapshotService {
     }
 
     private DraftLivePermissionsResponseDto buildPermissions(
+            DraftSessionSummaryResponseDto sessionSummary,
             AuthActor actor,
             Long currentTurnTeamId,
             List<DraftLiveTeamResponseDto> teams
     ) {
         DraftLivePermissionsResponseDto permissions = new DraftLivePermissionsResponseDto();
-        permissions.setCanControl(draftPermissionService.isAdmin(actor));
+        permissions.setCanControl(
+                draftPermissionService.isAdmin(actor)
+                        || (actor != null
+                        && actor.userPk() != null
+                        && Objects.equals(sessionSummary.getOwnerUserId(), actor.userPk()))
+        );
 
         if (actor == null || actor.userPk() == null || teams.isEmpty()) {
             permissions.setCanPick(false);

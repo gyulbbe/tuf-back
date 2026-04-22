@@ -1,6 +1,7 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
@@ -57,13 +58,16 @@ public class DraftService {
     private final DraftQueryRepository draftQueryRepository;
     private final UserRepository userRepository;
     private final DraftLiveSessionTracker draftLiveSessionTracker;
+    private final DraftPermissionService draftPermissionService;
 
-    public ResponseDto<DraftSessionSummaryResponseDto> createSession(DraftSessionRequestDto requestDto) {
+    public ResponseDto<DraftSessionSummaryResponseDto> createSession(DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
+            draftPermissionService.assertAuthenticated(actor);
             validateSessionRequest(requestDto, false);
 
             DraftSessionEntity entity = DraftSessionEntity.builder()
                     .title(requestDto.getTitle())
+                    .ownerUserId(actor.userPk())
                     .status(defaultIfBlank(requestDto.getStatus(), "READY"))
                     .teamCount(requestDto.getTeamCount())
                     .pickTimeSeconds(requestDto.getPickTimeSeconds())
@@ -80,7 +84,7 @@ public class DraftService {
             }
             return ResponseDto.success(requireSessionSummary(saved.getId()));
         } catch (Exception e) {
-            log.error("드래프트 세션 생성 실패", e);
+            log.error("Failed to create draft session.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -90,7 +94,7 @@ public class DraftService {
         try {
             return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 세션 조회 실패", e);
+            log.error("Failed to get draft session.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -100,19 +104,20 @@ public class DraftService {
         try {
             return ResponseDto.success(draftQueryRepository.findSessionSummaries());
         } catch (Exception e) {
-            log.error("드래프트 세션 목록 조회 실패", e);
+            log.error("Failed to list draft sessions.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftSessionSummaryResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto) {
+    public ResponseDto<DraftSessionSummaryResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
-            DraftSessionEntity entity = getSessionEntity(sessionId);
+            DraftSessionEntity entity = getSessionEntityForUpdate(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(entity, actor);
             validateSessionRequest(requestDto, true);
 
             Long currentDraftTeamId = requestDto.getCurrentDraftTeamId();
             if (currentDraftTeamId != null && !draftTeamRepository.existsByIdAndDraftSessionId(currentDraftTeamId, sessionId)) {
-                throw new IllegalArgumentException("현재 드래프트 팀은 같은 세션 소속이어야 합니다.");
+                throw new IllegalArgumentException("Current draft team does not belong to this session.");
             }
 
             entity.update(
@@ -135,14 +140,15 @@ public class DraftService {
 
             return ResponseDto.success(requireSessionSummary(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 세션 수정 실패", e);
+            log.error("Failed to update draft session. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteSession(Long sessionId) {
+    public ResponseDto<Void> deleteSession(Long sessionId, AuthActor actor) {
         try {
             DraftSessionEntity session = getSessionEntityForUpdate(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftSessionDeleteStats deleteStats = collectDeleteStats(session);
             log.info(
                     "Deleting draft session. sessionId={}, status={}, currentDraftTeamId={}, picks={}, orders={}, candidates={}, teams={}",
@@ -176,15 +182,16 @@ public class DraftService {
 
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 세션 삭제 실패", e);
+            log.error("Failed to delete draft session. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftTeamResponseDto> createTeam(DraftTeamRequestDto requestDto) {
+    public ResponseDto<DraftTeamResponseDto> createTeam(DraftTeamRequestDto requestDto, AuthActor actor) {
         try {
             validateTeamRequest(requestDto);
-            getSessionEntity(requestDto.getDraftSessionId());
+            DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
 
             DraftTeamEntity entity = DraftTeamEntity.builder()
                     .draftSessionId(requestDto.getDraftSessionId())
@@ -196,7 +203,7 @@ public class DraftService {
             DraftTeamEntity saved = draftTeamRepository.save(entity);
             return ResponseDto.success(requireTeam(saved.getId()));
         } catch (Exception e) {
-            log.error("드래프트 팀 생성 실패", e);
+            log.error("Failed to create draft team.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -206,7 +213,7 @@ public class DraftService {
         try {
             return ResponseDto.success(requireTeam(teamId));
         } catch (Exception e) {
-            log.error("드래프트 팀 조회 실패", e);
+            log.error("Failed to get draft team. teamId={}", teamId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -217,16 +224,19 @@ public class DraftService {
             getSessionEntity(sessionId);
             return ResponseDto.success(loadTeams(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 팀 목록 조회 실패", e);
+            log.error("Failed to list draft teams. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftTeamResponseDto> updateTeam(Long teamId, DraftTeamRequestDto requestDto) {
+    public ResponseDto<DraftTeamResponseDto> updateTeam(Long teamId, DraftTeamRequestDto requestDto, AuthActor actor) {
         try {
             DraftTeamEntity entity = getTeamEntity(teamId);
+            DraftSessionEntity session = getSessionEntity(entity.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
+
             if (requestDto.getDisplayOrder() != null && requestDto.getDisplayOrder() <= 0) {
-                throw new IllegalArgumentException("팀 표시 순서는 1 이상이어야 합니다.");
+                throw new IllegalArgumentException("Display order must be greater than 0.");
             }
 
             entity.update(
@@ -236,31 +246,34 @@ public class DraftService {
 
             return ResponseDto.success(requireTeam(teamId));
         } catch (Exception e) {
-            log.error("드래프트 팀 수정 실패", e);
+            log.error("Failed to update draft team. teamId={}", teamId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteTeam(Long teamId) {
+    public ResponseDto<Void> deleteTeam(Long teamId, AuthActor actor) {
         try {
             DraftTeamEntity team = getTeamEntity(teamId);
             DraftSessionEntity session = getSessionEntity(team.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
+
             if (Objects.equals(session.getCurrentDraftTeamId(), teamId)) {
-                throw new IllegalArgumentException("현재 차례 팀은 삭제할 수 없습니다.");
+                throw new IllegalArgumentException("The current draft team cannot be deleted.");
             }
 
             draftTeamRepository.delete(team);
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 팀 삭제 실패", e);
+            log.error("Failed to delete draft team. teamId={}", teamId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftCandidateResponseDto> createCandidate(DraftCandidateRequestDto requestDto) {
+    public ResponseDto<DraftCandidateResponseDto> createCandidate(DraftCandidateRequestDto requestDto, AuthActor actor) {
         try {
             validateCandidateRequest(requestDto, false);
-            getSessionEntity(requestDto.getDraftSessionId());
+            DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             getUserEntity(requestDto.getCandidateUserId());
             validatePickedTeamBelongsToSession(requestDto.getDraftSessionId(), requestDto.getPickedDraftTeamId());
 
@@ -277,7 +290,7 @@ public class DraftService {
             draftCandidateRepository.save(entity);
             return ResponseDto.success(requireCandidate(requestDto.getDraftSessionId(), requestDto.getCandidateUserId()));
         } catch (Exception e) {
-            log.error("드래프트 후보 생성 실패", e);
+            log.error("Failed to create draft candidate.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -287,7 +300,7 @@ public class DraftService {
         try {
             return ResponseDto.success(requireCandidate(sessionId, candidateUserId));
         } catch (Exception e) {
-            log.error("드래프트 후보 조회 실패", e);
+            log.error("Failed to get draft candidate. sessionId={}, candidateUserId={}", sessionId, candidateUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -298,19 +311,26 @@ public class DraftService {
             getSessionEntity(sessionId);
             return ResponseDto.success(draftQueryRepository.findCandidatesBySessionId(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 후보 목록 조회 실패", e);
+            log.error("Failed to list draft candidates. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftCandidateResponseDto> updateCandidate(Long sessionId, Long candidateUserId, DraftCandidateRequestDto requestDto) {
+    public ResponseDto<DraftCandidateResponseDto> updateCandidate(
+            Long sessionId,
+            Long candidateUserId,
+            DraftCandidateRequestDto requestDto,
+            AuthActor actor
+    ) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftCandidateEntity entity = getCandidateEntity(sessionId, candidateUserId);
             validateCandidateRequest(requestDto, true);
 
             boolean pickedExists = draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId);
             if (pickedExists && (requestDto.getStatus() != null || requestDto.getPickedDraftTeamId() != null || requestDto.getPickedAt() != null)) {
-                throw new IllegalArgumentException("이미 픽된 후보의 상태는 직접 수정할 수 없습니다.");
+                throw new IllegalArgumentException("Picked candidates cannot be updated directly.");
             }
 
             String status = requestDto.getStatus() != null ? requestDto.getStatus() : entity.getStatus();
@@ -329,29 +349,32 @@ public class DraftService {
 
             return ResponseDto.success(requireCandidate(sessionId, candidateUserId));
         } catch (Exception e) {
-            log.error("드래프트 후보 수정 실패", e);
+            log.error("Failed to update draft candidate. sessionId={}, candidateUserId={}", sessionId, candidateUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteCandidate(Long sessionId, Long candidateUserId) {
+    public ResponseDto<Void> deleteCandidate(Long sessionId, Long candidateUserId, AuthActor actor) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftCandidateEntity entity = getCandidateEntity(sessionId, candidateUserId);
             if (draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId)) {
-                throw new IllegalArgumentException("이미 픽된 후보는 삭제할 수 없습니다.");
+                throw new IllegalArgumentException("Picked candidates cannot be deleted.");
             }
             draftCandidateRepository.delete(entity);
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 후보 삭제 실패", e);
+            log.error("Failed to delete draft candidate. sessionId={}, candidateUserId={}", sessionId, candidateUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftOrderResponseDto> createOrder(DraftOrderRequestDto requestDto) {
+    public ResponseDto<DraftOrderResponseDto> createOrder(DraftOrderRequestDto requestDto, AuthActor actor) {
         try {
             validateOrderRequest(requestDto);
-            getSessionEntity(requestDto.getDraftSessionId());
+            DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             validateTeamBelongsToSession(requestDto.getDraftSessionId(), requestDto.getDraftTeamId());
 
             DraftOrderEntity entity = DraftOrderEntity.builder()
@@ -363,7 +386,7 @@ public class DraftService {
             draftOrderRepository.save(entity);
             return ResponseDto.success(requireOrder(requestDto.getDraftSessionId(), requestDto.getPickNo()));
         } catch (Exception e) {
-            log.error("드래프트 순서 생성 실패", e);
+            log.error("Failed to create draft order.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -373,7 +396,7 @@ public class DraftService {
         try {
             return ResponseDto.success(requireOrder(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 순서 조회 실패", e);
+            log.error("Failed to get draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -384,16 +407,18 @@ public class DraftService {
             getSessionEntity(sessionId);
             return ResponseDto.success(draftQueryRepository.findOrdersBySessionId(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 순서 목록 조회 실패", e);
+            log.error("Failed to list draft orders. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftOrderResponseDto> updateOrder(Long sessionId, Long pickNo, DraftOrderRequestDto requestDto) {
+    public ResponseDto<DraftOrderResponseDto> updateOrder(Long sessionId, Long pickNo, DraftOrderRequestDto requestDto, AuthActor actor) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftOrderEntity entity = getOrderEntity(sessionId, pickNo);
             if (draftPickRepository.existsByDraftSessionIdAndPickNo(sessionId, pickNo)) {
-                throw new IllegalArgumentException("이미 진행된 순서는 수정할 수 없습니다.");
+                throw new IllegalArgumentException("Completed draft orders cannot be updated.");
             }
 
             Long draftTeamId = requestDto.getDraftTeamId() != null ? requestDto.getDraftTeamId() : entity.getDraftTeamId();
@@ -403,29 +428,32 @@ public class DraftService {
 
             return ResponseDto.success(requireOrder(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 순서 수정 실패", e);
+            log.error("Failed to update draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteOrder(Long sessionId, Long pickNo) {
+    public ResponseDto<Void> deleteOrder(Long sessionId, Long pickNo, AuthActor actor) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftOrderEntity entity = getOrderEntity(sessionId, pickNo);
             if (draftPickRepository.existsByDraftSessionIdAndPickNo(sessionId, pickNo)) {
-                throw new IllegalArgumentException("이미 진행된 순서는 삭제할 수 없습니다.");
+                throw new IllegalArgumentException("Completed draft orders cannot be deleted.");
             }
             draftOrderRepository.delete(entity);
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 순서 삭제 실패", e);
+            log.error("Failed to delete draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftPickResponseDto> createPick(DraftPickRequestDto requestDto) {
+    public ResponseDto<DraftPickResponseDto> createPick(DraftPickRequestDto requestDto, AuthActor actor) {
         try {
             validatePickRequest(requestDto);
             DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             validateTeamBelongsToSession(requestDto.getDraftSessionId(), requestDto.getDraftTeamId());
             DraftCandidateEntity candidate = getCandidateEntity(requestDto.getDraftSessionId(), requestDto.getCandidateUserId());
             getUserEntity(requestDto.getPickedByUserId());
@@ -448,7 +476,7 @@ public class DraftService {
 
             return ResponseDto.success(requirePick(requestDto.getDraftSessionId(), requestDto.getPickNo()));
         } catch (Exception e) {
-            log.error("드래프트 픽 생성 실패", e);
+            log.error("Failed to create draft pick.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -458,7 +486,7 @@ public class DraftService {
         try {
             return ResponseDto.success(requirePick(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 픽 조회 실패", e);
+            log.error("Failed to get draft pick. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -469,13 +497,15 @@ public class DraftService {
             getSessionEntity(sessionId);
             return ResponseDto.success(draftQueryRepository.findPicksBySessionId(sessionId));
         } catch (Exception e) {
-            log.error("드래프트 픽 목록 조회 실패", e);
+            log.error("Failed to list draft picks. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftPickResponseDto> updatePick(Long sessionId, Long pickNo, DraftPickRequestDto requestDto) {
+    public ResponseDto<DraftPickResponseDto> updatePick(Long sessionId, Long pickNo, DraftPickRequestDto requestDto, AuthActor actor) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftPickEntity entity = getPickEntity(sessionId, pickNo);
             requestDto.setDraftSessionId(sessionId);
             requestDto.setPickNo(pickNo);
@@ -502,20 +532,22 @@ public class DraftService {
 
             return ResponseDto.success(requirePick(sessionId, pickNo));
         } catch (Exception e) {
-            log.error("드래프트 픽 수정 실패", e);
+            log.error("Failed to update draft pick. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deletePick(Long sessionId, Long pickNo) {
+    public ResponseDto<Void> deletePick(Long sessionId, Long pickNo, AuthActor actor) {
         try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
             DraftPickEntity entity = getPickEntity(sessionId, pickNo);
             DraftCandidateEntity candidate = getCandidateEntity(sessionId, entity.getCandidateUserId());
             draftPickRepository.delete(entity);
             candidate.resetToWaiting();
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("드래프트 픽 삭제 실패", e);
+            log.error("Failed to delete draft pick. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -525,6 +557,8 @@ public class DraftService {
         DraftSessionDetailResponseDto detail = new DraftSessionDetailResponseDto();
         detail.setId(summary.getId());
         detail.setTitle(summary.getTitle());
+        detail.setOwnerUserId(summary.getOwnerUserId());
+        detail.setOwnerName(summary.getOwnerName());
         detail.setStatus(summary.getStatus());
         detail.setTeamCount(summary.getTeamCount());
         detail.setPickTimeSeconds(summary.getPickTimeSeconds());
@@ -546,7 +580,7 @@ public class DraftService {
 
     private DraftSessionSummaryResponseDto requireSessionSummary(Long sessionId) {
         return draftQueryRepository.findSessionSummary(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
     }
 
     private DraftSessionDeleteStats collectDeleteStats(DraftSessionEntity session) {
@@ -564,74 +598,74 @@ public class DraftService {
 
     private DraftTeamResponseDto requireTeam(Long teamId) {
         return draftQueryRepository.findTeam(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft team could not be found."));
     }
 
     private DraftCandidateResponseDto requireCandidate(Long sessionId, Long candidateUserId) {
         return draftQueryRepository.findCandidate(sessionId, candidateUserId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 후보를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft candidate could not be found."));
     }
 
     private DraftOrderResponseDto requireOrder(Long sessionId, Long pickNo) {
         return draftQueryRepository.findOrder(sessionId, pickNo)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 순서를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft order could not be found."));
     }
 
     private DraftPickResponseDto requirePick(Long sessionId, Long pickNo) {
         return draftQueryRepository.findPick(sessionId, pickNo)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 픽을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft pick could not be found."));
     }
 
     private DraftSessionEntity getSessionEntity(Long sessionId) {
         return draftSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
     }
 
     private DraftSessionEntity getSessionEntityForUpdate(Long sessionId) {
         return draftSessionRepository.findByIdForUpdate(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 세션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
     }
 
     private DraftTeamEntity getTeamEntity(Long teamId) {
         return draftTeamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 팀을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft team could not be found."));
     }
 
     private DraftCandidateEntity getCandidateEntity(Long sessionId, Long candidateUserId) {
         return draftCandidateRepository.findById(new DraftCandidateId(sessionId, candidateUserId))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 후보를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft candidate could not be found."));
     }
 
     private DraftOrderEntity getOrderEntity(Long sessionId, Long pickNo) {
         return draftOrderRepository.findById(new DraftOrderId(sessionId, pickNo))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 순서를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft order could not be found."));
     }
 
     private DraftPickEntity getPickEntity(Long sessionId, Long pickNo) {
         return draftPickRepository.findById(new DraftPickId(sessionId, pickNo))
-                .orElseThrow(() -> new IllegalArgumentException("드래프트 픽을 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft pick could not be found."));
     }
 
     private UserEntity getUserEntity(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("User could not be found."));
     }
 
     private void validateSessionRequest(DraftSessionRequestDto requestDto, boolean allowPartial) {
         if (!allowPartial || requestDto.getTitle() != null) {
-            validateText(requestDto.getTitle(), "세션 제목");
+            validateText(requestDto.getTitle(), "Session title");
         }
         if (!allowPartial || requestDto.getTeamCount() != null) {
-            validatePositive(requestDto.getTeamCount(), "팀 수");
+            validatePositive(requestDto.getTeamCount(), "Team count");
             if (requestDto.getTeamCount() != null && requestDto.getTeamCount() <= 1) {
-                throw new IllegalArgumentException("팀 수는 2 이상이어야 합니다.");
+                throw new IllegalArgumentException("Team count must be at least 2.");
             }
         }
         if (!allowPartial || requestDto.getPickTimeSeconds() != null) {
-            validatePositive(requestDto.getPickTimeSeconds(), "픽 제한 시간");
+            validatePositive(requestDto.getPickTimeSeconds(), "Pick time seconds");
         }
         if (requestDto.getCurrentPickNo() != null) {
-            validatePositive(requestDto.getCurrentPickNo(), "현재 픽 순번");
+            validatePositive(requestDto.getCurrentPickNo(), "Current pick number");
         }
         if (requestDto.getStatus() != null) {
             validateSessionStatus(requestDto.getStatus());
@@ -640,22 +674,22 @@ public class DraftService {
 
     private void validateTeamRequest(DraftTeamRequestDto requestDto) {
         if (requestDto.getDraftSessionId() == null) {
-            throw new IllegalArgumentException("세션 ID는 필수입니다.");
+            throw new IllegalArgumentException("Session id is required.");
         }
-        validateText(requestDto.getTeamName(), "팀 이름");
-        validatePositive(requestDto.getDisplayOrder(), "팀 표시 순서");
+        validateText(requestDto.getTeamName(), "Team name");
+        validatePositive(requestDto.getDisplayOrder(), "Display order");
     }
 
     private void validateCandidateRequest(DraftCandidateRequestDto requestDto, boolean allowPartial) {
         if (!allowPartial) {
             if (requestDto.getDraftSessionId() == null || requestDto.getCandidateUserId() == null) {
-                throw new IllegalArgumentException("세션 ID와 후보 유저 ID는 필수입니다.");
+                throw new IllegalArgumentException("Session id and candidate user id are required.");
             }
-            validateText(requestDto.getCandidateName(), "후보 이름");
+            validateText(requestDto.getCandidateName(), "Candidate name");
             validateRace(requestDto.getRace());
         } else {
             if (requestDto.getCandidateName() != null) {
-                validateText(requestDto.getCandidateName(), "후보 이름");
+                validateText(requestDto.getCandidateName(), "Candidate name");
             }
             if (requestDto.getRace() != null) {
                 validateRace(requestDto.getRace());
@@ -668,26 +702,29 @@ public class DraftService {
 
     private void validateOrderRequest(DraftOrderRequestDto requestDto) {
         if (requestDto.getDraftSessionId() == null || requestDto.getPickNo() == null || requestDto.getDraftTeamId() == null) {
-            throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID는 필수입니다.");
+            throw new IllegalArgumentException("Session id, pick number, and draft team id are required.");
         }
-        validatePositive(requestDto.getPickNo(), "픽 번호");
+        validatePositive(requestDto.getPickNo(), "Pick number");
     }
 
     private void validatePickRequest(DraftPickRequestDto requestDto) {
-        if (requestDto.getDraftSessionId() == null || requestDto.getPickNo() == null || requestDto.getDraftTeamId() == null
-                || requestDto.getCandidateUserId() == null || requestDto.getPickedByUserId() == null) {
-            throw new IllegalArgumentException("세션 ID, 픽 번호, 팀 ID, 후보 유저 ID, 픽한 유저 ID는 필수입니다.");
+        if (requestDto.getDraftSessionId() == null
+                || requestDto.getPickNo() == null
+                || requestDto.getDraftTeamId() == null
+                || requestDto.getCandidateUserId() == null
+                || requestDto.getPickedByUserId() == null) {
+            throw new IllegalArgumentException("Session id, pick number, draft team id, candidate user id, and picked by user id are required.");
         }
-        validatePositive(requestDto.getPickNo(), "픽 번호");
+        validatePositive(requestDto.getPickNo(), "Pick number");
         getOrderEntity(requestDto.getDraftSessionId(), requestDto.getPickNo());
     }
 
     private void ensureCandidatePickable(DraftCandidateEntity candidate, Long sessionId, Long candidateUserId) {
         if (draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId)) {
-            throw new IllegalArgumentException("이미 픽된 후보입니다.");
+            throw new IllegalArgumentException("Candidate has already been picked.");
         }
         if (!"WAITING".equals(candidate.getStatus())) {
-            throw new IllegalArgumentException("대기 상태 후보만 픽할 수 있습니다.");
+            throw new IllegalArgumentException("Only WAITING candidates can be picked.");
         }
     }
 
@@ -709,37 +746,37 @@ public class DraftService {
 
     private void validateTeamBelongsToSession(Long sessionId, Long draftTeamId) {
         if (!draftTeamRepository.existsByIdAndDraftSessionId(draftTeamId, sessionId)) {
-            throw new IllegalArgumentException("세션에 속한 팀이 아닙니다.");
+            throw new IllegalArgumentException("Draft team does not belong to this session.");
         }
     }
 
     private void validateSessionStatus(String status) {
-        validateAllowed(status, SESSION_STATUSES, "세션 상태");
+        validateAllowed(status, SESSION_STATUSES, "Session status");
     }
 
     private void validateRace(String race) {
-        validateAllowed(race, RACES, "종족");
+        validateAllowed(race, RACES, "Race");
     }
 
     private void validateCandidateStatus(String status) {
-        validateAllowed(status, CANDIDATE_STATUSES, "후보 상태");
+        validateAllowed(status, CANDIDATE_STATUSES, "Candidate status");
     }
 
     private void validateAllowed(String value, Set<String> allowed, String fieldName) {
         if (value == null || !allowed.contains(value)) {
-            throw new IllegalArgumentException(fieldName + " 값이 올바르지 않습니다.");
+            throw new IllegalArgumentException(fieldName + " is invalid.");
         }
     }
 
     private void validateText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + "은(는) 필수입니다.");
+            throw new IllegalArgumentException(fieldName + " is required.");
         }
     }
 
     private void validatePositive(Number number, String fieldName) {
         if (number == null || number.longValue() <= 0) {
-            throw new IllegalArgumentException(fieldName + "은(는) 1 이상이어야 합니다.");
+            throw new IllegalArgumentException(fieldName + " must be greater than 0.");
         }
     }
 

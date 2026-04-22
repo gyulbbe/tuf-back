@@ -1,6 +1,7 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.config.QueryDslConfig;
+import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
@@ -130,7 +131,7 @@ class DraftTimeoutSchedulerTest {
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
         requestDto.setCurrentPickNo(1);
-        return draftService.createSession(requestDto).getData().getId();
+        return draftService.createSession(requestDto, adminActor()).getData().getId();
     }
 
     private Long createTeam(Long sessionId, String teamName, int displayOrder) {
@@ -138,7 +139,7 @@ class DraftTimeoutSchedulerTest {
         requestDto.setDraftSessionId(sessionId);
         requestDto.setTeamName(teamName);
         requestDto.setDisplayOrder(displayOrder);
-        return draftService.createTeam(requestDto).getData().getId();
+        return draftService.createTeam(requestDto, adminActor()).getData().getId();
     }
 
     private void createOrder(Long sessionId, Long pickNo, Long teamId) {
@@ -146,6 +147,10 @@ class DraftTimeoutSchedulerTest {
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
-        draftService.createOrder(requestDto);
+        draftService.createOrder(requestDto, adminActor());
+    }
+
+    private AuthActor adminActor() {
+        return new AuthActor(1L, "admin", "ROLE_ADMIN");
     }
 }

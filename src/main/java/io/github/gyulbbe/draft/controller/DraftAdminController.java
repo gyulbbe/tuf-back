@@ -12,7 +12,11 @@ import io.github.gyulbbe.draft.service.DraftAdminService;
 import io.github.gyulbbe.draft.service.DraftLiveCommandService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
@@ -28,16 +32,24 @@ public class DraftAdminController {
             @PathVariable Long teamId,
             @RequestBody DraftPickerAssignRequestDto requestDto
     ) {
-        return ResponseEntity.ok(
-                draftAdminService.assignPicker(teamId, requestDto.resolvePickerUserId(), draftActorResolver.resolve())
-        );
+        try {
+            return ResponseEntity.ok(
+                    draftAdminService.assignPicker(
+                            teamId,
+                            requestDto.resolvePickerUserId(),
+                            draftActorResolver.resolveRequired()
+                    )
+            );
+        } catch (Exception e) {
+            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+        }
     }
 
     @PostMapping("/sessions/{sessionId}/start")
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> startSession(@PathVariable Long sessionId) {
         try {
             return ResponseEntity.ok(ResponseDto.success(
-                    draftLiveCommandService.startSession(sessionId, draftActorResolver.resolve())
+                    draftLiveCommandService.startSession(sessionId, draftActorResolver.resolveRequired())
             ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
@@ -48,7 +60,7 @@ public class DraftAdminController {
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> pauseSession(@PathVariable Long sessionId) {
         try {
             return ResponseEntity.ok(ResponseDto.success(
-                    draftLiveCommandService.pauseSession(sessionId, draftActorResolver.resolve())
+                    draftLiveCommandService.pauseSession(sessionId, draftActorResolver.resolveRequired())
             ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
@@ -64,7 +76,7 @@ public class DraftAdminController {
             return ResponseEntity.ok(ResponseDto.success(
                     draftLiveCommandService.resumeSession(
                             sessionId,
-                            draftActorResolver.resolve(),
+                            draftActorResolver.resolveRequired(),
                             requestDto != null ? requestDto.getSeconds() : null
                     )
             ));
@@ -82,7 +94,7 @@ public class DraftAdminController {
             return ResponseEntity.ok(ResponseDto.success(
                     draftLiveCommandService.extendTime(
                             sessionId,
-                            draftActorResolver.resolve(),
+                            draftActorResolver.resolveRequired(),
                             requestDto.getSeconds()
                     )
             ));
@@ -100,7 +112,7 @@ public class DraftAdminController {
             return ResponseEntity.ok(ResponseDto.success(
                     draftLiveCommandService.forceSkip(
                             sessionId,
-                            draftActorResolver.resolve(),
+                            draftActorResolver.resolveRequired(),
                             requestDto != null ? requestDto.getReason() : null
                     )
             ));
@@ -118,7 +130,7 @@ public class DraftAdminController {
             return ResponseEntity.ok(ResponseDto.success(
                     draftLiveCommandService.finishSession(
                             sessionId,
-                            draftActorResolver.resolve(),
+                            draftActorResolver.resolveRequired(),
                             requestDto != null ? requestDto.getReason() : null
                     )
             ));

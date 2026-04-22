@@ -2,22 +2,22 @@ package io.github.gyulbbe.draft.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.DraftActorResolver;
+import io.github.gyulbbe.draft.dto.DraftLivePermissionsResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLivePickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewPayloadDto;
-import io.github.gyulbbe.draft.dto.DraftLivePermissionsResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.draft.service.DraftLiveCommandService;
 import io.github.gyulbbe.draft.service.DraftLivePreviewRelayService;
 import io.github.gyulbbe.draft.service.DraftSnapshotService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,7 +37,9 @@ public class DraftLiveController {
     @GetMapping("/sessions/{sessionId}/snapshot")
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> getSnapshot(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(draftSnapshotService.getSnapshot(sessionId, draftActorResolver.resolve())));
+            return ResponseEntity.ok(ResponseDto.success(
+                    draftSnapshotService.getSnapshot(sessionId, draftActorResolver.resolveOptional())
+            ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
         }
@@ -47,7 +49,7 @@ public class DraftLiveController {
     public ResponseEntity<ResponseDto<DraftLivePermissionsResponseDto>> getPermissions(@PathVariable Long sessionId) {
         try {
             return ResponseEntity.ok(ResponseDto.success(
-                    draftSnapshotService.getPermissions(sessionId, draftActorResolver.resolve())
+                    draftSnapshotService.getPermissions(sessionId, draftActorResolver.resolveOptional())
             ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
@@ -61,7 +63,11 @@ public class DraftLiveController {
     ) {
         try {
             return ResponseEntity.ok(ResponseDto.success(
-                    draftLiveCommandService.pick(sessionId, requestDto.getCandidateUserId(), draftActorResolver.resolve())
+                    draftLiveCommandService.pick(
+                            sessionId,
+                            requestDto.getCandidateUserId(),
+                            draftActorResolver.resolveRequired()
+                    )
             ));
         } catch (Exception e) {
             return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));

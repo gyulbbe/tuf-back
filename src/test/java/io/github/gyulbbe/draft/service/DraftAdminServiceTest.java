@@ -57,16 +57,15 @@ class DraftAdminServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void 관리자는_팀_픽커를_지정하고_다시_변경할_수_있다() {
-        Long firstPickerId = createUser("picker01", "첫번째", "ACTIVE");
-        Long secondPickerId = createUser("picker02", "두번째", "ACTIVE");
-        Long sessionId = createSession();
-        Long teamId = createTeam(sessionId, "A팀", 1);
+    void owner_can_assign_and_reassign_picker_on_own_session() {
+        AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
+        Long firstPickerId = createUser("picker01", "Picker One", "ROLE_USER", "ACTIVE");
+        Long secondPickerId = createUser("picker02", "Picker Two", "ROLE_USER", "ACTIVE");
+        Long sessionId = createSession(owner.userPk());
+        Long teamId = createTeam(sessionId, "Team A", 1);
 
-        AuthActor admin = new AuthActor(999L, "admin", "ROLE_ADMIN");
-
-        ResponseDto<DraftPickerResponseDto> firstAssign = draftAdminService.assignPicker(teamId, firstPickerId, admin);
-        ResponseDto<DraftPickerResponseDto> secondAssign = draftAdminService.assignPicker(teamId, secondPickerId, admin);
+        ResponseDto<DraftPickerResponseDto> firstAssign = draftAdminService.assignPicker(teamId, firstPickerId, owner);
+        ResponseDto<DraftPickerResponseDto> secondAssign = draftAdminService.assignPicker(teamId, secondPickerId, owner);
 
         assertThat(firstAssign.getStatus()).isEqualTo(200);
         assertThat(secondAssign.getStatus()).isEqualTo(200);
@@ -76,38 +75,53 @@ class DraftAdminServiceTest {
     }
 
     @Test
-    void 관리자가_아니면_픽커를_지정할_수_없다() {
-        Long pickerId = createUser("picker03", "일반유저", "ACTIVE");
-        Long sessionId = createSession();
-        Long teamId = createTeam(sessionId, "B팀", 1);
+    void admin_can_assign_picker_on_foreign_session() {
+        AuthActor owner = createActor("owner02", "Owner Two", "ROLE_USER");
+        AuthActor admin = createActor("admin01", "Admin One", "ROLE_ADMIN");
+        Long pickerId = createUser("picker03", "Picker Three", "ROLE_USER", "ACTIVE");
+        Long sessionId = createSession(owner.userPk());
+        Long teamId = createTeam(sessionId, "Team B", 1);
 
-        AuthActor normalUser = new AuthActor(pickerId, "picker03", "ROLE_USER");
+        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, admin);
 
-        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, normalUser);
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData().getPickerUserId()).isEqualTo(pickerId);
+        assertThat(draftPermissionService.canPickForTeam(teamId, pickerId)).isTrue();
+    }
+
+    @Test
+    void owner_admin_not_user_cannot_assign_picker_on_foreign_session() {
+        AuthActor owner = createActor("owner03", "Owner Three", "ROLE_USER");
+        AuthActor otherUser = createActor("other01", "Other One", "ROLE_USER");
+        Long pickerId = createUser("picker04", "Picker Four", "ROLE_USER", "ACTIVE");
+        Long sessionId = createSession(owner.userPk());
+        Long teamId = createTeam(sessionId, "Team C", 1);
+
+        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, otherUser);
 
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getMessage()).contains("관리자");
+        assertThat(response.getMessage()).contains("session owner or an administrator");
         assertThat(draftPermissionService.canPickForTeam(teamId, pickerId)).isFalse();
     }
 
     @Test
-    void 비활성_유저는_픽커로_지정할_수_없다() {
-        Long inactiveUserId = createUser("picker04", "비활성", "INACTIVE");
-        Long sessionId = createSession();
-        Long teamId = createTeam(sessionId, "C팀", 1);
+    void inactive_user_cannot_be_assigned_as_picker() {
+        AuthActor owner = createActor("owner04", "Owner Four", "ROLE_USER");
+        Long inactiveUserId = createUser("picker05", "Inactive Picker", "ROLE_USER", "INACTIVE");
+        Long sessionId = createSession(owner.userPk());
+        Long teamId = createTeam(sessionId, "Team D", 1);
 
-        AuthActor admin = new AuthActor(1000L, "admin", "ROLE_MANAGER");
-
-        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, inactiveUserId, admin);
+        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, inactiveUserId, owner);
 
         assertThat(response.getStatus()).isEqualTo(500);
-        assertThat(response.getMessage()).contains("ACTIVE");
+        assertThat(response.getMessage()).contains("Only ACTIVE users");
         assertThat(draftPermissionService.canPickForTeam(teamId, inactiveUserId)).isFalse();
     }
 
-    private Long createSession() {
+    private Long createSession(Long ownerUserId) {
         DraftSessionEntity entity = DraftSessionEntity.builder()
-                .title("권한 테스트 세션")
+                .title("Draft Session")
+                .ownerUserId(ownerUserId)
                 .status("READY")
                 .teamCount(2)
                 .pickTimeSeconds(30)
@@ -126,13 +140,18 @@ class DraftAdminServiceTest {
         return draftTeamRepository.save(entity).getId();
     }
 
-    private Long createUser(String userId, String name, String status) {
+    private AuthActor createActor(String userId, String name, String role) {
+        Long userPk = createUser(userId, name, role, "ACTIVE");
+        return new AuthActor(userPk, userId, role);
+    }
+
+    private Long createUser(String userId, String name, String role, String status) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
                 .name(name)
                 .status(status)
-                .userType("ROLE_USER")
+                .userType(role)
                 .build();
         return userRepository.save(user).getId();
     }

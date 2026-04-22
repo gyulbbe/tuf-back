@@ -18,7 +18,19 @@ public class DraftActorResolver {
     private final UserRepository userRepository;
 
     public AuthActor resolve() {
-        return resolve(SecurityContextHolder.getContext().getAuthentication());
+        return resolveRequired();
+    }
+
+    public AuthActor resolveRequired() {
+        AuthActor actor = resolveOptional();
+        if (actor == null) {
+            throw new IllegalArgumentException("Authentication is required.");
+        }
+        return actor;
+    }
+
+    public AuthActor resolveOptional() {
+        return resolveOptional(SecurityContextHolder.getContext().getAuthentication());
     }
 
     public AuthActor resolve(Principal principal) {
@@ -30,8 +42,16 @@ public class DraftActorResolver {
     }
 
     public AuthActor resolve(Authentication authentication) {
-        if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
+        AuthActor actor = resolveOptional(authentication);
+        if (actor == null) {
             throw new IllegalArgumentException("Authentication is required.");
+        }
+        return actor;
+    }
+
+    private AuthActor resolveOptional(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
         }
 
         Object principal = authentication.getPrincipal();
@@ -49,6 +69,7 @@ public class DraftActorResolver {
             if (user == null) {
                 throw new IllegalArgumentException("Authenticated user could not be found.");
             }
+
             return new AuthActor(user.getId(), user.getUserId(), user.getUserType());
         }
 

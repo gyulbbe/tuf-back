@@ -1,7 +1,18 @@
 package io.github.gyulbbe.draft.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.SequenceGenerator;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -18,7 +29,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "DRAFT_SESSIONS",
         indexes = {
-                @Index(name = "idx_draft_sessions_status", columnList = "STATUS")
+                @Index(name = "idx_draft_sessions_status", columnList = "STATUS"),
+                @Index(name = "idx_draft_sessions_owner_user", columnList = "OWNER_USER_ID")
         }
 )
 public class DraftSessionEntity {
@@ -29,6 +41,9 @@ public class DraftSessionEntity {
 
     @Column(name = "TITLE", nullable = false)
     private String title;
+
+    @Column(name = "OWNER_USER_ID")
+    private Long ownerUserId;
 
     @Column(name = "STATUS", nullable = false)
     private String status;

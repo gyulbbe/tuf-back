@@ -85,29 +85,26 @@ class DraftSnapshotServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void snapshot_includes_current_turn_roster_candidates_and_permissions() {
-        Long pickerAId = createUser("pickerA", "pickerA", "ROLE_USER");
-        Long pickerBId = createUser("pickerB", "pickerB", "ROLE_USER");
-        Long candidate1Id = createUser("candidate1", "candidate1", "ROLE_USER");
-        Long candidate2Id = createUser("candidate2", "candidate2", "ROLE_USER");
+    void snapshot_includes_turn_roster_candidates_and_picker_permissions() {
+        AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
+        AuthActor pickerA = createActor("picker01", "Picker One", "ROLE_USER");
+        AuthActor pickerB = createActor("picker02", "Picker Two", "ROLE_USER");
+        Long candidate1Id = createUser("candidate01", "Candidate One", "ROLE_USER");
+        Long candidate2Id = createUser("candidate02", "Candidate Two", "ROLE_USER");
 
-        Long sessionId = createSession();
-        Long teamAId = createTeam(sessionId, "red", 1);
-        Long teamBId = createTeam(sessionId, "blue", 2);
-        assignPicker(teamAId, pickerAId);
-        assignPicker(teamBId, pickerBId);
+        Long sessionId = createSession(owner, "Snapshot Session");
+        Long teamAId = createTeam(owner, sessionId, "Red", 1);
+        Long teamBId = createTeam(owner, sessionId, "Blue", 2);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        assignPicker(owner, teamBId, pickerB.userPk());
+        createCandidate(owner, sessionId, candidate1Id, "Candidate One", "ZERG");
+        createCandidate(owner, sessionId, candidate2Id, "Candidate Two", "TERRAN");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        updateSession(owner, sessionId, "LIVE", 1, teamAId, LocalDateTime.now().plusSeconds(30));
+        createPick(owner, sessionId, 1L, teamAId, candidate1Id, pickerA.userPk());
 
-        createCandidate(sessionId, candidate1Id, "candidate1", "ZERG");
-        createCandidate(sessionId, candidate2Id, "candidate2", "TERRAN");
-        createOrder(sessionId, 1L, teamAId);
-        createOrder(sessionId, 2L, teamBId);
-        updateSession(sessionId, "LIVE", 1, teamAId, LocalDateTime.now().plusSeconds(30));
-        createPick(sessionId, 1L, teamAId, candidate1Id, pickerAId);
-
-        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
-                sessionId,
-                new AuthActor(pickerBId, "pickerB", "ROLE_USER")
-        );
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, pickerB);
 
         assertThat(snapshot.getSession().getId()).isEqualTo(sessionId);
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
@@ -126,39 +123,72 @@ class DraftSnapshotServiceTest {
     }
 
     @Test
-    void snapshot_sets_canPick_true_for_current_picker() {
-        Long pickerId = createUser("picker01", "picker01", "ROLE_USER");
-        Long candidateId = createUser("candidate01", "candidate01", "ROLE_USER");
+    void snapshot_sets_canControl_true_for_owner_and_owner_cannot_pick_without_picker_role() {
+        AuthActor owner = createActor("owner02", "Owner Two", "ROLE_USER");
+        AuthActor picker = createActor("picker03", "Picker Three", "ROLE_USER");
+        Long candidateId = createUser("candidate03", "Candidate Three", "ROLE_USER");
 
-        Long sessionId = createSession();
-        Long teamId = createTeam(sessionId, "alpha", 1);
-        assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "candidate01", "PROTOSS");
-        createOrder(sessionId, 1L, teamId);
-        updateSession(sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(25));
+        Long sessionId = createSession(owner, "Owner Permission Session");
+        Long teamId = createTeam(owner, sessionId, "Alpha", 1);
+        assignPicker(owner, teamId, picker.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Three", "PROTOSS");
+        createOrder(owner, sessionId, 1L, teamId);
+        updateSession(owner, sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(25));
 
-        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
-                sessionId,
-                new AuthActor(pickerId, "picker01", "ROLE_USER")
-        );
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, owner);
 
-        assertThat(snapshot.getPermissions().isCanPick()).isTrue();
-        assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamId);
-        assertThat(snapshot.getPermissions().getMyRole()).isEqualTo("PICKER");
-        assertThat(snapshot.getTeams().get(0).getPickerUserId()).isEqualTo(pickerId);
-        assertThat(snapshot.getCurrentTurn().getRemainingSeconds()).isGreaterThanOrEqualTo(0L);
+        assertThat(snapshot.getPermissions().isCanControl()).isTrue();
+        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
+        assertThat(snapshot.getPermissions().getMyTeamId()).isNull();
+    }
+
+    @Test
+    void snapshot_sets_canControl_true_for_admin_on_foreign_session() {
+        AuthActor owner = createActor("owner03", "Owner Three", "ROLE_USER");
+        AuthActor admin = createActor("admin01", "Admin One", "ROLE_ADMIN");
+        Long candidateId = createUser("candidate04", "Candidate Four", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Admin Permission Session");
+        Long teamId = createTeam(owner, sessionId, "Admin Team", 1);
+        createCandidate(owner, sessionId, candidateId, "Candidate Four", "ZERG");
+        createOrder(owner, sessionId, 1L, teamId);
+        updateSession(owner, sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(20));
+
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, admin);
+
+        assertThat(snapshot.getPermissions().isCanControl()).isTrue();
+        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
+    }
+
+    @Test
+    void snapshot_allows_anonymous_view_with_no_permissions() {
+        AuthActor owner = createActor("owner04", "Owner Four", "ROLE_USER");
+        Long candidateId = createUser("candidate05", "Candidate Five", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Anonymous Snapshot Session");
+        Long teamId = createTeam(owner, sessionId, "Anon Team", 1);
+        createCandidate(owner, sessionId, candidateId, "Candidate Five", "RANDOM");
+        createOrder(owner, sessionId, 1L, teamId);
+        updateSession(owner, sessionId, "LIVE", 1, teamId, LocalDateTime.now().plusSeconds(25));
+
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, null);
+
+        assertThat(snapshot.getSession().getId()).isEqualTo(sessionId);
+        assertThat(snapshot.getPermissions().isCanControl()).isFalse();
+        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
     }
 
     @Test
     void snapshot_uses_order_based_current_turn_when_current_team_is_null() {
-        Long pickerId = createUser("orderPicker", "orderPicker", "ROLE_USER");
-        Long candidateId = createUser("orderCandidate", "orderCandidate", "ROLE_USER");
+        AuthActor owner = createActor("owner05", "Owner Five", "ROLE_USER");
+        AuthActor picker = createActor("picker04", "Picker Four", "ROLE_USER");
+        Long candidateId = createUser("candidate06", "Candidate Six", "ROLE_USER");
 
-        Long sessionId = createSession();
-        Long teamId = createTeam(sessionId, "orderTeam", 1);
-        assignPicker(teamId, pickerId);
-        createCandidate(sessionId, candidateId, "orderCandidate", "ZERG");
-        createOrder(sessionId, 2L, teamId);
+        Long sessionId = createSession(owner, "Order Snapshot Session");
+        Long teamId = createTeam(owner, sessionId, "Order Team", 1);
+        assignPicker(owner, teamId, picker.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Six", "ZERG");
+        createOrder(owner, sessionId, 2L, teamId);
 
         DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
         session.update(
@@ -173,10 +203,7 @@ class DraftSnapshotServiceTest {
                 null
         );
 
-        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(
-                sessionId,
-                new AuthActor(pickerId, "orderPicker", "ROLE_USER")
-        );
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, picker);
 
         assertThat(snapshot.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(snapshot.getSession().getCurrentDraftTeamId()).isNull();
@@ -187,63 +214,68 @@ class DraftSnapshotServiceTest {
         assertThat(snapshot.getPermissions().isCanPick()).isTrue();
     }
 
-    private Long createSession() {
+    private Long createSession(AuthActor actor, String title) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
-        requestDto.setTitle("live snapshot session");
+        requestDto.setTitle(title);
         requestDto.setStatus("READY");
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
         requestDto.setCurrentPickNo(1);
-        return draftService.createSession(requestDto).getData().getId();
+        return draftService.createSession(requestDto, actor).getData().getId();
     }
 
-    private Long createTeam(Long sessionId, String teamName, int displayOrder) {
+    private Long createTeam(AuthActor actor, Long sessionId, String teamName, int displayOrder) {
         DraftTeamRequestDto requestDto = new DraftTeamRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setTeamName(teamName);
         requestDto.setDisplayOrder(displayOrder);
-        return draftService.createTeam(requestDto).getData().getId();
+        return draftService.createTeam(requestDto, actor).getData().getId();
     }
 
-    private void assignPicker(Long teamId, Long pickerUserId) {
-        draftAdminService.assignPicker(teamId, pickerUserId, new AuthActor(1L, "admin", "ROLE_ADMIN"));
+    private void assignPicker(AuthActor actor, Long teamId, Long pickerUserId) {
+        draftAdminService.assignPicker(teamId, pickerUserId, actor);
     }
 
-    private void createCandidate(Long sessionId, Long candidateUserId, String candidateName, String race) {
+    private void createCandidate(AuthActor actor, Long sessionId, Long candidateUserId, String candidateName, String race) {
         DraftCandidateRequestDto requestDto = new DraftCandidateRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setCandidateUserId(candidateUserId);
         requestDto.setCandidateName(candidateName);
         requestDto.setRace(race);
         requestDto.setStatus("WAITING");
-        draftService.createCandidate(requestDto);
+        draftService.createCandidate(requestDto, actor);
     }
 
-    private void createOrder(Long sessionId, Long pickNo, Long teamId) {
+    private void createOrder(AuthActor actor, Long sessionId, Long pickNo, Long teamId) {
         DraftOrderRequestDto requestDto = new DraftOrderRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
-        draftService.createOrder(requestDto);
+        draftService.createOrder(requestDto, actor);
     }
 
-    private void updateSession(Long sessionId, String status, Integer currentPickNo, Long currentTeamId, LocalDateTime deadlineAt) {
+    private void updateSession(AuthActor actor, Long sessionId, String status, Integer currentPickNo, Long currentTeamId, LocalDateTime deadlineAt) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setStatus(status);
         requestDto.setCurrentPickNo(currentPickNo);
         requestDto.setCurrentDraftTeamId(currentTeamId);
         requestDto.setDeadlineAt(deadlineAt);
-        draftService.updateSession(sessionId, requestDto);
+        draftService.updateSession(sessionId, requestDto, actor);
     }
 
-    private void createPick(Long sessionId, Long pickNo, Long teamId, Long candidateUserId, Long pickedByUserId) {
+    private void createPick(AuthActor actor, Long sessionId, Long pickNo, Long teamId, Long candidateUserId, Long pickedByUserId) {
         DraftPickRequestDto requestDto = new DraftPickRequestDto();
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
         requestDto.setCandidateUserId(candidateUserId);
         requestDto.setPickedByUserId(pickedByUserId);
-        draftService.createPick(requestDto);
+        draftService.createPick(requestDto, actor);
+    }
+
+    private AuthActor createActor(String userId, String name, String role) {
+        Long userPk = createUser(userId, name, role);
+        return new AuthActor(userPk, userId, role);
     }
 
     private Long createUser(String userId, String name, String role) {

@@ -151,7 +151,7 @@ class DraftEventPublisherTest {
         requestDto.setTeamCount(2);
         requestDto.setPickTimeSeconds(30);
         requestDto.setCurrentPickNo(1);
-        return draftService.createSession(requestDto).getData().getId();
+        return draftService.createSession(requestDto, adminActor()).getData().getId();
     }
 
     private Long createTeam(Long sessionId, String teamName, int displayOrder) {
@@ -159,7 +159,7 @@ class DraftEventPublisherTest {
         requestDto.setDraftSessionId(sessionId);
         requestDto.setTeamName(teamName);
         requestDto.setDisplayOrder(displayOrder);
-        return draftService.createTeam(requestDto).getData().getId();
+        return draftService.createTeam(requestDto, adminActor()).getData().getId();
     }
 
     private void assignPicker(Long teamId, Long pickerUserId) {
@@ -173,7 +173,7 @@ class DraftEventPublisherTest {
         requestDto.setCandidateName(candidateName);
         requestDto.setRace(race);
         requestDto.setStatus("WAITING");
-        draftService.createCandidate(requestDto);
+        draftService.createCandidate(requestDto, adminActor());
     }
 
     private void createOrder(Long sessionId, Long pickNo, Long teamId) {
@@ -181,7 +181,11 @@ class DraftEventPublisherTest {
         requestDto.setDraftSessionId(sessionId);
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
-        draftService.createOrder(requestDto);
+        draftService.createOrder(requestDto, adminActor());
+    }
+
+    private AuthActor adminActor() {
+        return new AuthActor(1L, "admin", "ROLE_ADMIN");
     }
 
     private Long createUser(String userId, String name) {

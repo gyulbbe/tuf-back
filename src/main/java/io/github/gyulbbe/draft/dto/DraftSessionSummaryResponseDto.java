@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 public class DraftSessionSummaryResponseDto {
     private Long id;
     private String title;
+    private Long ownerUserId;
+    private String ownerName;
     private String status;
     private Integer teamCount;
     private Integer pickTimeSeconds;

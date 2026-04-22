@@ -39,11 +39,11 @@ public class DraftLiveCommandService {
     private final DraftLivePreviewRelayService draftLivePreviewRelayService;
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
-        draftPermissionService.assertAdmin(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
+
         if (!"READY".equals(session.getStatus())) {
-            throw new IllegalArgumentException("READY ?곹깭???몄뀡留??쒖옉?????덉뒿?덈떎.");
+            throw new IllegalArgumentException("Only READY sessions can be started.");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -58,9 +58,8 @@ public class DraftLiveCommandService {
     }
 
     public DraftLiveSnapshotResponseDto pauseSession(Long sessionId, AuthActor actor) {
-        draftPermissionService.assertAdmin(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
         assertLiveSession(session);
 
         session.pause();
@@ -73,17 +72,17 @@ public class DraftLiveCommandService {
     }
 
     public DraftLiveSnapshotResponseDto resumeSession(Long sessionId, AuthActor actor, Integer seconds) {
-        draftPermissionService.assertAdmin(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
+
         if (!"PAUSED".equals(session.getStatus())) {
-            throw new IllegalArgumentException("PAUSED ?곹깭???몄뀡留??ш컻?????덉뒿?덈떎.");
+            throw new IllegalArgumentException("Only PAUSED sessions can be resumed.");
         }
 
         DraftOrderEntity currentOrder = requireCurrentOrder(session);
         int resumeSeconds = seconds != null ? seconds : session.getPickTimeSeconds();
         if (resumeSeconds <= 0) {
-            throw new IllegalArgumentException("?ш컻 ?쒓컙? 1珥??댁긽?댁뼱???⑸땲??");
+            throw new IllegalArgumentException("Resume seconds must be greater than 0.");
         }
 
         session.synchronizeCurrentDraftTeam(currentOrder.getDraftTeamId());
@@ -96,16 +95,15 @@ public class DraftLiveCommandService {
     }
 
     public DraftLiveSnapshotResponseDto extendTime(Long sessionId, AuthActor actor, Integer seconds) {
-        draftPermissionService.assertAdmin(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
         assertLiveSession(session);
 
         if (seconds == null || seconds <= 0) {
-            throw new IllegalArgumentException("?곗옣 ?쒓컙? 1珥??댁긽?댁뼱???⑸땲??");
+            throw new IllegalArgumentException("Extension seconds must be greater than 0.");
         }
         if (session.getDeadlineAt() == null) {
-            throw new IllegalArgumentException("?꾩옱 留덇컧 ?쒓컙???놁뒿?덈떎.");
+            throw new IllegalArgumentException("A live turn deadline does not exist.");
         }
 
         session.extendDeadlineAt(session.getDeadlineAt().plusSeconds(seconds));
@@ -117,10 +115,10 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto pick(Long sessionId, Long candidateUserId, AuthActor actor) {
         if (candidateUserId == null) {
-            throw new IllegalArgumentException("?꾨낫 ?좎? ID???꾩닔?낅땲??");
+            throw new IllegalArgumentException("Candidate user id is required.");
         }
         if (actor == null || actor.userPk() == null) {
-            throw new IllegalArgumentException("濡쒓렇?몄씠 ?꾩슂?⑸땲??");
+            throw new IllegalArgumentException("Authentication is required.");
         }
 
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
@@ -129,14 +127,14 @@ public class DraftLiveCommandService {
         DraftOrderEntity currentOrder = requireCurrentOrder(session);
         Long currentDraftTeamId = synchronizeCurrentTurnWithOrder(session, currentOrder);
         if (!draftPermissionService.canPickForTeam(currentDraftTeamId, actor.userPk())) {
-            throw new IllegalArgumentException("?꾩옱 ???吏?뺣맂 ?쎌빱留??좏깮?????덉뒿?덈떎.");
+            throw new IllegalArgumentException("Only the picker for the current team can make a pick.");
         }
         if (!currentDraftTeamId.equals(currentOrder.getDraftTeamId())) {
-            throw new IllegalArgumentException("?몄뀡???꾩옱 ?怨??쒕옒?꾪듃 ?쒖꽌媛 ?쇱튂?섏? ?딆뒿?덈떎.");
+            throw new IllegalArgumentException("The current draft turn is not aligned with the order.");
         }
 
         DraftCandidateEntity candidate = draftCandidateRepository.findById(new DraftCandidateId(sessionId, candidateUserId))
-                .orElseThrow(() -> new IllegalArgumentException("?쒕옒?꾪듃 ?꾨낫瑜?李얠쓣 ???놁뒿?덈떎."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft candidate could not be found."));
         assertCandidatePickable(candidate, sessionId, candidateUserId);
 
         LocalDateTime now = LocalDateTime.now();
@@ -166,9 +164,8 @@ public class DraftLiveCommandService {
     }
 
     public DraftLiveSnapshotResponseDto forceSkip(Long sessionId, AuthActor actor, String reason) {
-        draftPermissionService.assertAdminOrSystem(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdminOrSystem(session, actor);
         assertLiveSession(session);
 
         synchronizeCurrentTurnWithOrder(session, requireCurrentOrder(session));
@@ -188,11 +185,11 @@ public class DraftLiveCommandService {
     }
 
     public DraftLiveSnapshotResponseDto finishSession(Long sessionId, AuthActor actor, String reason) {
-        draftPermissionService.assertAdmin(actor);
-
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
+
         if ("FINISHED".equals(session.getStatus())) {
-            throw new IllegalArgumentException("?대? 醫낅즺???몄뀡?낅땲??");
+            throw new IllegalArgumentException("The session is already finished.");
         }
 
         session.finish(LocalDateTime.now());
@@ -207,21 +204,21 @@ public class DraftLiveCommandService {
 
     private DraftSessionEntity loadSessionForUpdate(Long sessionId) {
         return draftSessionRepository.findByIdForUpdate(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("?쒕옒?꾪듃 ?몄뀡??李얠쓣 ???놁뒿?덈떎."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
     }
 
     private void assertLiveSession(DraftSessionEntity session) {
         if (!"LIVE".equals(session.getStatus())) {
-            throw new IllegalArgumentException("LIVE ?곹깭???몄뀡?먯꽌留??ㅽ뻾?????덉뒿?덈떎.");
+            throw new IllegalArgumentException("Only LIVE sessions can be controlled.");
         }
     }
 
     private void assertCandidatePickable(DraftCandidateEntity candidate, Long sessionId, Long candidateUserId) {
         if (draftPickRepository.existsByDraftSessionIdAndCandidateUserId(sessionId, candidateUserId)) {
-            throw new IllegalArgumentException("?대? ?좏깮???꾨낫?낅땲??");
+            throw new IllegalArgumentException("Candidate has already been picked.");
         }
         if (!CANDIDATE_WAITING.equals(candidate.getStatus())) {
-            throw new IllegalArgumentException("?湲??곹깭 ?꾨낫留??좏깮?????덉뒿?덈떎.");
+            throw new IllegalArgumentException("Only WAITING candidates can be picked.");
         }
     }
 
@@ -238,7 +235,7 @@ public class DraftLiveCommandService {
 
     private long requireCurrentPickNo(DraftSessionEntity session) {
         if (session.getCurrentPickNo() == null || session.getCurrentPickNo() <= 0) {
-            throw new IllegalArgumentException("?꾩옱 ??踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.");
+            throw new IllegalArgumentException("Current pick number is invalid.");
         }
         return session.getCurrentPickNo().longValue();
     }
@@ -249,7 +246,7 @@ public class DraftLiveCommandService {
 
     private DraftOrderEntity requireOrder(Long sessionId, long pickNo) {
         return draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, pickNo)
-                .orElseThrow(() -> new IllegalArgumentException("?꾩옱 ?쒕옒?꾪듃 ?쒖꽌瑜?李얠쓣 ???놁뒿?덈떎."));
+                .orElseThrow(() -> new IllegalArgumentException("Draft order could not be found."));
     }
 
     private Long synchronizeCurrentTurnWithOrder(DraftSessionEntity session, DraftOrderEntity currentOrder) {
