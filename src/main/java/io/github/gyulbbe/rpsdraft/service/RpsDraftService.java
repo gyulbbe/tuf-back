@@ -10,7 +10,6 @@ import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionQueryDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionSummaryResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftTeamResponseDto;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateEntity;
-import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateId;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftTeamEntity;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftCandidateRepository;
@@ -24,6 +23,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -49,11 +50,7 @@ public class RpsDraftService {
     ) {
         try {
             rpsDraftPermissionService.assertAuthenticated(actor);
-            validateSessionRequest(requestDto);
-
-            String team1Name = normalizeTeamName(requestDto.getTeam1Name(), "1팀");
-            String team2Name = normalizeTeamName(requestDto.getTeam2Name(), "2팀");
-            validateDistinctTeamNames(team1Name, team2Name);
+            CreateSessionInputs inputs = prepareCreateSessionInputs(requestDto);
 
             RpsDraftSessionEntity session = rpsDraftSessionRepository.save(
                     RpsDraftSessionEntity.builder()
@@ -65,17 +62,33 @@ public class RpsDraftService {
             rpsDraftTeamRepository.save(
                     RpsDraftTeamEntity.builder()
                             .rpsDraftSessionId(session.getId())
-                            .teamName(team1Name)
+                            .teamName(buildTeamName(inputs.team1Picker()))
                             .displayOrder(1)
+                            .pickerUserId(inputs.team1Picker().getId())
                             .build()
             );
             rpsDraftTeamRepository.save(
                     RpsDraftTeamEntity.builder()
                             .rpsDraftSessionId(session.getId())
-                            .teamName(team2Name)
+                            .teamName(buildTeamName(inputs.team2Picker()))
                             .displayOrder(2)
+                            .pickerUserId(inputs.team2Picker().getId())
                             .build()
             );
+
+            if (!inputs.candidateUsers().isEmpty()) {
+                rpsDraftCandidateRepository.saveAll(
+                        inputs.candidateUsers().stream()
+                                .map(candidateUser -> buildCandidateEntity(
+                                        session.getId(),
+                                        candidateUser.getId(),
+                                        null,
+                                        null,
+                                        candidateUser
+                                ))
+                                .toList()
+                );
+            }
 
             return ResponseDto.success(buildSessionDetail(session.getId()));
         } catch (Exception e) {
@@ -134,20 +147,14 @@ public class RpsDraftService {
                 throw new IllegalArgumentException("Candidate already exists in this session.");
             }
 
-            UserEntity candidateUser = userRepository.findById(requestDto.getCandidateUserId())
-                    .orElseThrow(() -> new IllegalArgumentException("Candidate user could not be found."));
-
-            String candidateName = normalizeCandidateName(requestDto.getCandidateName(), candidateUser);
-            String race = normalizeRace(requestDto.getRace(), candidateUser.getRace());
-
-            rpsDraftCandidateRepository.save(
-                    RpsDraftCandidateEntity.builder()
-                            .rpsDraftSessionId(sessionId)
-                            .candidateUserId(requestDto.getCandidateUserId())
-                            .candidateName(candidateName)
-                            .race(race)
-                            .build()
-            );
+            UserEntity candidateUser = requireCandidateUser(requestDto.getCandidateUserId());
+            rpsDraftCandidateRepository.save(buildCandidateEntity(
+                    sessionId,
+                    requestDto.getCandidateUserId(),
+                    requestDto.getCandidateName(),
+                    requestDto.getRace(),
+                    candidateUser
+            ));
 
             return ResponseDto.success(requireCandidate(sessionId, requestDto.getCandidateUserId()));
         } catch (Exception e) {
@@ -216,9 +223,22 @@ public class RpsDraftService {
     }
 
     private void validateSessionRequest(RpsDraftSessionCreateRequestDto requestDto) {
-        if (requestDto == null || requestDto.getTitle() == null || requestDto.getTitle().isBlank()) {
+        if (requestDto == null) {
+            throw new IllegalArgumentException("Session request is required.");
+        }
+        if (requestDto.getTitle() == null || requestDto.getTitle().isBlank()) {
             throw new IllegalArgumentException("Session title is required.");
         }
+        if (requestDto.getTeam1PickerUserId() == null) {
+            throw new IllegalArgumentException("Team 1 picker user id is required.");
+        }
+        if (requestDto.getTeam2PickerUserId() == null) {
+            throw new IllegalArgumentException("Team 2 picker user id is required.");
+        }
+        if (Objects.equals(requestDto.getTeam1PickerUserId(), requestDto.getTeam2PickerUserId())) {
+            throw new IllegalArgumentException("Two distinct pickers must be selected.");
+        }
+        validateDistinctCandidateUserIds(requestDto.getCandidateUserIds());
     }
 
     private void validateCandidateRequest(RpsDraftCandidateRequestDto requestDto) {
@@ -236,11 +256,94 @@ public class RpsDraftService {
         }
     }
 
-    private String normalizeTeamName(String requestedName, String defaultName) {
-        if (requestedName == null || requestedName.isBlank()) {
-            return defaultName;
+    private void validateDistinctCandidateUserIds(List<Long> candidateUserIds) {
+        if (candidateUserIds == null || candidateUserIds.isEmpty()) {
+            return;
         }
-        return requestedName.trim();
+
+        Set<Long> uniqueCandidateUserIds = new LinkedHashSet<>();
+        for (Long candidateUserId : candidateUserIds) {
+            if (candidateUserId == null) {
+                throw new IllegalArgumentException("Candidate user id is required.");
+            }
+            if (!uniqueCandidateUserIds.add(candidateUserId)) {
+                throw new IllegalArgumentException("Duplicate candidate user ids are not allowed.");
+            }
+        }
+    }
+
+    private CreateSessionInputs prepareCreateSessionInputs(RpsDraftSessionCreateRequestDto requestDto) {
+        validateSessionRequest(requestDto);
+
+        UserEntity team1Picker = requireActivePickerUser(
+                requestDto.getTeam1PickerUserId(),
+                "Team 1 picker user could not be found."
+        );
+        UserEntity team2Picker = requireActivePickerUser(
+                requestDto.getTeam2PickerUserId(),
+                "Team 2 picker user could not be found."
+        );
+
+        String team1Name = buildTeamName(team1Picker);
+        String team2Name = buildTeamName(team2Picker);
+        validateDistinctTeamNames(team1Name, team2Name);
+
+        return new CreateSessionInputs(
+                team1Picker,
+                team2Picker,
+                loadCandidateUsers(requestDto.getCandidateUserIds())
+        );
+    }
+
+    private UserEntity requireActivePickerUser(Long pickerUserId, String notFoundMessage) {
+        UserEntity pickerUser = userRepository.findById(pickerUserId)
+                .orElseThrow(() -> new IllegalArgumentException(notFoundMessage));
+        if (!"ACTIVE".equals(pickerUser.getStatus())) {
+            throw new IllegalArgumentException("Only ACTIVE users can be assigned as pickers.");
+        }
+        return pickerUser;
+    }
+
+    private List<UserEntity> loadCandidateUsers(List<Long> candidateUserIds) {
+        if (candidateUserIds == null || candidateUserIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<UserEntity> candidateUsers = new ArrayList<>(candidateUserIds.size());
+        for (Long candidateUserId : candidateUserIds) {
+            candidateUsers.add(requireCandidateUser(candidateUserId));
+        }
+        return candidateUsers;
+    }
+
+    private UserEntity requireCandidateUser(Long candidateUserId) {
+        return userRepository.findById(candidateUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Candidate user could not be found."));
+    }
+
+    private String buildTeamName(UserEntity pickerUser) {
+        if (pickerUser.getUserId() != null && !pickerUser.getUserId().isBlank()) {
+            return pickerUser.getUserId().trim();
+        }
+        throw new IllegalArgumentException("Picker user id is required for team naming.");
+    }
+
+    private RpsDraftCandidateEntity buildCandidateEntity(
+            Long sessionId,
+            Long candidateUserId,
+            String requestedName,
+            String requestedRace,
+            UserEntity candidateUser
+    ) {
+        String candidateName = normalizeCandidateName(requestedName, candidateUser);
+        String race = normalizeRace(requestedRace, candidateUser.getRace());
+
+        return RpsDraftCandidateEntity.builder()
+                .rpsDraftSessionId(sessionId)
+                .candidateUserId(candidateUserId)
+                .candidateName(candidateName)
+                .race(race)
+                .build();
     }
 
     private String normalizeCandidateName(String requestedName, UserEntity candidateUser) {
@@ -271,5 +374,12 @@ public class RpsDraftService {
         if (!RpsDraftSessionEntity.STATUS_READY.equals(session.getStatus())) {
             throw new IllegalArgumentException("Only READY sessions can be updated.");
         }
+    }
+
+    private record CreateSessionInputs(
+            UserEntity team1Picker,
+            UserEntity team2Picker,
+            List<UserEntity> candidateUsers
+    ) {
     }
 }
