@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface UserRepository extends JpaRepository<UserEntity, Long> {
+    UserEntity findByUserIdIgnoreCase(String userId);
+
+    boolean existsByUserIdIgnoreCase(String userId);
+
     @Query("""
             select u
             from UserEntity u
@@ -30,5 +34,22 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
             @Param("keyword") String keyword,
             @Param("status") String status,
             Pageable pageable
+    );
+
+    @Query("""
+            select u
+            from UserEntity u
+            where (:status = 'ALL' or upper(u.status) = :status)
+              and (:keyword = '' or upper(u.userId) like concat('%', upper(:keyword), '%'))
+            order by
+              case
+                when :keyword <> '' and upper(u.userId) like concat(upper(:keyword), '%') then 0
+                else 1
+              end,
+              upper(u.userId) asc
+            """)
+    List<UserEntity> searchAdminUsers(
+            @Param("keyword") String keyword,
+            @Param("status") String status
     );
 }

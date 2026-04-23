@@ -55,6 +55,17 @@ public class UserEntity implements Serializable {
     @Column(name = "coin")
     private Long coin;
 
+    public void updateAdminProfile(String userId, String name, String race, String tier) {
+        this.userId = userId;
+        this.name = name;
+        this.race = race;
+        this.tier = tier;
+    }
+
+    public void updateStatus(String status) {
+        this.status = status;
+    }
+
     public void updatePassword(String password) {
         this.password = password;
     }

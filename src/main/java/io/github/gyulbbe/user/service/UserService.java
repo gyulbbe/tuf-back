@@ -1,11 +1,16 @@
 package io.github.gyulbbe.user.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.user.dto.UserAdminCreateRequestDto;
+import io.github.gyulbbe.user.dto.UserAdminResponseDto;
+import io.github.gyulbbe.user.dto.UserAdminStatusUpdateRequestDto;
+import io.github.gyulbbe.user.dto.UserAdminUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserDetailDto;
 import io.github.gyulbbe.user.dto.UserDto;
 import io.github.gyulbbe.user.dto.UserSearchDto;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -15,16 +20,20 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @Transactional
 @AllArgsConstructor
 @Slf4j
 public class UserService {
+    private static final String ACTIVE = "ACTIVE";
+    private static final String INACTIVE = "INACTIVE";
+    private static final String ALL = "ALL";
+    private static final Set<String> ADMIN_STATUSES = Set.of(ACTIVE, INACTIVE, ALL);
+
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
-
-    private static final String ACTIVE = "ACTIVE";
 
     public ResponseDto<Void> insertUser(UserDto userDto) {
         UserEntity user = UserEntity.builder()
@@ -70,8 +79,7 @@ public class UserService {
     }
 
     public ResponseDto<Void> updatePassword(Long id, String newPassword) {
-        UserEntity user = userRepository.findById(id)
-                .orElse(null);
+        UserEntity user = userRepository.findById(id).orElse(null);
         if (user == null) {
             return ResponseDto.fail("해당 사용자를 찾을 수 없습니다.");
         }
@@ -111,6 +119,104 @@ public class UserService {
         return ResponseDto.success(users);
     }
 
+    @Transactional(readOnly = true)
+    public ResponseDto<List<UserAdminResponseDto>> searchAdminUsers(String keyword, String status) {
+        String normalizedStatus = normalizeAdminSearchStatus(status);
+        if (normalizedStatus == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "status는 ACTIVE, INACTIVE, ALL 중 하나여야 합니다.");
+        }
+
+        List<UserAdminResponseDto> users = userRepository.searchAdminUsers(
+                        normalizeKeyword(keyword),
+                        normalizedStatus
+                ).stream()
+                .map(this::toUserAdminResponseDto)
+                .toList();
+
+        return ResponseDto.success(users);
+    }
+
+    public ResponseDto<UserAdminResponseDto> createAdminUser(UserAdminCreateRequestDto requestDto) {
+        if (requestDto == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+        }
+
+        try {
+            String userId = normalizeRequired(requestDto.getUserId(), "userId");
+            String password = normalizeRequired(requestDto.getPassword(), "password");
+            String name = normalizeRequired(requestDto.getName(), "name");
+            String race = normalizeRequired(requestDto.getRace(), "race");
+            String tier = normalizeRequired(requestDto.getTier(), "tier");
+
+            if (userRepository.existsByUserIdIgnoreCase(userId)) {
+                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.");
+            }
+
+            UserEntity savedUser = userRepository.save(UserEntity.builder()
+                    .userId(userId)
+                    .password(bCryptPasswordEncoder.encode(password))
+                    .name(name)
+                    .race(race)
+                    .tier(tier)
+                    .status(ACTIVE)
+                    .coin(1000L)
+                    .userType("ROLE_USER")
+                    .photo("default.jpg")
+                    .build());
+
+            return ResponseDto.success(toUserAdminResponseDto(savedUser));
+        } catch (IllegalArgumentException e) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    public ResponseDto<UserAdminResponseDto> updateAdminUser(Long id, UserAdminUpdateRequestDto requestDto) {
+        if (requestDto == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+        }
+
+        UserEntity user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
+
+        try {
+            String userId = normalizeRequired(requestDto.getUserId(), "userId");
+            String name = normalizeRequired(requestDto.getName(), "name");
+            String race = normalizeRequired(requestDto.getRace(), "race");
+            String tier = normalizeRequired(requestDto.getTier(), "tier");
+
+            UserEntity existingUser = userRepository.findByUserIdIgnoreCase(userId);
+            if (existingUser != null && !existingUser.getId().equals(id)) {
+                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.");
+            }
+
+            user.updateAdminProfile(userId, name, race, tier);
+            return ResponseDto.success(toUserAdminResponseDto(user));
+        } catch (IllegalArgumentException e) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    public ResponseDto<UserAdminResponseDto> updateAdminUserStatus(Long id, UserAdminStatusUpdateRequestDto requestDto) {
+        if (requestDto == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+        }
+
+        UserEntity user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
+
+        String normalizedStatus = normalizeManagedUserStatus(requestDto.getStatus());
+        if (normalizedStatus == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "status는 ACTIVE 또는 INACTIVE 중 하나여야 합니다.");
+        }
+
+        user.updateStatus(normalizedStatus);
+        return ResponseDto.success(toUserAdminResponseDto(user));
+    }
+
     private UserSearchDto toUserSearchDto(UserEntity user) {
         UserSearchDto dto = new UserSearchDto();
         dto.setId(user.getId());
@@ -120,5 +226,39 @@ public class UserService {
         dto.setRace(user.getRace());
         dto.setPhoto(user.getPhoto());
         return dto;
+    }
+
+    private UserAdminResponseDto toUserAdminResponseDto(UserEntity user) {
+        UserAdminResponseDto dto = new UserAdminResponseDto();
+        dto.setId(user.getId());
+        dto.setUserId(user.getUserId());
+        dto.setName(user.getName());
+        dto.setRace(user.getRace());
+        dto.setTier(user.getTier());
+        dto.setStatus(user.getStatus());
+        return dto;
+    }
+
+    private String normalizeKeyword(String keyword) {
+        return keyword == null ? "" : keyword.trim();
+    }
+
+    private String normalizeAdminSearchStatus(String status) {
+        String normalizedStatus = status == null || status.isBlank()
+                ? ALL
+                : status.trim().toUpperCase();
+        return ADMIN_STATUSES.contains(normalizedStatus) ? normalizedStatus : null;
+    }
+
+    private String normalizeManagedUserStatus(String status) {
+        String normalizedStatus = status == null ? null : status.trim().toUpperCase();
+        return ACTIVE.equals(normalizedStatus) || INACTIVE.equals(normalizedStatus) ? normalizedStatus : null;
+    }
+
+    private String normalizeRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "는 필수입니다.");
+        }
+        return value.trim();
     }
 }
