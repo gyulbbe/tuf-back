@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RpsDraftTeamRepository extends JpaRepository<RpsDraftTeamEntity, Long> {
+    int deleteByRpsDraftSessionId(Long rpsDraftSessionId);
+
     boolean existsByIdAndRpsDraftSessionId(Long id, Long rpsDraftSessionId);
 
     long countByRpsDraftSessionId(Long rpsDraftSessionId);

@@ -14,6 +14,7 @@ import io.github.gyulbbe.rpsdraft.service.RpsDraftAdminService;
 import io.github.gyulbbe.rpsdraft.service.RpsDraftService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,6 +52,15 @@ public class RpsDraftController {
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> getSession(@PathVariable Long sessionId) {
         return ResponseEntity.ok(rpsDraftService.getSession(sessionId));
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<ResponseDto<Void>> deleteSession(@PathVariable Long sessionId) {
+        try {
+            return toResponseEntity(rpsDraftService.deleteSession(sessionId, rpsDraftActorResolver.resolveOptional()));
+        } catch (Exception e) {
+            return toResponseEntity(ResponseDto.fail(e.getMessage()));
+        }
     }
 
     @GetMapping("/sessions/{sessionId}/teams")
@@ -95,5 +105,9 @@ public class RpsDraftController {
     @GetMapping("/sessions/{sessionId}/candidates")
     public ResponseEntity<ResponseDto<List<RpsDraftCandidateResponseDto>>> listCandidates(@PathVariable Long sessionId) {
         return ResponseEntity.ok(rpsDraftService.listCandidates(sessionId));
+    }
+
+    private <T> ResponseEntity<ResponseDto<T>> toResponseEntity(ResponseDto<T> responseDto) {
+        return ResponseEntity.status(responseDto.getStatus()).body(responseDto);
     }
 }

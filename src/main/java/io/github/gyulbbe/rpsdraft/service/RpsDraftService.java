@@ -13,11 +13,13 @@ import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftTeamEntity;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftCandidateRepository;
+import io.github.gyulbbe.rpsdraft.repository.RpsDraftPickRepository;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftQueryRepository;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftSessionRepository;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,7 @@ public class RpsDraftService {
     private final RpsDraftSessionRepository rpsDraftSessionRepository;
     private final RpsDraftTeamRepository rpsDraftTeamRepository;
     private final RpsDraftCandidateRepository rpsDraftCandidateRepository;
+    private final RpsDraftPickRepository rpsDraftPickRepository;
     private final RpsDraftQueryRepository rpsDraftQueryRepository;
     private final RpsDraftPermissionService rpsDraftPermissionService;
     private final UserRepository userRepository;
@@ -174,6 +177,57 @@ public class RpsDraftService {
         }
     }
 
+    public ResponseDto<Void> deleteSession(Long sessionId, RpsDraftActor actor) {
+        try {
+            if (actor == null || actor.userPk() == null) {
+                return ResponseDto.fail(HttpServletResponse.SC_FORBIDDEN, "Authentication is required.");
+            }
+
+            RpsDraftSessionEntity session = rpsDraftSessionRepository.findByIdForUpdate(sessionId).orElse(null);
+            if (session == null) {
+                return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "RPS draft session could not be found.");
+            }
+
+            rpsDraftPermissionService.assertOwnerOrAdmin(session, actor);
+
+            RpsDraftSessionDeleteStats deleteStats = collectDeleteStats(sessionId, session);
+            log.info(
+                    "Deleting RPS draft session. sessionId={}, status={}, currentDraftTeamId={}, pendingDraftTeamId={}, picks={}, candidates={}, teams={}",
+                    deleteStats.sessionId(),
+                    deleteStats.status(),
+                    deleteStats.currentDraftTeamId(),
+                    deleteStats.pendingDraftTeamId(),
+                    deleteStats.pickCount(),
+                    deleteStats.candidateCount(),
+                    deleteStats.teamCount()
+            );
+
+            session.clearProgressState();
+            rpsDraftSessionRepository.flush();
+
+            int deletedPicks = rpsDraftPickRepository.deleteByRpsDraftSessionId(sessionId);
+            int deletedCandidates = rpsDraftCandidateRepository.deleteByRpsDraftSessionId(sessionId);
+            int deletedTeams = rpsDraftTeamRepository.deleteByRpsDraftSessionId(sessionId);
+            rpsDraftSessionRepository.delete(session);
+
+            log.info(
+                    "Deleted RPS draft session. sessionId={}, deletedPicks={}, deletedCandidates={}, deletedTeams={}",
+                    sessionId,
+                    deletedPicks,
+                    deletedCandidates,
+                    deletedTeams
+            );
+
+            return ResponseDto.success(null);
+        } catch (SecurityException e) {
+            log.warn("Denied deleting RPS draft session. sessionId={}, actor={}", sessionId, actor, e);
+            return ResponseDto.fail(HttpServletResponse.SC_FORBIDDEN, e.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to delete RPS draft session. sessionId={}", sessionId, e);
+            return ResponseDto.fail(e.getMessage());
+        }
+    }
+
     private RpsDraftSessionDetailResponseDto buildSessionDetail(Long sessionId) {
         RpsDraftSessionQueryDto session = requireSessionQuery(sessionId);
 
@@ -220,6 +274,18 @@ public class RpsDraftService {
     private RpsDraftCandidateResponseDto requireCandidate(Long sessionId, Long candidateUserId) {
         return rpsDraftQueryRepository.findCandidate(sessionId, candidateUserId)
                 .orElseThrow(() -> new IllegalArgumentException("RPS draft candidate could not be found."));
+    }
+
+    private RpsDraftSessionDeleteStats collectDeleteStats(Long sessionId, RpsDraftSessionEntity session) {
+        return new RpsDraftSessionDeleteStats(
+                sessionId,
+                session.getStatus(),
+                session.getCurrentDraftTeamId(),
+                session.getPendingDraftTeamId(),
+                rpsDraftTeamRepository.countByRpsDraftSessionId(sessionId),
+                rpsDraftCandidateRepository.countByRpsDraftSessionId(sessionId),
+                rpsDraftPickRepository.countByRpsDraftSessionId(sessionId)
+        );
     }
 
     private void validateSessionRequest(RpsDraftSessionCreateRequestDto requestDto) {
@@ -380,6 +446,17 @@ public class RpsDraftService {
             UserEntity team1Picker,
             UserEntity team2Picker,
             List<UserEntity> candidateUsers
+    ) {
+    }
+
+    private record RpsDraftSessionDeleteStats(
+            Long sessionId,
+            String status,
+            Long currentDraftTeamId,
+            Long pendingDraftTeamId,
+            long teamCount,
+            long candidateCount,
+            long pickCount
     ) {
     }
 }

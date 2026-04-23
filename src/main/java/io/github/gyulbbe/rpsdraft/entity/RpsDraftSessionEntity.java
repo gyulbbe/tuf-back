@@ -149,4 +149,12 @@ public class RpsDraftSessionEntity {
         this.pendingDraftTeamId = null;
         this.endedAt = now;
     }
+
+    public void clearProgressState() {
+        this.currentDraftTeamId = null;
+        this.pendingDraftTeamId = null;
+        this.team1RpsChoice = null;
+        this.team2RpsChoice = null;
+        this.rpsResult = RPS_RESULT_PENDING;
+    }
 }

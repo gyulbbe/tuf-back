@@ -28,10 +28,24 @@ public class RpsDraftPermissionService {
         return actor != null && actor.userPk() != null && Objects.equals(session.getOwnerUserId(), actor.userPk());
     }
 
+    public boolean isAdmin(RpsDraftActor actor) {
+        return actor != null
+                && ("ROLE_MASTER".equals(actor.role())
+                || "ROLE_MANAGER".equals(actor.role())
+                || "ROLE_ADMIN".equals(actor.role()));
+    }
+
     public void assertOwner(RpsDraftSessionEntity session, RpsDraftActor actor) {
         assertAuthenticated(actor);
         if (!isOwner(session, actor)) {
             throw new IllegalArgumentException("Only the session owner can perform this action.");
+        }
+    }
+
+    public void assertOwnerOrAdmin(RpsDraftSessionEntity session, RpsDraftActor actor) {
+        assertAuthenticated(actor);
+        if (!isOwner(session, actor) && !isAdmin(actor)) {
+            throw new SecurityException("Only the session owner or an admin can perform this action.");
         }
     }
 

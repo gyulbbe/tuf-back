@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface RpsDraftPickRepository extends JpaRepository<RpsDraftPickEntity, RpsDraftPickId> {
+    int deleteByRpsDraftSessionId(Long rpsDraftSessionId);
+
     long countByRpsDraftSessionId(Long rpsDraftSessionId);
 
     boolean existsByRpsDraftSessionIdAndCandidateUserId(Long rpsDraftSessionId, Long candidateUserId);
