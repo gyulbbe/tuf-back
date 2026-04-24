@@ -8,6 +8,9 @@ import java.time.LocalDateTime;
 public class RpsDraftLiveSessionInfoResponseDto {
     private Long id;
     private String title;
+    private Long ownerUserId;
+    private String ownerUserLoginId;
+    private String ownerName;
     private String status;
     private Integer currentPickNo;
     private Long currentDraftTeamId;

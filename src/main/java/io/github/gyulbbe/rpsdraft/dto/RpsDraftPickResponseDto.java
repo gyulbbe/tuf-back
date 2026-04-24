@@ -11,8 +11,12 @@ public class RpsDraftPickResponseDto {
     private Long rpsDraftTeamId;
     private String rpsDraftTeamName;
     private Long candidateUserId;
+    private String candidateUserLoginId;
     private String candidateName;
+    private String tier;
+    private String race;
     private Long pickedByUserId;
+    private String pickedByUserLoginId;
     private String pickedByUserName;
     private LocalDateTime pickedAt;
 }

@@ -13,6 +13,7 @@ public class RpsDraftLiveEventResponseDto {
     private LocalDateTime occurredAt;
     private LocalDateTime serverNow;
     private Long actorUserId;
+    private String actorUserLoginId;
     private String message;
     private String roundResult;
     private RpsDraftLiveSnapshotResponseDto snapshot;

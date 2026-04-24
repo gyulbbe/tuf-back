@@ -11,6 +11,7 @@ public class RpsDraftSessionDetailResponseDto {
     private Long id;
     private String title;
     private Long ownerUserId;
+    private String ownerUserLoginId;
     private String ownerName;
     private String status;
     private Integer currentPickNo;
@@ -19,4 +20,5 @@ public class RpsDraftSessionDetailResponseDto {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
     private List<RpsDraftTeamResponseDto> teams = new ArrayList<>();
+    private List<RpsDraftCandidateResponseDto> candidates = new ArrayList<>();
 }

@@ -45,7 +45,7 @@ public class RpsDraftSnapshotService {
         LocalDateTime now = LocalDateTime.now();
 
         Map<Long, RpsDraftLiveTeamResponseDto> teamMap = buildTeams(teams);
-        attachRoster(teamMap, picks);
+        attachRoster(teamMap, picks, teams.size());
 
         RpsDraftLiveSnapshotResponseDto snapshot = new RpsDraftLiveSnapshotResponseDto();
         snapshot.setSession(buildSessionInfo(session, now));
@@ -73,6 +73,7 @@ public class RpsDraftSnapshotService {
                     dto.setTeamName(team.getTeamName());
                     dto.setDisplayOrder(team.getDisplayOrder());
                     dto.setPickerUserId(team.getPickerUserId());
+                    dto.setPickerUserLoginId(team.getPickerUserLoginId());
                     dto.setPickerName(team.getPickerName());
                     return dto;
                 })
@@ -84,7 +85,11 @@ public class RpsDraftSnapshotService {
                 ));
     }
 
-    private void attachRoster(Map<Long, RpsDraftLiveTeamResponseDto> teamMap, List<RpsDraftPickResponseDto> picks) {
+    private void attachRoster(
+            Map<Long, RpsDraftLiveTeamResponseDto> teamMap,
+            List<RpsDraftPickResponseDto> picks,
+            int teamCount
+    ) {
         for (RpsDraftPickResponseDto pick : picks) {
             RpsDraftLiveTeamResponseDto team = teamMap.get(pick.getRpsDraftTeamId());
             if (team == null) {
@@ -93,19 +98,34 @@ public class RpsDraftSnapshotService {
 
             RpsDraftLiveRosterItemResponseDto rosterItem = new RpsDraftLiveRosterItemResponseDto();
             rosterItem.setPickNo(pick.getPickNo());
+            rosterItem.setRoundNo(calculateRoundNo(pick.getPickNo(), teamCount));
             rosterItem.setCandidateUserId(pick.getCandidateUserId());
+            rosterItem.setCandidateUserLoginId(pick.getCandidateUserLoginId());
             rosterItem.setCandidateName(pick.getCandidateName());
+            rosterItem.setTier(pick.getTier());
+            rosterItem.setRace(pick.getRace());
             rosterItem.setPickedByUserId(pick.getPickedByUserId());
+            rosterItem.setPickedByUserLoginId(pick.getPickedByUserLoginId());
             rosterItem.setPickedByUserName(pick.getPickedByUserName());
             rosterItem.setPickedAt(pick.getPickedAt());
             team.getRoster().add(rosterItem);
         }
     }
 
+    private Long calculateRoundNo(Long pickNo, int teamCount) {
+        if (pickNo == null || teamCount <= 0) {
+            return null;
+        }
+        return ((pickNo - 1) / teamCount) + 1;
+    }
+
     private RpsDraftLiveSessionInfoResponseDto buildSessionInfo(RpsDraftSessionQueryDto session, LocalDateTime now) {
         RpsDraftLiveSessionInfoResponseDto info = new RpsDraftLiveSessionInfoResponseDto();
         info.setId(session.getId());
         info.setTitle(session.getTitle());
+        info.setOwnerUserId(session.getOwnerUserId());
+        info.setOwnerUserLoginId(session.getOwnerUserLoginId());
+        info.setOwnerName(session.getOwnerName());
         info.setStatus(session.getStatus());
         info.setCurrentPickNo(session.getCurrentPickNo());
         info.setCurrentDraftTeamId(session.getCurrentDraftTeamId());

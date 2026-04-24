@@ -33,8 +33,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -79,11 +81,13 @@ public class DraftService {
                     .build();
 
             DraftSessionEntity saved = draftSessionRepository.save(entity);
+            createDefaultTeams(saved.getId(), saved.getTeamCount());
             if ("LIVE".equals(saved.getStatus())) {
                 draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
             }
             return ResponseDto.success(requireSessionSummary(saved.getId()));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             log.error("Failed to create draft session.", e);
             return ResponseDto.fail(e.getMessage());
         }
@@ -192,6 +196,16 @@ public class DraftService {
             validateTeamRequest(requestDto);
             DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
             draftPermissionService.assertOwnerOrAdmin(session, actor);
+
+            Optional<DraftTeamEntity> defaultTeam = findReplaceableDefaultTeam(
+                    requestDto.getDraftSessionId(),
+                    requestDto.getDisplayOrder()
+            );
+            if (defaultTeam.isPresent()) {
+                DraftTeamEntity entity = defaultTeam.get();
+                entity.update(requestDto.getTeamName(), requestDto.getDisplayOrder());
+                return ResponseDto.success(requireTeam(entity.getId()));
+            }
 
             DraftTeamEntity entity = DraftTeamEntity.builder()
                     .draftSessionId(requestDto.getDraftSessionId())
@@ -576,6 +590,33 @@ public class DraftService {
 
     private List<DraftTeamResponseDto> loadTeams(Long sessionId) {
         return draftQueryRepository.findTeamsBySessionId(sessionId);
+    }
+
+    private Optional<DraftTeamEntity> findReplaceableDefaultTeam(Long sessionId, Integer displayOrder) {
+        return draftTeamRepository.findByDraftSessionIdAndDisplayOrder(sessionId, displayOrder)
+                .filter(team -> team.getPickerUserId() == null)
+                .filter(team -> Objects.equals(team.getTeamName(), buildDefaultTeamName(displayOrder)));
+    }
+
+    private void createDefaultTeams(Long sessionId, Integer teamCount) {
+        if (teamCount == null || teamCount <= 0) {
+            return;
+        }
+
+        List<DraftTeamEntity> defaultTeams = new ArrayList<>(teamCount);
+        for (int displayOrder = 1; displayOrder <= teamCount; displayOrder++) {
+            defaultTeams.add(DraftTeamEntity.builder()
+                    .draftSessionId(sessionId)
+                    .teamName(buildDefaultTeamName(displayOrder))
+                    .displayOrder(displayOrder)
+                    .pickerUserId(null)
+                    .build());
+        }
+        draftTeamRepository.saveAll(defaultTeams);
+    }
+
+    private String buildDefaultTeamName(int displayOrder) {
+        return "Team " + displayOrder;
     }
 
     private DraftSessionSummaryResponseDto requireSessionSummary(Long sessionId) {

@@ -12,6 +12,7 @@ public class RpsDraftLiveTeamResponseDto {
     private String teamName;
     private Integer displayOrder;
     private Long pickerUserId;
+    private String pickerUserLoginId;
     private String pickerName;
     private List<RpsDraftLiveRosterItemResponseDto> roster = new ArrayList<>();
 }

@@ -47,7 +47,7 @@ public class DraftSnapshotService {
         LocalDateTime serverNow = LocalDateTime.now();
 
         Map<Long, DraftLiveTeamResponseDto> teamMap = buildTeams(teamDtos);
-        attachRoster(teamMap, picks);
+        attachRoster(teamMap, picks, sessionSummary.getTeamCount());
         DraftLiveCurrentTurnResponseDto currentTurn = buildCurrentTurn(sessionSummary, orders, teamMap, serverNow);
 
         DraftLiveSnapshotResponseDto snapshot = new DraftLiveSnapshotResponseDto();
@@ -91,7 +91,11 @@ public class DraftSnapshotService {
                 ));
     }
 
-    private void attachRoster(Map<Long, DraftLiveTeamResponseDto> teamMap, List<DraftPickResponseDto> picks) {
+    private void attachRoster(
+            Map<Long, DraftLiveTeamResponseDto> teamMap,
+            List<DraftPickResponseDto> picks,
+            Integer teamCount
+    ) {
         for (DraftPickResponseDto pick : picks) {
             DraftLiveTeamResponseDto team = teamMap.get(pick.getDraftTeamId());
             if (team == null) {
@@ -100,13 +104,23 @@ public class DraftSnapshotService {
 
             DraftLiveRosterItemResponseDto rosterItem = new DraftLiveRosterItemResponseDto();
             rosterItem.setPickNo(pick.getPickNo());
+            rosterItem.setRoundNo(calculateRoundNo(pick.getPickNo(), teamCount));
             rosterItem.setCandidateUserId(pick.getCandidateUserId());
             rosterItem.setCandidateName(pick.getCandidateName());
+            rosterItem.setTier(pick.getTier());
+            rosterItem.setRace(pick.getRace());
             rosterItem.setPickedByUserId(pick.getPickedByUserId());
             rosterItem.setPickedByUserName(pick.getPickedByUserName());
             rosterItem.setPickedAt(pick.getPickedAt());
             team.getRoster().add(rosterItem);
         }
+    }
+
+    private Long calculateRoundNo(Long pickNo, Integer teamCount) {
+        if (pickNo == null || teamCount == null || teamCount <= 0) {
+            return null;
+        }
+        return ((pickNo - 1) / teamCount) + 1;
     }
 
     private DraftLiveSessionInfoResponseDto buildSessionInfo(DraftSessionSummaryResponseDto sessionSummary, LocalDateTime serverNow) {

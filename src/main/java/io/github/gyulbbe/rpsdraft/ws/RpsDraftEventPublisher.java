@@ -56,6 +56,7 @@ public class RpsDraftEventPublisher {
                 .occurredAt(now)
                 .serverNow(now)
                 .actorUserId(actor != null ? actor.userPk() : null)
+                .actorUserLoginId(actor != null ? actor.username() : null)
                 .message(message)
                 .roundResult(roundResult)
                 .snapshot(rpsDraftSnapshotService.getBroadcastSnapshot(sessionId))

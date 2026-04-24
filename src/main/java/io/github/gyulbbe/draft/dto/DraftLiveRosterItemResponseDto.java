@@ -7,8 +7,11 @@ import java.time.LocalDateTime;
 @Data
 public class DraftLiveRosterItemResponseDto {
     private Long pickNo;
+    private Long roundNo;
     private Long candidateUserId;
     private String candidateName;
+    private String tier;
+    private String race;
     private Long pickedByUserId;
     private String pickedByUserName;
     private LocalDateTime pickedAt;

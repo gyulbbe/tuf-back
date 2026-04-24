@@ -6,5 +6,6 @@ import lombok.Data;
 public class RpsDraftPickerResponseDto {
     private Long rpsDraftTeamId;
     private Long pickerUserId;
+    private String pickerUserLoginId;
     private String pickerName;
 }

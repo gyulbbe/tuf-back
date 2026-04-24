@@ -113,6 +113,7 @@ class DraftServiceTest {
         assertThat(detail.getStatus()).isEqualTo(200);
         assertThat(detail.getData().getOwnerUserId()).isEqualTo(owner.userPk());
         assertThat(detail.getData().getOwnerName()).isEqualTo("Owner One");
+        assertThat(detail.getData().getTeams()).extracting("teamName").containsExactly("Team 1", "Team 2");
     }
 
     @Test
@@ -146,7 +147,7 @@ class DraftServiceTest {
     void owner_can_manage_team_candidate_and_order_mutations() {
         AuthActor owner = createActor("owner03", "Owner Three", "ROLE_USER");
         AuthActor picker = createActor("picker01", "Picker One", "ROLE_USER");
-        Long candidateUserId = createUser("candidate01", "Candidate One", "ROLE_USER");
+        Long candidateUserId = createUser("candidate01", "Candidate One", "ROLE_USER", "S", "ZERG");
 
         Long sessionId = createSession(owner, "Owner Managed Draft", 2, 60);
         Long teamAId = createTeam(owner, sessionId, "Team A", 1);
@@ -177,7 +178,8 @@ class DraftServiceTest {
         assertThat(assignPickerResponse.getStatus()).isEqualTo(200);
         assertThat(assignPickerResponse.getData().getPickerUserId()).isEqualTo(picker.userPk());
         assertThat(createCandidateResponse.getStatus()).isEqualTo(200);
-        assertThat(updateCandidateResponse.getData().getCandidateName()).isEqualTo("Candidate One Updated");
+        assertThat(updateCandidateResponse.getData().getCandidateName()).isEqualTo("candidate01");
+        assertThat(updateCandidateResponse.getData().getTier()).isEqualTo("S");
         assertThat(updateCandidateResponse.getData().getRace()).isEqualTo("PROTOSS");
         assertThat(createOrder1.getStatus()).isEqualTo(200);
         assertThat(createOrder2.getStatus()).isEqualTo(200);
@@ -325,10 +327,16 @@ class DraftServiceTest {
     }
 
     private Long createUser(String userId, String name, String role) {
+        return createUser(userId, name, role, null, null);
+    }
+
+    private Long createUser(String userId, String name, String role, String tier, String race) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
                 .name(name)
+                .tier(tier)
+                .race(race)
                 .status("ACTIVE")
                 .userType(role)
                 .build();

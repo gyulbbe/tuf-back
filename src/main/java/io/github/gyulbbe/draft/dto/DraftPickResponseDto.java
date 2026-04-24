@@ -12,6 +12,8 @@ public class DraftPickResponseDto {
     private String draftTeamName;
     private Long candidateUserId;
     private String candidateName;
+    private String tier;
+    private String race;
     private Long pickedByUserId;
     private String pickedByUserName;
     private LocalDateTime pickedAt;

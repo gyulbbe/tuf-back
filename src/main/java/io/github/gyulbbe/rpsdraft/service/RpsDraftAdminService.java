@@ -62,16 +62,25 @@ public class RpsDraftAdminService {
                         throw new IllegalArgumentException("Picker user is already assigned to another team in this session.");
                     });
 
+            String pickerLoginId = requireUserLoginId(picker, "Picker user's userId is required.");
             team.assignPicker(pickerUserId);
 
             RpsDraftPickerResponseDto response = new RpsDraftPickerResponseDto();
             response.setRpsDraftTeamId(team.getId());
             response.setPickerUserId(picker.getId());
-            response.setPickerName(picker.getName());
+            response.setPickerUserLoginId(pickerLoginId);
+            response.setPickerName(pickerLoginId);
             return ResponseDto.success(response);
         } catch (Exception e) {
             log.error("Failed to assign RPS draft picker.", e);
             return ResponseDto.fail(e.getMessage());
         }
+    }
+
+    private String requireUserLoginId(UserEntity user, String message) {
+        if (user.getUserId() != null && !user.getUserId().isBlank()) {
+            return user.getUserId().trim();
+        }
+        throw new IllegalArgumentException(message);
     }
 }

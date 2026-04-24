@@ -129,13 +129,15 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public List<DraftCandidateResponseDto> findCandidatesBySessionId(Long sessionId) {
         QDraftCandidateEntity draftCandidate = QDraftCandidateEntity.draftCandidateEntity;
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
+        QUserEntity candidateUser = new QUserEntity("draftCandidateUser");
 
         return queryFactory
                 .select(Projections.bean(
                         DraftCandidateResponseDto.class,
                         draftCandidate.draftSessionId,
                         draftCandidate.candidateUserId,
-                        draftCandidate.candidateName,
+                        candidateUser.userId.as("candidateName"),
+                        candidateUser.tier,
                         draftCandidate.race,
                         draftCandidate.status,
                         draftCandidate.pickedDraftTeamId,
@@ -148,8 +150,9 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftTeam.id.eq(draftCandidate.pickedDraftTeamId)
                                 .and(draftTeam.draftSessionId.eq(draftCandidate.draftSessionId))
                 )
+                .leftJoin(candidateUser).on(candidateUser.id.eq(draftCandidate.candidateUserId))
                 .where(draftCandidate.draftSessionId.eq(sessionId))
-                .orderBy(draftCandidate.candidateName.asc(), draftCandidate.candidateUserId.asc())
+                .orderBy(candidateUser.userId.asc(), draftCandidate.candidateUserId.asc())
                 .fetch();
     }
 
@@ -157,6 +160,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public Optional<DraftCandidateResponseDto> findCandidate(Long sessionId, Long candidateUserId) {
         QDraftCandidateEntity draftCandidate = QDraftCandidateEntity.draftCandidateEntity;
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
+        QUserEntity candidateUser = new QUserEntity("draftCandidateUser");
 
         return Optional.ofNullable(
                 queryFactory
@@ -164,7 +168,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 DraftCandidateResponseDto.class,
                                 draftCandidate.draftSessionId,
                                 draftCandidate.candidateUserId,
-                                draftCandidate.candidateName,
+                                candidateUser.userId.as("candidateName"),
+                                candidateUser.tier,
                                 draftCandidate.race,
                                 draftCandidate.status,
                                 draftCandidate.pickedDraftTeamId,
@@ -177,6 +182,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftTeam.id.eq(draftCandidate.pickedDraftTeamId)
                                         .and(draftTeam.draftSessionId.eq(draftCandidate.draftSessionId))
                         )
+                        .leftJoin(candidateUser).on(candidateUser.id.eq(draftCandidate.candidateUserId))
                         .where(
                                 draftCandidate.draftSessionId.eq(sessionId),
                                 draftCandidate.candidateUserId.eq(candidateUserId)
@@ -239,7 +245,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
         QDraftPickEntity draftPick = QDraftPickEntity.draftPickEntity;
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
         QDraftCandidateEntity draftCandidate = QDraftCandidateEntity.draftCandidateEntity;
-        QUserEntity user = QUserEntity.userEntity;
+        QUserEntity candidateUser = new QUserEntity("draftPickCandidateUser");
+        QUserEntity pickedByUser = new QUserEntity("draftPickPickedByUser");
 
         return queryFactory
                 .select(Projections.bean(
@@ -249,9 +256,11 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftPick.draftTeamId,
                         draftTeam.teamName.as("draftTeamName"),
                         draftPick.candidateUserId,
-                        draftCandidate.candidateName,
+                        candidateUser.userId.as("candidateName"),
+                        candidateUser.tier,
+                        draftCandidate.race,
                         draftPick.pickedByUserId,
-                        user.name.as("pickedByUserName"),
+                        pickedByUser.name.as("pickedByUserName"),
                         draftPick.pickedAt
                 ))
                 .from(draftPick)
@@ -265,7 +274,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftCandidate.draftSessionId.eq(draftPick.draftSessionId)
                                 .and(draftCandidate.candidateUserId.eq(draftPick.candidateUserId))
                 )
-                .leftJoin(user).on(user.id.eq(draftPick.pickedByUserId))
+                .leftJoin(candidateUser).on(candidateUser.id.eq(draftPick.candidateUserId))
+                .leftJoin(pickedByUser).on(pickedByUser.id.eq(draftPick.pickedByUserId))
                 .where(draftPick.draftSessionId.eq(sessionId))
                 .orderBy(draftPick.pickNo.asc())
                 .fetch();
@@ -276,7 +286,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
         QDraftPickEntity draftPick = QDraftPickEntity.draftPickEntity;
         QDraftTeamEntity draftTeam = QDraftTeamEntity.draftTeamEntity;
         QDraftCandidateEntity draftCandidate = QDraftCandidateEntity.draftCandidateEntity;
-        QUserEntity user = QUserEntity.userEntity;
+        QUserEntity candidateUser = new QUserEntity("draftPickCandidateUser");
+        QUserEntity pickedByUser = new QUserEntity("draftPickPickedByUser");
 
         return Optional.ofNullable(
                 queryFactory
@@ -287,9 +298,11 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftPick.draftTeamId,
                                 draftTeam.teamName.as("draftTeamName"),
                                 draftPick.candidateUserId,
-                                draftCandidate.candidateName,
+                                candidateUser.userId.as("candidateName"),
+                                candidateUser.tier,
+                                draftCandidate.race,
                                 draftPick.pickedByUserId,
-                                user.name.as("pickedByUserName"),
+                                pickedByUser.name.as("pickedByUserName"),
                                 draftPick.pickedAt
                         ))
                         .from(draftPick)
@@ -303,7 +316,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftCandidate.draftSessionId.eq(draftPick.draftSessionId)
                                         .and(draftCandidate.candidateUserId.eq(draftPick.candidateUserId))
                         )
-                        .leftJoin(user).on(user.id.eq(draftPick.pickedByUserId))
+                        .leftJoin(candidateUser).on(candidateUser.id.eq(draftPick.candidateUserId))
+                        .leftJoin(pickedByUser).on(pickedByUser.id.eq(draftPick.pickedByUserId))
                         .where(draftPick.draftSessionId.eq(sessionId), draftPick.pickNo.eq(pickNo))
                         .fetchOne()
         );

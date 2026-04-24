@@ -86,7 +86,6 @@ public class RpsDraftService {
                                         session.getId(),
                                         candidateUser.getId(),
                                         null,
-                                        null,
                                         candidateUser
                                 ))
                                 .toList()
@@ -154,7 +153,6 @@ public class RpsDraftService {
             rpsDraftCandidateRepository.save(buildCandidateEntity(
                     sessionId,
                     requestDto.getCandidateUserId(),
-                    requestDto.getCandidateName(),
                     requestDto.getRace(),
                     candidateUser
             ));
@@ -235,6 +233,7 @@ public class RpsDraftService {
         detail.setId(session.getId());
         detail.setTitle(session.getTitle());
         detail.setOwnerUserId(session.getOwnerUserId());
+        detail.setOwnerUserLoginId(session.getOwnerUserLoginId());
         detail.setOwnerName(session.getOwnerName());
         detail.setStatus(session.getStatus());
         detail.setCurrentPickNo(session.getCurrentPickNo());
@@ -243,6 +242,7 @@ public class RpsDraftService {
         detail.setStartedAt(session.getStartedAt());
         detail.setEndedAt(session.getEndedAt());
         detail.setTeams(rpsDraftQueryRepository.findTeamsBySessionId(sessionId));
+        detail.setCandidates(rpsDraftQueryRepository.findCandidatesBySessionId(sessionId));
         return detail;
     }
 
@@ -251,6 +251,7 @@ public class RpsDraftService {
         summary.setId(session.getId());
         summary.setTitle(session.getTitle());
         summary.setOwnerUserId(session.getOwnerUserId());
+        summary.setOwnerUserLoginId(session.getOwnerUserLoginId());
         summary.setOwnerName(session.getOwnerName());
         summary.setStatus(session.getStatus());
         summary.setCurrentPickNo(session.getCurrentPickNo());
@@ -397,11 +398,10 @@ public class RpsDraftService {
     private RpsDraftCandidateEntity buildCandidateEntity(
             Long sessionId,
             Long candidateUserId,
-            String requestedName,
             String requestedRace,
             UserEntity candidateUser
     ) {
-        String candidateName = normalizeCandidateName(requestedName, candidateUser);
+        String candidateName = normalizeCandidateName(candidateUser);
         String race = normalizeRace(requestedRace, candidateUser.getRace());
 
         return RpsDraftCandidateEntity.builder()
@@ -412,17 +412,11 @@ public class RpsDraftService {
                 .build();
     }
 
-    private String normalizeCandidateName(String requestedName, UserEntity candidateUser) {
-        if (requestedName != null && !requestedName.isBlank()) {
-            return requestedName.trim();
-        }
-        if (candidateUser.getName() != null && !candidateUser.getName().isBlank()) {
-            return candidateUser.getName();
-        }
+    private String normalizeCandidateName(UserEntity candidateUser) {
         if (candidateUser.getUserId() != null && !candidateUser.getUserId().isBlank()) {
-            return candidateUser.getUserId();
+            return candidateUser.getUserId().trim();
         }
-        throw new IllegalArgumentException("Candidate name is required.");
+        throw new IllegalArgumentException("Candidate user's userId is required.");
     }
 
     private String normalizeRace(String requestedRace, String fallbackRace) {

@@ -89,8 +89,8 @@ class DraftSnapshotServiceTest {
         AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
         AuthActor pickerA = createActor("picker01", "Picker One", "ROLE_USER");
         AuthActor pickerB = createActor("picker02", "Picker Two", "ROLE_USER");
-        Long candidate1Id = createUser("candidate01", "Candidate One", "ROLE_USER");
-        Long candidate2Id = createUser("candidate02", "Candidate Two", "ROLE_USER");
+        Long candidate1Id = createUser("candidate01", "Candidate One", "ROLE_USER", "S", "ZERG");
+        Long candidate2Id = createUser("candidate02", "Candidate Two", "ROLE_USER", "A", "TERRAN");
 
         Long sessionId = createSession(owner, "Snapshot Session");
         Long teamAId = createTeam(owner, sessionId, "Red", 1);
@@ -110,14 +110,30 @@ class DraftSnapshotServiceTest {
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
         assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getTeams()).hasSize(2);
-        assertThat(snapshot.getTeams().stream()
+        var roster = snapshot.getTeams().stream()
                 .filter(team -> team.getId().equals(teamAId))
                 .findFirst()
                 .orElseThrow()
-                .getRoster()).hasSize(1);
+                .getRoster();
+        assertThat(roster).hasSize(1);
+        assertThat(roster.get(0).getPickNo()).isEqualTo(1L);
+        assertThat(roster.get(0).getRoundNo()).isEqualTo(1L);
+        assertThat(roster.get(0).getCandidateUserId()).isEqualTo(candidate1Id);
+        assertThat(roster.get(0).getCandidateName()).isEqualTo("candidate01");
+        assertThat(roster.get(0).getTier()).isEqualTo("S");
+        assertThat(roster.get(0).getRace()).isEqualTo("ZERG");
         assertThat(snapshot.getAvailableCandidates()).hasSize(1);
+        assertThat(snapshot.getAvailableCandidates().get(0).getCandidateName()).isEqualTo("candidate02");
+        assertThat(snapshot.getAvailableCandidates().get(0).getTier()).isEqualTo("A");
+        assertThat(snapshot.getAvailableCandidates().get(0).getRace()).isEqualTo("TERRAN");
         assertThat(snapshot.getPickedCandidates()).hasSize(1);
+        assertThat(snapshot.getPickedCandidates().get(0).getCandidateName()).isEqualTo("candidate01");
+        assertThat(snapshot.getPickedCandidates().get(0).getTier()).isEqualTo("S");
+        assertThat(snapshot.getPickedCandidates().get(0).getRace()).isEqualTo("ZERG");
         assertThat(snapshot.getRecentPicks()).hasSize(1);
+        assertThat(snapshot.getRecentPicks().get(0).getCandidateName()).isEqualTo("candidate01");
+        assertThat(snapshot.getRecentPicks().get(0).getTier()).isEqualTo("S");
+        assertThat(snapshot.getRecentPicks().get(0).getRace()).isEqualTo("ZERG");
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getPermissions().isCanPick()).isTrue();
     }
@@ -279,10 +295,16 @@ class DraftSnapshotServiceTest {
     }
 
     private Long createUser(String userId, String name, String role) {
+        return createUser(userId, name, role, null, null);
+    }
+
+    private Long createUser(String userId, String name, String role, String tier, String race) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
                 .name(name)
+                .tier(tier)
+                .race(race)
                 .status("ACTIVE")
                 .userType(role)
                 .build();

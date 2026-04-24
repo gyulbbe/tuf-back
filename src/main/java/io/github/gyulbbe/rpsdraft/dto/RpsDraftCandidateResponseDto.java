@@ -8,7 +8,9 @@ import java.time.LocalDateTime;
 public class RpsDraftCandidateResponseDto {
     private Long rpsDraftSessionId;
     private Long candidateUserId;
+    private String candidateUserLoginId;
     private String candidateName;
+    private String tier;
     private String race;
     private String status;
     private Long pickedRpsDraftTeamId;
