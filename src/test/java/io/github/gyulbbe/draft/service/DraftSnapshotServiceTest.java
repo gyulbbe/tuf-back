@@ -107,33 +107,46 @@ class DraftSnapshotServiceTest {
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, pickerB);
 
         assertThat(snapshot.getSession().getId()).isEqualTo(sessionId);
+        assertThat(snapshot.getSession().getOwnerUserId()).isEqualTo(owner.userPk());
+        assertThat(snapshot.getSession().getOwnerUserLoginId()).isEqualTo("owner01");
+        assertThat(snapshot.getSession().getOwnerName()).isEqualTo("owner01");
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
         assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getTeams()).hasSize(2);
-        var roster = snapshot.getTeams().stream()
+        var teamA = snapshot.getTeams().stream()
                 .filter(team -> team.getId().equals(teamAId))
                 .findFirst()
-                .orElseThrow()
-                .getRoster();
+                .orElseThrow();
+        assertThat(teamA.getPickerUserLoginId()).isEqualTo("picker01");
+        assertThat(teamA.getPickerName()).isEqualTo("picker01");
+        var roster = teamA.getRoster();
         assertThat(roster).hasSize(1);
         assertThat(roster.get(0).getPickNo()).isEqualTo(1L);
         assertThat(roster.get(0).getRoundNo()).isEqualTo(1L);
         assertThat(roster.get(0).getCandidateUserId()).isEqualTo(candidate1Id);
+        assertThat(roster.get(0).getCandidateUserLoginId()).isEqualTo("candidate01");
         assertThat(roster.get(0).getCandidateName()).isEqualTo("candidate01");
         assertThat(roster.get(0).getTier()).isEqualTo("S");
         assertThat(roster.get(0).getRace()).isEqualTo("ZERG");
+        assertThat(roster.get(0).getPickedByUserLoginId()).isEqualTo("picker01");
+        assertThat(roster.get(0).getPickedByUserName()).isEqualTo("picker01");
         assertThat(snapshot.getAvailableCandidates()).hasSize(1);
+        assertThat(snapshot.getAvailableCandidates().get(0).getCandidateUserLoginId()).isEqualTo("candidate02");
         assertThat(snapshot.getAvailableCandidates().get(0).getCandidateName()).isEqualTo("candidate02");
         assertThat(snapshot.getAvailableCandidates().get(0).getTier()).isEqualTo("A");
         assertThat(snapshot.getAvailableCandidates().get(0).getRace()).isEqualTo("TERRAN");
         assertThat(snapshot.getPickedCandidates()).hasSize(1);
+        assertThat(snapshot.getPickedCandidates().get(0).getCandidateUserLoginId()).isEqualTo("candidate01");
         assertThat(snapshot.getPickedCandidates().get(0).getCandidateName()).isEqualTo("candidate01");
         assertThat(snapshot.getPickedCandidates().get(0).getTier()).isEqualTo("S");
         assertThat(snapshot.getPickedCandidates().get(0).getRace()).isEqualTo("ZERG");
         assertThat(snapshot.getRecentPicks()).hasSize(1);
+        assertThat(snapshot.getRecentPicks().get(0).getCandidateUserLoginId()).isEqualTo("candidate01");
         assertThat(snapshot.getRecentPicks().get(0).getCandidateName()).isEqualTo("candidate01");
         assertThat(snapshot.getRecentPicks().get(0).getTier()).isEqualTo("S");
         assertThat(snapshot.getRecentPicks().get(0).getRace()).isEqualTo("ZERG");
+        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserLoginId()).isEqualTo("picker01");
+        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserName()).isEqualTo("picker01");
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getPermissions().isCanPick()).isTrue();
     }

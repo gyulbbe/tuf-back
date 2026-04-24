@@ -36,7 +36,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.id,
                         draftSession.title,
                         draftSession.ownerUserId,
-                        owner.name.as("ownerName"),
+                        owner.userId.as("ownerUserLoginId"),
+                        owner.userId.as("ownerName"),
                         draftSession.status,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
@@ -64,7 +65,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.id,
                         draftSession.title,
                         draftSession.ownerUserId,
-                        owner.name.as("ownerName"),
+                        owner.userId.as("ownerUserLoginId"),
+                        owner.userId.as("ownerName"),
                         draftSession.status,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
@@ -94,7 +96,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftTeam.teamName,
                                 draftTeam.displayOrder,
                                 draftTeam.pickerUserId,
-                                picker.name.as("pickerName")
+                                picker.userId.as("pickerUserLoginId"),
+                                picker.userId.as("pickerName")
                         ))
                         .from(draftTeam)
                         .leftJoin(picker).on(picker.id.eq(draftTeam.pickerUserId))
@@ -116,7 +119,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftTeam.teamName,
                         draftTeam.displayOrder,
                         draftTeam.pickerUserId,
-                        picker.name.as("pickerName")
+                        picker.userId.as("pickerUserLoginId"),
+                        picker.userId.as("pickerName")
                 ))
                 .from(draftTeam)
                 .leftJoin(picker).on(picker.id.eq(draftTeam.pickerUserId))
@@ -136,6 +140,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         DraftCandidateResponseDto.class,
                         draftCandidate.draftSessionId,
                         draftCandidate.candidateUserId,
+                        candidateUser.userId.as("candidateUserLoginId"),
                         candidateUser.userId.as("candidateName"),
                         candidateUser.tier,
                         draftCandidate.race,
@@ -168,6 +173,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 DraftCandidateResponseDto.class,
                                 draftCandidate.draftSessionId,
                                 draftCandidate.candidateUserId,
+                                candidateUser.userId.as("candidateUserLoginId"),
                                 candidateUser.userId.as("candidateName"),
                                 candidateUser.tier,
                                 draftCandidate.race,
@@ -256,11 +262,13 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftPick.draftTeamId,
                         draftTeam.teamName.as("draftTeamName"),
                         draftPick.candidateUserId,
+                        candidateUser.userId.as("candidateUserLoginId"),
                         candidateUser.userId.as("candidateName"),
                         candidateUser.tier,
                         draftCandidate.race,
                         draftPick.pickedByUserId,
-                        pickedByUser.name.as("pickedByUserName"),
+                        pickedByUser.userId.as("pickedByUserLoginId"),
+                        pickedByUser.userId.as("pickedByUserName"),
                         draftPick.pickedAt
                 ))
                 .from(draftPick)
@@ -298,11 +306,13 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 draftPick.draftTeamId,
                                 draftTeam.teamName.as("draftTeamName"),
                                 draftPick.candidateUserId,
+                                candidateUser.userId.as("candidateUserLoginId"),
                                 candidateUser.userId.as("candidateName"),
                                 candidateUser.tier,
                                 draftCandidate.race,
                                 draftPick.pickedByUserId,
-                                pickedByUser.name.as("pickedByUserName"),
+                                pickedByUser.userId.as("pickedByUserLoginId"),
+                                pickedByUser.userId.as("pickedByUserName"),
                                 draftPick.pickedAt
                         ))
                         .from(draftPick)

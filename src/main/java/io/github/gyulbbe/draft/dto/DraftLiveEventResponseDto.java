@@ -13,6 +13,7 @@ public class DraftLiveEventResponseDto {
     private LocalDateTime occurredAt;
     private LocalDateTime serverNow;
     private Long actorUserId;
+    private String actorUserLoginId;
     private String message;
     private DraftLiveSnapshotResponseDto snapshot;
     private DraftLivePreviewPayloadDto preview;

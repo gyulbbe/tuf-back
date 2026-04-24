@@ -10,4 +10,5 @@ public class UserAdminResponseDto {
     private String race;
     private String tier;
     private String status;
+    private String userType;
 }

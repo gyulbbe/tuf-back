@@ -1,6 +1,7 @@
 package io.github.gyulbbe.user.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.user.dto.DraftUserSearchDto;
 import io.github.gyulbbe.user.dto.UserDetailDto;
 import io.github.gyulbbe.user.dto.UserDto;
 import io.github.gyulbbe.user.dto.UserSearchDto;
@@ -32,6 +33,14 @@ public class UserController {
             @RequestParam(required = false) Integer limit
     ) {
         return ResponseEntity.ok(userService.searchUsers(keyword, limit));
+    }
+
+    @GetMapping("/draft-search")
+    public ResponseEntity<ResponseDto<List<DraftUserSearchDto>>> searchDraftUsers(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return ResponseEntity.ok(userService.searchDraftUsers(keyword, limit));
     }
 
     @PatchMapping("/password/{id}")

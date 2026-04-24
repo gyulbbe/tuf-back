@@ -6,5 +6,6 @@ import lombok.Data;
 public class DraftPickerResponseDto {
     private Long draftTeamId;
     private Long pickerUserId;
+    private String pickerUserLoginId;
     private String pickerName;
 }

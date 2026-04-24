@@ -5,7 +5,6 @@ import io.github.gyulbbe.rpsdraft.auth.RpsDraftActorResolver;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftPickerAssignRequestDto;
-import io.github.gyulbbe.rpsdraft.dto.RpsDraftPickerResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionCreateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionSummaryResponseDto;
@@ -69,7 +68,7 @@ public class RpsDraftController {
     }
 
     @PostMapping("/sessions/{sessionId}/teams/{teamId}/picker")
-    public ResponseEntity<ResponseDto<RpsDraftPickerResponseDto>> assignPicker(
+    public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> assignPicker(
             @PathVariable Long sessionId,
             @PathVariable Long teamId,
             @RequestBody RpsDraftPickerAssignRequestDto requestDto
@@ -89,7 +88,7 @@ public class RpsDraftController {
     }
 
     @PostMapping("/sessions/{sessionId}/candidates")
-    public ResponseEntity<ResponseDto<RpsDraftCandidateResponseDto>> registerCandidate(
+    public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> registerCandidate(
             @PathVariable Long sessionId,
             @RequestBody RpsDraftCandidateRequestDto requestDto
     ) {

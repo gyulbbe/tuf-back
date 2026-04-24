@@ -11,10 +11,12 @@ public class DraftPickResponseDto {
     private Long draftTeamId;
     private String draftTeamName;
     private Long candidateUserId;
+    private String candidateUserLoginId;
     private String candidateName;
     private String tier;
     private String race;
     private Long pickedByUserId;
+    private String pickedByUserLoginId;
     private String pickedByUserName;
     private LocalDateTime pickedAt;
 }

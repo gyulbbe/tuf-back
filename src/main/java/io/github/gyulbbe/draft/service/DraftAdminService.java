@@ -2,7 +2,7 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
@@ -24,8 +24,9 @@ public class DraftAdminService {
     private final DraftSessionRepository draftSessionRepository;
     private final DraftPermissionService draftPermissionService;
     private final UserRepository userRepository;
+    private final DraftService draftService;
 
-    public ResponseDto<DraftPickerResponseDto> assignPicker(Long teamId, Long pickerUserId, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> assignPicker(Long teamId, Long pickerUserId, AuthActor actor) {
         try {
             if (pickerUserId == null) {
                 throw new IllegalArgumentException("Picker user id is required.");
@@ -43,23 +44,23 @@ public class DraftAdminService {
             if (!"ACTIVE".equals(picker.getStatus())) {
                 throw new IllegalArgumentException("Only ACTIVE users can be assigned as pickers.");
             }
+            requireUserLoginId(picker, "Picker user's userId is required.");
 
             if (!pickerUserId.equals(team.getPickerUserId())) {
                 team.assignPicker(pickerUserId);
             }
 
-            return ResponseDto.success(toResponse(teamId, picker));
+            return ResponseDto.success(draftService.requireSessionDetail(team.getDraftSessionId()));
         } catch (Exception e) {
             log.error("Failed to assign draft picker. teamId={}, pickerUserId={}", teamId, pickerUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    private DraftPickerResponseDto toResponse(Long teamId, UserEntity picker) {
-        DraftPickerResponseDto responseDto = new DraftPickerResponseDto();
-        responseDto.setDraftTeamId(teamId);
-        responseDto.setPickerUserId(picker.getId());
-        responseDto.setPickerName(picker.getName());
-        return responseDto;
+    private String requireUserLoginId(UserEntity user, String message) {
+        if (user.getUserId() != null && !user.getUserId().isBlank()) {
+            return user.getUserId().trim();
+        }
+        throw new IllegalArgumentException(message);
     }
 }

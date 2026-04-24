@@ -134,7 +134,7 @@ public class RpsDraftService {
         }
     }
 
-    public ResponseDto<RpsDraftCandidateResponseDto> registerCandidate(
+    public ResponseDto<RpsDraftSessionDetailResponseDto> registerCandidate(
             Long sessionId,
             RpsDraftCandidateRequestDto requestDto,
             RpsDraftActor actor
@@ -157,7 +157,7 @@ public class RpsDraftService {
                     candidateUser
             ));
 
-            return ResponseDto.success(requireCandidate(sessionId, requestDto.getCandidateUserId()));
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to register RPS draft candidate.", e);
             return ResponseDto.fail(e.getMessage());
@@ -244,6 +244,10 @@ public class RpsDraftService {
         detail.setTeams(rpsDraftQueryRepository.findTeamsBySessionId(sessionId));
         detail.setCandidates(rpsDraftQueryRepository.findCandidatesBySessionId(sessionId));
         return detail;
+    }
+
+    public RpsDraftSessionDetailResponseDto requireSessionDetail(Long sessionId) {
+        return buildSessionDetail(sessionId);
     }
 
     private RpsDraftSessionSummaryResponseDto toSessionSummary(RpsDraftSessionQueryDto session) {

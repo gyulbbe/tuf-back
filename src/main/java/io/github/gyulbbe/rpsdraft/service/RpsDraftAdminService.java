@@ -2,7 +2,7 @@ package io.github.gyulbbe.rpsdraft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.rpsdraft.auth.RpsDraftActor;
-import io.github.gyulbbe.rpsdraft.dto.RpsDraftPickerResponseDto;
+import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftTeamEntity;
 import io.github.gyulbbe.rpsdraft.repository.RpsDraftSessionRepository;
@@ -24,8 +24,9 @@ public class RpsDraftAdminService {
     private final RpsDraftTeamRepository rpsDraftTeamRepository;
     private final RpsDraftPermissionService rpsDraftPermissionService;
     private final UserRepository userRepository;
+    private final RpsDraftService rpsDraftService;
 
-    public ResponseDto<RpsDraftPickerResponseDto> assignPicker(
+    public ResponseDto<RpsDraftSessionDetailResponseDto> assignPicker(
             Long sessionId,
             Long teamId,
             Long pickerUserId,
@@ -62,15 +63,10 @@ public class RpsDraftAdminService {
                         throw new IllegalArgumentException("Picker user is already assigned to another team in this session.");
                     });
 
-            String pickerLoginId = requireUserLoginId(picker, "Picker user's userId is required.");
+            requireUserLoginId(picker, "Picker user's userId is required.");
             team.assignPicker(pickerUserId);
 
-            RpsDraftPickerResponseDto response = new RpsDraftPickerResponseDto();
-            response.setRpsDraftTeamId(team.getId());
-            response.setPickerUserId(picker.getId());
-            response.setPickerUserLoginId(pickerLoginId);
-            response.setPickerName(pickerLoginId);
-            return ResponseDto.success(response);
+            return ResponseDto.success(rpsDraftService.requireSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to assign RPS draft picker.", e);
             return ResponseDto.fail(e.getMessage());

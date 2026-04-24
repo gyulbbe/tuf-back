@@ -5,9 +5,9 @@ import io.github.gyulbbe.draft.auth.DraftActorResolver;
 import io.github.gyulbbe.draft.dto.DraftExtendTimeRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickerAssignRequestDto;
-import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.dto.DraftReasonRequestDto;
 import io.github.gyulbbe.draft.dto.DraftResumeRequestDto;
+import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.service.DraftAdminService;
 import io.github.gyulbbe.draft.service.DraftLiveCommandService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,7 @@ public class DraftAdminController {
     private final DraftActorResolver draftActorResolver;
 
     @PostMapping("/teams/{teamId}/picker")
-    public ResponseEntity<ResponseDto<DraftPickerResponseDto>> assignPicker(
+    public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> assignPicker(
             @PathVariable Long teamId,
             @RequestBody DraftPickerAssignRequestDto requestDto
     ) {

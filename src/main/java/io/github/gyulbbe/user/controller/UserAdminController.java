@@ -2,6 +2,7 @@ package io.github.gyulbbe.user.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.user.dto.UserAdminCreateRequestDto;
+import io.github.gyulbbe.user.dto.UserAdminRoleUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminResponseDto;
 import io.github.gyulbbe.user.dto.UserAdminStatusUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminUpdateRequestDto;
@@ -54,6 +55,14 @@ public class UserAdminController {
             @RequestBody UserAdminStatusUpdateRequestDto requestDto
     ) {
         return toResponseEntity(userService.updateAdminUserStatus(id, requestDto));
+    }
+
+    @PatchMapping("/{id}/role")
+    public ResponseEntity<ResponseDto<UserAdminResponseDto>> updateUserRole(
+            @PathVariable Long id,
+            @RequestBody UserAdminRoleUpdateRequestDto requestDto
+    ) {
+        return toResponseEntity(userService.updateAdminUserRole(id, requestDto));
     }
 
     private <T> ResponseEntity<ResponseDto<T>> toResponseEntity(ResponseDto<T> responseDto) {

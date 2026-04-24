@@ -4,6 +4,7 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftOrderBulkReplaceRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
@@ -29,6 +30,7 @@ import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -62,7 +65,7 @@ public class DraftService {
     private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftPermissionService draftPermissionService;
 
-    public ResponseDto<DraftSessionSummaryResponseDto> createSession(DraftSessionRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> createSession(DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
             draftPermissionService.assertAuthenticated(actor);
             validateSessionRequest(requestDto, false);
@@ -85,7 +88,7 @@ public class DraftService {
             if ("LIVE".equals(saved.getStatus())) {
                 draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
             }
-            return ResponseDto.success(requireSessionSummary(saved.getId()));
+            return ResponseDto.success(buildSessionDetail(saved.getId()));
         } catch (Exception e) {
             TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             log.error("Failed to create draft session.", e);
@@ -103,6 +106,10 @@ public class DraftService {
         }
     }
 
+    public DraftSessionDetailResponseDto requireSessionDetail(Long sessionId) {
+        return buildSessionDetail(sessionId);
+    }
+
     @Transactional(readOnly = true)
     public ResponseDto<List<DraftSessionSummaryResponseDto>> listSessions() {
         try {
@@ -113,7 +120,7 @@ public class DraftService {
         }
     }
 
-    public ResponseDto<DraftSessionSummaryResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
             DraftSessionEntity entity = getSessionEntityForUpdate(sessionId);
             draftPermissionService.assertOwnerOrAdmin(entity, actor);
@@ -142,7 +149,7 @@ public class DraftService {
                 draftLiveSessionTracker.refreshAfterCommit();
             }
 
-            return ResponseDto.success(requireSessionSummary(sessionId));
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to update draft session. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
@@ -243,7 +250,7 @@ public class DraftService {
         }
     }
 
-    public ResponseDto<DraftTeamResponseDto> updateTeam(Long teamId, DraftTeamRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> updateTeam(Long teamId, DraftTeamRequestDto requestDto, AuthActor actor) {
         try {
             DraftTeamEntity entity = getTeamEntity(teamId);
             DraftSessionEntity session = getSessionEntity(entity.getDraftSessionId());
@@ -258,7 +265,7 @@ public class DraftService {
                     requestDto.getDisplayOrder() != null ? requestDto.getDisplayOrder() : entity.getDisplayOrder()
             );
 
-            return ResponseDto.success(requireTeam(teamId));
+            return ResponseDto.success(buildSessionDetail(entity.getDraftSessionId()));
         } catch (Exception e) {
             log.error("Failed to update draft team. teamId={}", teamId, e);
             return ResponseDto.fail(e.getMessage());
@@ -283,7 +290,7 @@ public class DraftService {
         }
     }
 
-    public ResponseDto<DraftCandidateResponseDto> createCandidate(DraftCandidateRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> createCandidate(DraftCandidateRequestDto requestDto, AuthActor actor) {
         try {
             validateCandidateRequest(requestDto, false);
             DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
@@ -302,7 +309,7 @@ public class DraftService {
                     .build();
 
             draftCandidateRepository.save(entity);
-            return ResponseDto.success(requireCandidate(requestDto.getDraftSessionId(), requestDto.getCandidateUserId()));
+            return ResponseDto.success(buildSessionDetail(requestDto.getDraftSessionId()));
         } catch (Exception e) {
             log.error("Failed to create draft candidate.", e);
             return ResponseDto.fail(e.getMessage());
@@ -330,7 +337,7 @@ public class DraftService {
         }
     }
 
-    public ResponseDto<DraftCandidateResponseDto> updateCandidate(
+    public ResponseDto<DraftSessionDetailResponseDto> updateCandidate(
             Long sessionId,
             Long candidateUserId,
             DraftCandidateRequestDto requestDto,
@@ -361,14 +368,14 @@ public class DraftService {
                     !pickedExists ? requestDto.getPickedAt() : entity.getPickedAt()
             );
 
-            return ResponseDto.success(requireCandidate(sessionId, candidateUserId));
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to update draft candidate. sessionId={}, candidateUserId={}", sessionId, candidateUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteCandidate(Long sessionId, Long candidateUserId, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> deleteCandidate(Long sessionId, Long candidateUserId, AuthActor actor) {
         try {
             DraftSessionEntity session = getSessionEntity(sessionId);
             draftPermissionService.assertOwnerOrAdmin(session, actor);
@@ -377,14 +384,14 @@ public class DraftService {
                 throw new IllegalArgumentException("Picked candidates cannot be deleted.");
             }
             draftCandidateRepository.delete(entity);
-            return ResponseDto.success(null);
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to delete draft candidate. sessionId={}, candidateUserId={}", sessionId, candidateUserId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftOrderResponseDto> createOrder(DraftOrderRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> createOrder(DraftOrderRequestDto requestDto, AuthActor actor) {
         try {
             validateOrderRequest(requestDto);
             DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
@@ -398,7 +405,7 @@ public class DraftService {
                     .build();
 
             draftOrderRepository.save(entity);
-            return ResponseDto.success(requireOrder(requestDto.getDraftSessionId(), requestDto.getPickNo()));
+            return ResponseDto.success(buildSessionDetail(requestDto.getDraftSessionId()));
         } catch (Exception e) {
             log.error("Failed to create draft order.", e);
             return ResponseDto.fail(e.getMessage());
@@ -408,7 +415,10 @@ public class DraftService {
     @Transactional(readOnly = true)
     public ResponseDto<DraftOrderResponseDto> getOrder(Long sessionId, Long pickNo) {
         try {
-            return ResponseDto.success(requireOrder(sessionId, pickNo));
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            DraftOrderResponseDto order = requireOrder(sessionId, pickNo);
+            populateOrderRoundNo(order, session.getTeamCount());
+            return ResponseDto.success(order);
         } catch (Exception e) {
             log.error("Failed to get draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
@@ -418,15 +428,15 @@ public class DraftService {
     @Transactional(readOnly = true)
     public ResponseDto<List<DraftOrderResponseDto>> listOrders(Long sessionId) {
         try {
-            getSessionEntity(sessionId);
-            return ResponseDto.success(draftQueryRepository.findOrdersBySessionId(sessionId));
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            return ResponseDto.success(loadOrders(sessionId, session.getTeamCount()));
         } catch (Exception e) {
             log.error("Failed to list draft orders. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<DraftOrderResponseDto> updateOrder(Long sessionId, Long pickNo, DraftOrderRequestDto requestDto, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> updateOrder(Long sessionId, Long pickNo, DraftOrderRequestDto requestDto, AuthActor actor) {
         try {
             DraftSessionEntity session = getSessionEntity(sessionId);
             draftPermissionService.assertOwnerOrAdmin(session, actor);
@@ -440,14 +450,14 @@ public class DraftService {
             validateTeamBelongsToSession(sessionId, draftTeamId);
             entity.update(draftTeamId);
 
-            return ResponseDto.success(requireOrder(sessionId, pickNo));
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to update draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
 
-    public ResponseDto<Void> deleteOrder(Long sessionId, Long pickNo, AuthActor actor) {
+    public ResponseDto<DraftSessionDetailResponseDto> deleteOrder(Long sessionId, Long pickNo, AuthActor actor) {
         try {
             DraftSessionEntity session = getSessionEntity(sessionId);
             draftPermissionService.assertOwnerOrAdmin(session, actor);
@@ -456,9 +466,48 @@ public class DraftService {
                 throw new IllegalArgumentException("Completed draft orders cannot be deleted.");
             }
             draftOrderRepository.delete(entity);
-            return ResponseDto.success(null);
+            return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
             log.error("Failed to delete draft order. sessionId={}, pickNo={}", sessionId, pickNo, e);
+            return ResponseDto.fail(e.getMessage());
+        }
+    }
+
+    public ResponseDto<DraftSessionDetailResponseDto> replaceOrders(
+            Long sessionId,
+            DraftOrderBulkReplaceRequestDto requestDto,
+            AuthActor actor
+    ) {
+        try {
+            DraftSessionEntity session = getSessionEntity(sessionId);
+            draftPermissionService.assertOwnerOrAdmin(session, actor);
+
+            if (requestDto == null || requestDto.getOrders() == null) {
+                return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "orders is required.");
+            }
+            if (draftPickRepository.countByDraftSessionId(sessionId) > 0) {
+                return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "Completed draft orders cannot be replaced.");
+            }
+
+            validateBulkOrderReplacement(sessionId, requestDto.getOrders());
+
+            draftOrderRepository.deleteByDraftSessionId(sessionId);
+            draftOrderRepository.saveAll(
+                    requestDto.getOrders().stream()
+                            .map(order -> DraftOrderEntity.builder()
+                                    .draftSessionId(sessionId)
+                                    .pickNo(order.getPickNo())
+                                    .draftTeamId(order.getDraftTeamId())
+                                    .build())
+                            .toList()
+            );
+
+            return ResponseDto.success(buildSessionDetail(sessionId));
+        } catch (IllegalArgumentException e) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+        } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            log.error("Failed to replace draft orders. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -572,6 +621,7 @@ public class DraftService {
         detail.setId(summary.getId());
         detail.setTitle(summary.getTitle());
         detail.setOwnerUserId(summary.getOwnerUserId());
+        detail.setOwnerUserLoginId(summary.getOwnerUserLoginId());
         detail.setOwnerName(summary.getOwnerName());
         detail.setStatus(summary.getStatus());
         detail.setTeamCount(summary.getTeamCount());
@@ -583,13 +633,26 @@ public class DraftService {
         detail.setEndedAt(summary.getEndedAt());
         detail.setTeams(loadTeams(sessionId));
         detail.setCandidates(draftQueryRepository.findCandidatesBySessionId(sessionId));
-        detail.setOrders(draftQueryRepository.findOrdersBySessionId(sessionId));
+        detail.setOrders(loadOrders(sessionId, summary.getTeamCount()));
         detail.setPicks(draftQueryRepository.findPicksBySessionId(sessionId));
         return detail;
     }
 
     private List<DraftTeamResponseDto> loadTeams(Long sessionId) {
         return draftQueryRepository.findTeamsBySessionId(sessionId);
+    }
+
+    private List<DraftOrderResponseDto> loadOrders(Long sessionId, Integer teamCount) {
+        List<DraftOrderResponseDto> orders = draftQueryRepository.findOrdersBySessionId(sessionId);
+        orders.forEach(order -> populateOrderRoundNo(order, teamCount));
+        return orders;
+    }
+
+    private void populateOrderRoundNo(DraftOrderResponseDto order, Integer teamCount) {
+        if (order == null || order.getPickNo() == null || teamCount == null || teamCount <= 0) {
+            return;
+        }
+        order.setRoundNo(((order.getPickNo() - 1) / teamCount) + 1);
     }
 
     private Optional<DraftTeamEntity> findReplaceableDefaultTeam(Long sessionId, Integer displayOrder) {
@@ -616,7 +679,7 @@ public class DraftService {
     }
 
     private String buildDefaultTeamName(int displayOrder) {
-        return "Team " + displayOrder;
+        return displayOrder + "팀";
     }
 
     private DraftSessionSummaryResponseDto requireSessionSummary(Long sessionId) {
@@ -746,6 +809,36 @@ public class DraftService {
             throw new IllegalArgumentException("Session id, pick number, and draft team id are required.");
         }
         validatePositive(requestDto.getPickNo(), "Pick number");
+    }
+
+    private void validateBulkOrderReplacement(Long sessionId, List<DraftOrderRequestDto> orders) {
+        Set<Long> pickNos = new HashSet<>();
+        Set<Long> teamIds = draftTeamRepository.findAllByDraftSessionId(sessionId).stream()
+                .map(DraftTeamEntity::getId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        for (DraftOrderRequestDto order : orders) {
+            if (order == null) {
+                throw new IllegalArgumentException("Order item is required.");
+            }
+            if (order.getRoundNo() == null) {
+                throw new IllegalArgumentException("Round number is required.");
+            }
+            if (order.getPickNo() == null) {
+                throw new IllegalArgumentException("Pick number is required.");
+            }
+            if (order.getDraftTeamId() == null) {
+                throw new IllegalArgumentException("Draft team id is required.");
+            }
+            validatePositive(order.getRoundNo(), "Round number");
+            validatePositive(order.getPickNo(), "Pick number");
+            if (!pickNos.add(order.getPickNo())) {
+                throw new IllegalArgumentException("Duplicate pick number is not allowed.");
+            }
+            if (!teamIds.contains(order.getDraftTeamId())) {
+                throw new IllegalArgumentException("Draft team does not belong to this session.");
+            }
+        }
     }
 
     private void validatePickRequest(DraftPickRequestDto requestDto) {

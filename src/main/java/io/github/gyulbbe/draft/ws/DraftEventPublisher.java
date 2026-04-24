@@ -47,6 +47,7 @@ public class DraftEventPublisher {
                 .occurredAt(now)
                 .serverNow(now)
                 .actorUserId(actor != null ? actor.userPk() : null)
+                .actorUserLoginId(actor != null ? actor.username() : null)
                 .message(message)
                 .snapshot(draftSnapshotService.getBroadcastSnapshot(sessionId))
                 .build();
@@ -62,6 +63,7 @@ public class DraftEventPublisher {
                 .occurredAt(now)
                 .serverNow(now)
                 .actorUserId(actor != null ? actor.userPk() : null)
+                .actorUserLoginId(actor != null ? actor.username() : null)
                 .preview(preview)
                 .build();
 

@@ -1,10 +1,18 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.config.QueryDslConfig;
 import io.github.gyulbbe.draft.auth.AuthActor;
-import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
+import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
+import io.github.gyulbbe.draft.entity.DraftOrderEntity;
+import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
+import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
+import io.github.gyulbbe.draft.repository.DraftOrderRepository;
+import io.github.gyulbbe.draft.repository.DraftPickRepository;
+import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
@@ -21,15 +29,28 @@ import org.springframework.test.context.TestPropertySource;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@Import({DraftAdminService.class, DraftPermissionService.class})
+@Import({
+        DraftAdminService.class,
+        DraftService.class,
+        DraftLiveSessionTracker.class,
+        DraftQueryRepositoryImpl.class,
+        QueryDslConfig.class,
+        DraftPermissionService.class
+})
 @EntityScan(basePackageClasses = {
         DraftSessionEntity.class,
         DraftTeamEntity.class,
+        DraftCandidateEntity.class,
+        DraftOrderEntity.class,
+        DraftPickEntity.class,
         UserEntity.class
 })
 @EnableJpaRepositories(basePackageClasses = {
         DraftSessionRepository.class,
         DraftTeamRepository.class,
+        DraftCandidateRepository.class,
+        DraftOrderRepository.class,
+        DraftPickRepository.class,
         UserRepository.class
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
@@ -64,12 +85,14 @@ class DraftAdminServiceTest {
         Long sessionId = createSession(owner.userPk());
         Long teamId = createTeam(sessionId, "Team A", 1);
 
-        ResponseDto<DraftPickerResponseDto> firstAssign = draftAdminService.assignPicker(teamId, firstPickerId, owner);
-        ResponseDto<DraftPickerResponseDto> secondAssign = draftAdminService.assignPicker(teamId, secondPickerId, owner);
+        ResponseDto<DraftSessionDetailResponseDto> firstAssign = draftAdminService.assignPicker(teamId, firstPickerId, owner);
+        ResponseDto<DraftSessionDetailResponseDto> secondAssign = draftAdminService.assignPicker(teamId, secondPickerId, owner);
 
         assertThat(firstAssign.getStatus()).isEqualTo(200);
         assertThat(secondAssign.getStatus()).isEqualTo(200);
-        assertThat(secondAssign.getData().getPickerUserId()).isEqualTo(secondPickerId);
+        assertThat(secondAssign.getData().getTeams()).filteredOn("id", teamId)
+                .extracting("pickerUserId", "pickerUserLoginId")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(secondPickerId, "picker02"));
         assertThat(draftPermissionService.canPickForTeam(teamId, firstPickerId)).isFalse();
         assertThat(draftPermissionService.canPickForTeam(teamId, secondPickerId)).isTrue();
     }
@@ -82,10 +105,12 @@ class DraftAdminServiceTest {
         Long sessionId = createSession(owner.userPk());
         Long teamId = createTeam(sessionId, "Team B", 1);
 
-        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, admin);
+        ResponseDto<DraftSessionDetailResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, admin);
 
         assertThat(response.getStatus()).isEqualTo(200);
-        assertThat(response.getData().getPickerUserId()).isEqualTo(pickerId);
+        assertThat(response.getData().getTeams()).filteredOn("id", teamId)
+                .extracting("pickerUserId", "pickerUserLoginId")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(pickerId, "picker03"));
         assertThat(draftPermissionService.canPickForTeam(teamId, pickerId)).isTrue();
     }
 
@@ -97,7 +122,7 @@ class DraftAdminServiceTest {
         Long sessionId = createSession(owner.userPk());
         Long teamId = createTeam(sessionId, "Team C", 1);
 
-        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, otherUser);
+        ResponseDto<DraftSessionDetailResponseDto> response = draftAdminService.assignPicker(teamId, pickerId, otherUser);
 
         assertThat(response.getStatus()).isEqualTo(500);
         assertThat(response.getMessage()).contains("session owner or an administrator");
@@ -111,7 +136,7 @@ class DraftAdminServiceTest {
         Long sessionId = createSession(owner.userPk());
         Long teamId = createTeam(sessionId, "Team D", 1);
 
-        ResponseDto<DraftPickerResponseDto> response = draftAdminService.assignPicker(teamId, inactiveUserId, owner);
+        ResponseDto<DraftSessionDetailResponseDto> response = draftAdminService.assignPicker(teamId, inactiveUserId, owner);
 
         assertThat(response.getStatus()).isEqualTo(500);
         assertThat(response.getMessage()).contains("Only ACTIVE users");

@@ -8,6 +8,9 @@ import java.time.LocalDateTime;
 public class DraftLiveSessionInfoResponseDto {
     private Long id;
     private String title;
+    private Long ownerUserId;
+    private String ownerUserLoginId;
+    private String ownerName;
     private String status;
     private Integer teamCount;
     private Integer pickTimeSeconds;

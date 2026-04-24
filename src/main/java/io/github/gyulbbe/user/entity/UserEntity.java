@@ -66,6 +66,10 @@ public class UserEntity implements Serializable {
         this.status = status;
     }
 
+    public void updateUserType(String userType) {
+        this.userType = userType;
+    }
+
     public void updatePassword(String password) {
         this.password = password;
     }

@@ -1,7 +1,9 @@
 package io.github.gyulbbe.user.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.user.dto.DraftUserSearchDto;
 import io.github.gyulbbe.user.dto.UserAdminCreateRequestDto;
+import io.github.gyulbbe.user.dto.UserAdminRoleUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminResponseDto;
 import io.github.gyulbbe.user.dto.UserAdminStatusUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminUpdateRequestDto;
@@ -30,7 +32,12 @@ public class UserService {
     private static final String ACTIVE = "ACTIVE";
     private static final String INACTIVE = "INACTIVE";
     private static final String ALL = "ALL";
+    private static final String ROLE_USER = "ROLE_USER";
+    private static final String ROLE_MANAGER = "ROLE_MANAGER";
+    private static final String ROLE_MASTER = "ROLE_MASTER";
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
     private static final Set<String> ADMIN_STATUSES = Set.of(ACTIVE, INACTIVE, ALL);
+    private static final Set<String> MANAGED_USER_TYPES = Set.of(ROLE_USER, ROLE_MANAGER, ROLE_MASTER, ROLE_ADMIN);
 
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
@@ -45,7 +52,7 @@ public class UserService {
                 .race(userDto.getRace())
                 .status(ACTIVE)
                 .coin(1000L)
-                .userType("ROLE_USER")
+                .userType(ROLE_USER)
                 .photo("default.jpg")
                 .build();
         userRepository.save(user);
@@ -67,7 +74,7 @@ public class UserService {
                     .phone(userDto.getPhone())
                     .race(userDto.getRace())
                     .status(ACTIVE)
-                    .userType("ROLE_USER")
+                    .userType(ROLE_USER)
                     .photo("default.jpg")
                     .coin(1000L)
                     .build();
@@ -120,6 +127,24 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public ResponseDto<List<DraftUserSearchDto>> searchDraftUsers(String keyword, Integer limit) {
+        if (keyword == null || keyword.isBlank()) {
+            return ResponseDto.success(List.of());
+        }
+
+        int resolvedLimit = limit == null ? 10 : Math.min(Math.max(limit, 1), 50);
+        List<DraftUserSearchDto> users = userRepository.searchByUserIdKeyword(
+                        keyword.trim(),
+                        ACTIVE,
+                        PageRequest.of(0, resolvedLimit)
+                ).stream()
+                .map(this::toDraftUserSearchDto)
+                .toList();
+
+        return ResponseDto.success(users);
+    }
+
+    @Transactional(readOnly = true)
     public ResponseDto<List<UserAdminResponseDto>> searchAdminUsers(String keyword, String status) {
         String normalizedStatus = normalizeAdminSearchStatus(status);
         if (normalizedStatus == null) {
@@ -160,7 +185,7 @@ public class UserService {
                     .tier(tier)
                     .status(ACTIVE)
                     .coin(1000L)
-                    .userType("ROLE_USER")
+                    .userType(ROLE_USER)
                     .photo("default.jpg")
                     .build());
 
@@ -217,6 +242,28 @@ public class UserService {
         return ResponseDto.success(toUserAdminResponseDto(user));
     }
 
+    public ResponseDto<UserAdminResponseDto> updateAdminUserRole(Long id, UserAdminRoleUpdateRequestDto requestDto) {
+        if (requestDto == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "Request body is required.");
+        }
+
+        UserEntity user = userRepository.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "User could not be found.");
+        }
+
+        String normalizedUserType = normalizeManagedUserType(resolveRequestedUserType(requestDto));
+        if (normalizedUserType == null) {
+            return ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "userType must be one of ROLE_USER, ROLE_MANAGER, ROLE_MASTER, ROLE_ADMIN."
+            );
+        }
+
+        user.updateUserType(normalizedUserType);
+        return ResponseDto.success(toUserAdminResponseDto(user));
+    }
+
     private UserSearchDto toUserSearchDto(UserEntity user) {
         UserSearchDto dto = new UserSearchDto();
         dto.setId(user.getId());
@@ -228,6 +275,15 @@ public class UserService {
         return dto;
     }
 
+    private DraftUserSearchDto toDraftUserSearchDto(UserEntity user) {
+        DraftUserSearchDto dto = new DraftUserSearchDto();
+        dto.setId(user.getId());
+        dto.setUserId(user.getUserId());
+        dto.setTier(user.getTier());
+        dto.setRace(user.getRace());
+        return dto;
+    }
+
     private UserAdminResponseDto toUserAdminResponseDto(UserEntity user) {
         UserAdminResponseDto dto = new UserAdminResponseDto();
         dto.setId(user.getId());
@@ -236,6 +292,7 @@ public class UserService {
         dto.setRace(user.getRace());
         dto.setTier(user.getTier());
         dto.setStatus(user.getStatus());
+        dto.setUserType(user.getUserType());
         return dto;
     }
 
@@ -253,6 +310,25 @@ public class UserService {
     private String normalizeManagedUserStatus(String status) {
         String normalizedStatus = status == null ? null : status.trim().toUpperCase();
         return ACTIVE.equals(normalizedStatus) || INACTIVE.equals(normalizedStatus) ? normalizedStatus : null;
+    }
+
+    private String resolveRequestedUserType(UserAdminRoleUpdateRequestDto requestDto) {
+        if (requestDto.getUserType() != null && !requestDto.getUserType().isBlank()) {
+            return requestDto.getUserType();
+        }
+        return requestDto.getRole();
+    }
+
+    private String normalizeManagedUserType(String userType) {
+        if (userType == null || userType.isBlank()) {
+            return null;
+        }
+
+        String normalizedUserType = userType.trim().toUpperCase();
+        if (!normalizedUserType.startsWith("ROLE_")) {
+            normalizedUserType = "ROLE_" + normalizedUserType;
+        }
+        return MANAGED_USER_TYPES.contains(normalizedUserType) ? normalizedUserType : null;
     }
 
     private String normalizeRequired(String value, String fieldName) {

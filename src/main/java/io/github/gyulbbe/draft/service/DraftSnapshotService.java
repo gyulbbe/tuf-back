@@ -80,6 +80,7 @@ public class DraftSnapshotService {
                     responseDto.setTeamName(team.getTeamName());
                     responseDto.setDisplayOrder(team.getDisplayOrder());
                     responseDto.setPickerUserId(team.getPickerUserId());
+                    responseDto.setPickerUserLoginId(team.getPickerUserLoginId());
                     responseDto.setPickerName(team.getPickerName());
                     return responseDto;
                 })
@@ -106,10 +107,12 @@ public class DraftSnapshotService {
             rosterItem.setPickNo(pick.getPickNo());
             rosterItem.setRoundNo(calculateRoundNo(pick.getPickNo(), teamCount));
             rosterItem.setCandidateUserId(pick.getCandidateUserId());
+            rosterItem.setCandidateUserLoginId(pick.getCandidateUserLoginId());
             rosterItem.setCandidateName(pick.getCandidateName());
             rosterItem.setTier(pick.getTier());
             rosterItem.setRace(pick.getRace());
             rosterItem.setPickedByUserId(pick.getPickedByUserId());
+            rosterItem.setPickedByUserLoginId(pick.getPickedByUserLoginId());
             rosterItem.setPickedByUserName(pick.getPickedByUserName());
             rosterItem.setPickedAt(pick.getPickedAt());
             team.getRoster().add(rosterItem);
@@ -127,6 +130,9 @@ public class DraftSnapshotService {
         DraftLiveSessionInfoResponseDto responseDto = new DraftLiveSessionInfoResponseDto();
         responseDto.setId(sessionSummary.getId());
         responseDto.setTitle(sessionSummary.getTitle());
+        responseDto.setOwnerUserId(sessionSummary.getOwnerUserId());
+        responseDto.setOwnerUserLoginId(sessionSummary.getOwnerUserLoginId());
+        responseDto.setOwnerName(sessionSummary.getOwnerName());
         responseDto.setStatus(sessionSummary.getStatus());
         responseDto.setTeamCount(sessionSummary.getTeamCount());
         responseDto.setPickTimeSeconds(sessionSummary.getPickTimeSeconds());
