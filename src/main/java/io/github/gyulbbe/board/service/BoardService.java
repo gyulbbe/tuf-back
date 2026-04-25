@@ -369,7 +369,7 @@ public class BoardService {
             }
 
             if (!StringUtils.hasText(user.getUserId())) {
-                throw new IllegalArgumentException("?묒꽦???붾줈洹몄씤 ?꾩씠?붽? ?덉뼱???⑸땲??");
+                throw new IllegalArgumentException("작성자 로그인 아이디가 있어야 합니다.");
             }
             String resolvedAuthorName = user.getUserId().trim();
 

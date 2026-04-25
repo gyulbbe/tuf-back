@@ -1,5 +1,6 @@
 package io.github.gyulbbe.common.dto;
 
+import io.github.gyulbbe.common.error.ApiErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.Data;
 
@@ -9,6 +10,7 @@ public class ResponseDto<T> {
     private int status;
     private String message;
     private T data;
+    private String errorCode;
 
     /**
      * 요청처리를 성공했을 때 응답을 생성해서 반환한다.
@@ -21,6 +23,7 @@ public class ResponseDto<T> {
         dto.setStatus(HttpServletResponse.SC_OK);
         dto.setMessage("success");
         dto.setData(data);
+        dto.setErrorCode(null);
 
         return dto;
     }
@@ -32,12 +35,7 @@ public class ResponseDto<T> {
      * @return REST 표준 응답객체
      */
     public static <T> ResponseDto<T> fail(String message) {
-        ResponseDto<T> dto = new ResponseDto<>();
-        dto.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-        dto.setMessage(message);
-        dto.setData(null);
-
-        return dto;
+        return fail(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, message, ApiErrorCode.INTERNAL_ERROR);
     }
 
     /**
@@ -48,10 +46,19 @@ public class ResponseDto<T> {
      * @return REST 표준 응답객체
      */
     public static <T> ResponseDto<T> fail(int status, String message) {
+        return fail(status, message, ApiErrorCode.fromStatus(status));
+    }
+
+    public static <T> ResponseDto<T> fail(int status, String message, ApiErrorCode errorCode) {
+        return fail(status, message, errorCode.name());
+    }
+
+    public static <T> ResponseDto<T> fail(int status, String message, String errorCode) {
         ResponseDto<T> dto = new ResponseDto<>();
         dto.setStatus(status);
         dto.setMessage(message);
         dto.setData(null);
+        dto.setErrorCode(errorCode);
 
         return dto;
     }

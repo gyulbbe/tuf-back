@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/rps-drafts")
@@ -37,34 +39,34 @@ public class RpsDraftController {
             @RequestBody RpsDraftSessionCreateRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(rpsDraftService.createSession(requestDto, rpsDraftActorResolver.resolveRequired()));
+            return respond(rpsDraftService.createSession(requestDto, rpsDraftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions")
     public ResponseEntity<ResponseDto<List<RpsDraftSessionSummaryResponseDto>>> listSessions() {
-        return ResponseEntity.ok(rpsDraftService.listSessions());
+        return respond(rpsDraftService.listSessions());
     }
 
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> getSession(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(rpsDraftService.getSession(sessionId));
+        return respond(rpsDraftService.getSession(sessionId));
     }
 
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<Void>> deleteSession(@PathVariable Long sessionId) {
         try {
-            return toResponseEntity(rpsDraftService.deleteSession(sessionId, rpsDraftActorResolver.resolveOptional()));
+            return respond(rpsDraftService.deleteSession(sessionId, rpsDraftActorResolver.resolveOptional()));
         } catch (Exception e) {
-            return toResponseEntity(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/teams")
     public ResponseEntity<ResponseDto<List<RpsDraftTeamResponseDto>>> listTeams(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(rpsDraftService.listTeams(sessionId));
+        return respond(rpsDraftService.listTeams(sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/teams/{teamId}/picker")
@@ -74,7 +76,7 @@ public class RpsDraftController {
             @RequestBody RpsDraftPickerAssignRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     rpsDraftAdminService.assignPicker(
                             sessionId,
                             teamId,
@@ -83,7 +85,7 @@ public class RpsDraftController {
                     )
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -93,20 +95,16 @@ public class RpsDraftController {
             @RequestBody RpsDraftCandidateRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     rpsDraftService.registerCandidate(sessionId, requestDto, rpsDraftActorResolver.resolveRequired())
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/candidates")
     public ResponseEntity<ResponseDto<List<RpsDraftCandidateResponseDto>>> listCandidates(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(rpsDraftService.listCandidates(sessionId));
-    }
-
-    private <T> ResponseEntity<ResponseDto<T>> toResponseEntity(ResponseDto<T> responseDto) {
-        return ResponseEntity.status(responseDto.getStatus()).body(responseDto);
+        return respond(rpsDraftService.listCandidates(sessionId));
     }
 }

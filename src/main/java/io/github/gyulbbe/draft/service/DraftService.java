@@ -64,6 +64,7 @@ public class DraftService {
     private final UserRepository userRepository;
     private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftPermissionService draftPermissionService;
+    private final DraftOrderPatternService draftOrderPatternService;
 
     public ResponseDto<DraftSessionDetailResponseDto> createSession(DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
@@ -521,6 +522,7 @@ public class DraftService {
             DraftCandidateEntity candidate = getCandidateEntity(requestDto.getDraftSessionId(), requestDto.getCandidateUserId());
             getUserEntity(requestDto.getPickedByUserId());
             ensureCandidatePickable(candidate, requestDto.getDraftSessionId(), requestDto.getCandidateUserId());
+            draftOrderPatternService.getOrCreateOrder(requestDto.getDraftSessionId(), requestDto.getPickNo());
 
             LocalDateTime pickedAt = requestDto.getPickedAt() != null ? requestDto.getPickedAt() : LocalDateTime.now();
 
@@ -580,6 +582,9 @@ public class DraftService {
             Long previousCandidateUserId = entity.getCandidateUserId();
             if (!Objects.equals(previousCandidateUserId, requestDto.getCandidateUserId())) {
                 ensureCandidatePickable(newCandidate, sessionId, requestDto.getCandidateUserId());
+            }
+            draftOrderPatternService.getOrCreateOrder(sessionId, pickNo);
+            if (!Objects.equals(previousCandidateUserId, requestDto.getCandidateUserId())) {
                 DraftCandidateEntity previousCandidate = getCandidateEntity(sessionId, previousCandidateUserId);
                 previousCandidate.resetToWaiting();
             }
@@ -850,7 +855,6 @@ public class DraftService {
             throw new IllegalArgumentException("Session id, pick number, draft team id, candidate user id, and picked by user id are required.");
         }
         validatePositive(requestDto.getPickNo(), "Pick number");
-        getOrderEntity(requestDto.getDraftSessionId(), requestDto.getPickNo());
     }
 
     private void ensureCandidatePickable(DraftCandidateEntity candidate, Long sessionId, Long candidateUserId) {
@@ -863,13 +867,14 @@ public class DraftService {
     }
 
     private void advanceSessionAfterPick(DraftSessionEntity session, Long currentPickNo, LocalDateTime pickedAt) {
-        long nextPickNo = currentPickNo + 1;
-        Optional<DraftOrderEntity> nextOrder = draftOrderRepository.findById(new DraftOrderId(session.getId(), nextPickNo));
-        if (nextOrder.isPresent()) {
-            session.advanceTurn((int) nextPickNo, nextOrder.get().getDraftTeamId(), pickedAt.plusSeconds(session.getPickTimeSeconds()));
+        if (draftCandidateRepository.countByDraftSessionIdAndStatus(session.getId(), "WAITING") <= 0) {
+            session.finish(pickedAt);
             return;
         }
-        session.finish(pickedAt);
+
+        long nextPickNo = currentPickNo + 1;
+        DraftOrderEntity nextOrder = draftOrderPatternService.getOrCreateOrder(session.getId(), nextPickNo);
+        session.advanceTurn((int) nextPickNo, nextOrder.getDraftTeamId(), pickedAt.plusSeconds(session.getPickTimeSeconds()));
     }
 
     private void validatePickedTeamBelongsToSession(Long sessionId, Long draftTeamId) {

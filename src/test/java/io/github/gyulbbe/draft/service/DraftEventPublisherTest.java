@@ -46,6 +46,7 @@ import static org.mockito.Mockito.verify;
         QueryDslConfig.class,
         DraftQueryRepositoryImpl.class,
         DraftLiveSessionTracker.class,
+        DraftOrderPatternService.class,
         DraftService.class,
         DraftPermissionService.class,
         DraftAdminService.class,

@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/draft/live")
@@ -37,22 +39,22 @@ public class DraftLiveController {
     @GetMapping("/sessions/{sessionId}/snapshot")
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> getSnapshot(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftSnapshotService.getSnapshot(sessionId, draftActorResolver.resolveOptional())
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/permissions")
     public ResponseEntity<ResponseDto<DraftLivePermissionsResponseDto>> getPermissions(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftSnapshotService.getPermissions(sessionId, draftActorResolver.resolveOptional())
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -62,7 +64,7 @@ public class DraftLiveController {
             @RequestBody DraftLivePickRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.pick(
                             sessionId,
                             requestDto.getCandidateUserId(),
@@ -70,7 +72,7 @@ public class DraftLiveController {
                     )
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 

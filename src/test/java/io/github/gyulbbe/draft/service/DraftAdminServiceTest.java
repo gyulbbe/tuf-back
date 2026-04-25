@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         DraftAdminService.class,
         DraftService.class,
         DraftLiveSessionTracker.class,
+        DraftOrderPatternService.class,
         DraftQueryRepositoryImpl.class,
         QueryDslConfig.class,
         DraftPermissionService.class

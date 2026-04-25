@@ -28,6 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/draft")
@@ -39,20 +41,20 @@ public class DraftController {
     @PostMapping("/sessions")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> createSession(@RequestBody DraftSessionRequestDto requestDto) {
         try {
-            return ResponseEntity.ok(draftService.createSession(requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.createSession(requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions")
     public ResponseEntity<ResponseDto<List<DraftSessionSummaryResponseDto>>> listSessions() {
-        return ResponseEntity.ok(draftService.listSessions());
+        return respond(draftService.listSessions());
     }
 
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> getSession(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(draftService.getSession(sessionId));
+        return respond(draftService.getSession(sessionId));
     }
 
     @PutMapping("/sessions/{sessionId}")
@@ -61,38 +63,38 @@ public class DraftController {
             @RequestBody DraftSessionRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.updateSession(sessionId, requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.updateSession(sessionId, requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<Void>> deleteSession(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(draftService.deleteSession(sessionId, draftActorResolver.resolveRequired()));
+            return respond(draftService.deleteSession(sessionId, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/teams")
     public ResponseEntity<ResponseDto<DraftTeamResponseDto>> createTeam(@RequestBody DraftTeamRequestDto requestDto) {
         try {
-            return ResponseEntity.ok(draftService.createTeam(requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.createTeam(requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/teams")
     public ResponseEntity<ResponseDto<List<DraftTeamResponseDto>>> listTeams(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(draftService.listTeams(sessionId));
+        return respond(draftService.listTeams(sessionId));
     }
 
     @GetMapping("/teams/{teamId}")
     public ResponseEntity<ResponseDto<DraftTeamResponseDto>> getTeam(@PathVariable Long teamId) {
-        return ResponseEntity.ok(draftService.getTeam(teamId));
+        return respond(draftService.getTeam(teamId));
     }
 
     @PutMapping("/teams/{teamId}")
@@ -101,33 +103,33 @@ public class DraftController {
             @RequestBody DraftTeamRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.updateTeam(teamId, requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.updateTeam(teamId, requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @DeleteMapping("/teams/{teamId}")
     public ResponseEntity<ResponseDto<Void>> deleteTeam(@PathVariable Long teamId) {
         try {
-            return ResponseEntity.ok(draftService.deleteTeam(teamId, draftActorResolver.resolveRequired()));
+            return respond(draftService.deleteTeam(teamId, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/candidates")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> createCandidate(@RequestBody DraftCandidateRequestDto requestDto) {
         try {
-            return ResponseEntity.ok(draftService.createCandidate(requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.createCandidate(requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/candidates")
     public ResponseEntity<ResponseDto<List<DraftCandidateResponseDto>>> listCandidates(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(draftService.listCandidates(sessionId));
+        return respond(draftService.listCandidates(sessionId));
     }
 
     @GetMapping("/sessions/{sessionId}/candidates/{candidateUserId}")
@@ -135,7 +137,7 @@ public class DraftController {
             @PathVariable Long sessionId,
             @PathVariable Long candidateUserId
     ) {
-        return ResponseEntity.ok(draftService.getCandidate(sessionId, candidateUserId));
+        return respond(draftService.getCandidate(sessionId, candidateUserId));
     }
 
     @PutMapping("/sessions/{sessionId}/candidates/{candidateUserId}")
@@ -145,43 +147,43 @@ public class DraftController {
             @RequestBody DraftCandidateRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.updateCandidate(
+            return respond(draftService.updateCandidate(
                     sessionId,
                     candidateUserId,
                     requestDto,
                     draftActorResolver.resolveRequired()
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @DeleteMapping("/sessions/{sessionId}/candidates/{candidateUserId}")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> deleteCandidate(@PathVariable Long sessionId, @PathVariable Long candidateUserId) {
         try {
-            return ResponseEntity.ok(draftService.deleteCandidate(sessionId, candidateUserId, draftActorResolver.resolveRequired()));
+            return respond(draftService.deleteCandidate(sessionId, candidateUserId, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/orders")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> createOrder(@RequestBody DraftOrderRequestDto requestDto) {
         try {
-            return ResponseEntity.ok(draftService.createOrder(requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.createOrder(requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/orders")
     public ResponseEntity<ResponseDto<List<DraftOrderResponseDto>>> listOrders(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(draftService.listOrders(sessionId));
+        return respond(draftService.listOrders(sessionId));
     }
 
     @GetMapping("/sessions/{sessionId}/orders/{pickNo}")
     public ResponseEntity<ResponseDto<DraftOrderResponseDto>> getOrder(@PathVariable Long sessionId, @PathVariable Long pickNo) {
-        return ResponseEntity.ok(draftService.getOrder(sessionId, pickNo));
+        return respond(draftService.getOrder(sessionId, pickNo));
     }
 
     @PutMapping("/sessions/{sessionId}/orders")
@@ -190,9 +192,9 @@ public class DraftController {
             @RequestBody DraftOrderBulkReplaceRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.replaceOrders(sessionId, requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.replaceOrders(sessionId, requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -203,43 +205,43 @@ public class DraftController {
             @RequestBody DraftOrderRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.updateOrder(
+            return respond(draftService.updateOrder(
                     sessionId,
                     pickNo,
                     requestDto,
                     draftActorResolver.resolveRequired()
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @DeleteMapping("/sessions/{sessionId}/orders/{pickNo}")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> deleteOrder(@PathVariable Long sessionId, @PathVariable Long pickNo) {
         try {
-            return ResponseEntity.ok(draftService.deleteOrder(sessionId, pickNo, draftActorResolver.resolveRequired()));
+            return respond(draftService.deleteOrder(sessionId, pickNo, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/picks")
     public ResponseEntity<ResponseDto<DraftPickResponseDto>> createPick(@RequestBody DraftPickRequestDto requestDto) {
         try {
-            return ResponseEntity.ok(draftService.createPick(requestDto, draftActorResolver.resolveRequired()));
+            return respond(draftService.createPick(requestDto, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @GetMapping("/sessions/{sessionId}/picks")
     public ResponseEntity<ResponseDto<List<DraftPickResponseDto>>> listPicks(@PathVariable Long sessionId) {
-        return ResponseEntity.ok(draftService.listPicks(sessionId));
+        return respond(draftService.listPicks(sessionId));
     }
 
     @GetMapping("/sessions/{sessionId}/picks/{pickNo}")
     public ResponseEntity<ResponseDto<DraftPickResponseDto>> getPick(@PathVariable Long sessionId, @PathVariable Long pickNo) {
-        return ResponseEntity.ok(draftService.getPick(sessionId, pickNo));
+        return respond(draftService.getPick(sessionId, pickNo));
     }
 
     @PutMapping("/sessions/{sessionId}/picks/{pickNo}")
@@ -249,23 +251,23 @@ public class DraftController {
             @RequestBody DraftPickRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(draftService.updatePick(
+            return respond(draftService.updatePick(
                     sessionId,
                     pickNo,
                     requestDto,
                     draftActorResolver.resolveRequired()
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @DeleteMapping("/sessions/{sessionId}/picks/{pickNo}")
     public ResponseEntity<ResponseDto<Void>> deletePick(@PathVariable Long sessionId, @PathVariable Long pickNo) {
         try {
-            return ResponseEntity.ok(draftService.deletePick(sessionId, pickNo, draftActorResolver.resolveRequired()));
+            return respond(draftService.deletePick(sessionId, pickNo, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 }

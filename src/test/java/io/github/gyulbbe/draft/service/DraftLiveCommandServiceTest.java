@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         QueryDslConfig.class,
         DraftQueryRepositoryImpl.class,
         DraftLiveSessionTracker.class,
+        DraftOrderPatternService.class,
         DraftService.class,
         DraftPermissionService.class,
         DraftAdminService.class,
@@ -89,6 +90,9 @@ class DraftLiveCommandServiceTest {
 
     @Autowired
     private DraftSessionRepository draftSessionRepository;
+
+    @Autowired
+    private DraftOrderRepository draftOrderRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -198,6 +202,104 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
+    void force_skip_at_last_existing_order_keeps_live_when_waiting_candidates_remain() {
+        AuthActor owner = createActor("owner-skip-last", "Owner Skip Last", "ROLE_USER");
+        Long candidate1Id = createUser("candidate-skip-last-1", "Candidate Skip Last One", "ROLE_USER");
+        Long candidate2Id = createUser("candidate-skip-last-2", "Candidate Skip Last Two", "ROLE_USER");
+        Long candidate3Id = createUser("candidate-skip-last-3", "Candidate Skip Last Three", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Force Skip Last Order Session");
+        Long teamAId = createTeam(owner, sessionId, "Red Skip Last", 1);
+        Long teamBId = createTeam(owner, sessionId, "Blue Skip Last", 2);
+        createCandidate(owner, sessionId, candidate1Id, "Candidate Skip Last One", "ZERG");
+        createCandidate(owner, sessionId, candidate2Id, "Candidate Skip Last Two", "PROTOSS");
+        createCandidate(owner, sessionId, candidate3Id, "Candidate Skip Last Three", "TERRAN");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.forceSkip(sessionId, owner, "first skip");
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "last configured order skip");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(3);
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(skipped.getAvailableCandidates()).hasSize(3);
+        assertThat(draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 3L)).isPresent()
+                .get()
+                .extracting(DraftOrderEntity::getDraftTeamId)
+                .isEqualTo(teamAId);
+    }
+
+    @Test
+    void turn_beyond_existing_orders_repeats_existing_order_pattern() {
+        AuthActor owner = createActor("owner-repeat-order", "Owner Repeat Order", "ROLE_USER");
+        Long candidateId = createUser("candidate-repeat-order", "Candidate Repeat Order", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Repeat Pattern Session", 3);
+        Long teamAId = createTeam(owner, sessionId, "Pattern A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Pattern B", 2);
+        Long teamCId = createTeam(owner, sessionId, "Pattern C", 3);
+        createCandidate(owner, sessionId, candidateId, "Candidate Repeat Order", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        createOrder(owner, sessionId, 3L, teamCId);
+        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.forceSkip(sessionId, owner, "skip 1");
+        draftLiveCommandService.forceSkip(sessionId, owner, "skip 2");
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "skip 3");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(4);
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 4L)).isPresent()
+                .get()
+                .extracting(DraftOrderEntity::getDraftTeamId)
+                .isEqualTo(teamAId);
+    }
+
+    @Test
+    void picking_last_waiting_candidate_finishes_session() {
+        AuthActor owner = createActor("owner-final-pick", "Owner Final Pick", "ROLE_USER");
+        AuthActor pickerA = createActor("picker-final-pick", "Picker Final Pick", "ROLE_USER");
+        Long candidateId = createUser("candidate-final-pick", "Candidate Final Pick", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Final Pick Session");
+        Long teamAId = createTeam(owner, sessionId, "Final Pick Team", 1);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Final Pick", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(sessionId, candidateId, pickerA);
+
+        assertThat(result.getSession().getStatus()).isEqualTo("FINISHED");
+        assertThat(result.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(result.getAvailableCandidates()).isEmpty();
+        assertThat(result.getPickedCandidates()).hasSize(1);
+    }
+
+    @Test
+    void force_skip_alone_does_not_finish_while_waiting_candidates_remain() {
+        AuthActor owner = createActor("owner-force-skip-waiting", "Owner Force Skip Waiting", "ROLE_USER");
+        Long candidateId = createUser("candidate-force-skip-waiting", "Candidate Force Skip Waiting", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Force Skip Waiting Session");
+        Long teamAId = createTeam(owner, sessionId, "Force Skip Team", 1);
+        createCandidate(owner, sessionId, candidateId, "Candidate Force Skip Waiting", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "only skip");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(skipped.getAvailableCandidates()).hasSize(1);
+    }
+
+    @Test
     void resume_aligns_current_team_from_order_when_current_team_is_null() {
         AuthActor owner = createActor("owner06", "Owner Six", "ROLE_USER");
         Long sessionId = createSession(owner, "Resume Session");
@@ -229,10 +331,14 @@ class DraftLiveCommandServiceTest {
     }
 
     private Long createSession(AuthActor actor, String title) {
+        return createSession(actor, title, 2);
+    }
+
+    private Long createSession(AuthActor actor, String title, int teamCount) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
-        requestDto.setTeamCount(2);
+        requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(30);
         requestDto.setCurrentPickNo(1);
         return draftService.createSession(requestDto, actor).getData().getId();

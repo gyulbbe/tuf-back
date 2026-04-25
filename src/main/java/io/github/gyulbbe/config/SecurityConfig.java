@@ -1,5 +1,7 @@
 package io.github.gyulbbe.config;
 
+import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.common.error.ApiErrorResponseWriter;
 import io.github.gyulbbe.jwt.JWTFilter;
 import io.github.gyulbbe.jwt.JWTUtil;
 import io.github.gyulbbe.jwt.LoginFilter;
@@ -60,6 +62,15 @@ public class SecurityConfig {
         http.formLogin(auth -> auth.disable());
 
         http.httpBasic(auth -> auth.disable());
+
+        http.exceptionHandling(exception -> exception
+                .authenticationEntryPoint((request, response, authException) ->
+                        ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_REQUIRED)
+                )
+                .accessDeniedHandler((request, response, accessDeniedException) ->
+                        ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_FORBIDDEN)
+                )
+        );
 
 //        http.authorizeHttpRequests((auth) -> auth
 //                .requestMatchers("/login").permitAll()

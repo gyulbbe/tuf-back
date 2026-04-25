@@ -1,10 +1,12 @@
 package io.github.gyulbbe.user.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.common.error.ApiException;
 import io.github.gyulbbe.user.dto.DraftUserSearchDto;
 import io.github.gyulbbe.user.dto.UserAdminCreateRequestDto;
-import io.github.gyulbbe.user.dto.UserAdminRoleUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminResponseDto;
+import io.github.gyulbbe.user.dto.UserAdminRoleUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminStatusUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserAdminUpdateRequestDto;
 import io.github.gyulbbe.user.dto.UserDetailDto;
@@ -29,6 +31,7 @@ import java.util.Set;
 @AllArgsConstructor
 @Slf4j
 public class UserService {
+
     private static final String ACTIVE = "ACTIVE";
     private static final String INACTIVE = "INACTIVE";
     private static final String ALL = "ALL";
@@ -43,25 +46,44 @@ public class UserService {
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
 
     public ResponseDto<Void> insertUser(UserDto userDto) {
-        UserEntity user = UserEntity.builder()
-                .userId(userDto.getUserId())
-                .password(bCryptPasswordEncoder.encode(userDto.getPassword()))
-                .tier(userDto.getTier())
-                .name(userDto.getName())
-                .phone(userDto.getPhone())
-                .race(userDto.getRace())
-                .status(ACTIVE)
-                .coin(1000L)
-                .userType(ROLE_USER)
-                .photo("default.jpg")
-                .build();
-        userRepository.save(user);
-        return ResponseDto.success(null);
+        if (userDto == null) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.", ApiErrorCode.VALIDATION_FAILED);
+        }
+
+        try {
+            String userId = normalizeRequired(userDto.getUserId(), "userId");
+            String password = normalizeRequired(userDto.getPassword(), "password");
+
+            if (userRepository.existsByUserIdIgnoreCase(userId)) {
+                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.", ApiErrorCode.CONFLICT);
+            }
+
+            UserEntity user = UserEntity.builder()
+                    .userId(userId)
+                    .password(bCryptPasswordEncoder.encode(password))
+                    .tier(userDto.getTier())
+                    .name(userDto.getName())
+                    .phone(userDto.getPhone())
+                    .race(userDto.getRace())
+                    .status(ACTIVE)
+                    .coin(1000L)
+                    .userType(ROLE_USER)
+                    .photo("default.jpg")
+                    .build();
+            userRepository.save(user);
+            return ResponseDto.success(null);
+        } catch (IllegalArgumentException e) {
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), ApiErrorCode.VALIDATION_FAILED);
+        }
     }
 
     public ResponseDto<Void> insertUserList(List<UserDto> userList) {
         if (userList == null || userList.isEmpty()) {
-            return ResponseDto.fail("사용자 리스트가 비어있습니다.");
+            return ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "사용자 리스트가 비어있습니다.",
+                    ApiErrorCode.VALIDATION_FAILED
+            );
         }
 
         List<UserEntity> userEntityList = new ArrayList<>();
@@ -88,15 +110,23 @@ public class UserService {
     public ResponseDto<Void> updatePassword(Long id, String newPassword) {
         UserEntity user = userRepository.findById(id).orElse(null);
         if (user == null) {
-            return ResponseDto.fail("해당 사용자를 찾을 수 없습니다.");
+            return ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    "해당 사용자를 찾을 수 없습니다.",
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            );
         }
         user.updatePassword(bCryptPasswordEncoder.encode(newPassword));
         return ResponseDto.success(null);
     }
 
     public UserDetailDto getUserDetail(String userId) {
-        UserDetailDto userDetailDto = new UserDetailDto();
         UserEntity user = userRepository.findByUserIdIgnoreCaseAndStatus(userId, ACTIVE);
+        if (user == null) {
+            throw new ApiException(ApiErrorCode.RESOURCE_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
+
+        UserDetailDto userDetailDto = new UserDetailDto();
         userDetailDto.setUserId(user.getUserId());
         userDetailDto.setName(user.getName());
         userDetailDto.setRace(user.getRace());
@@ -148,7 +178,11 @@ public class UserService {
     public ResponseDto<List<UserAdminResponseDto>> searchAdminUsers(String keyword, String status) {
         String normalizedStatus = normalizeAdminSearchStatus(status);
         if (normalizedStatus == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "status는 ACTIVE, INACTIVE, ALL 중 하나여야 합니다.");
+            return ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "status는 ACTIVE, INACTIVE, ALL 중 하나여야 합니다.",
+                    ApiErrorCode.VALIDATION_FAILED
+            );
         }
 
         List<UserAdminResponseDto> users = userRepository.searchAdminUsers(
@@ -163,7 +197,7 @@ public class UserService {
 
     public ResponseDto<UserAdminResponseDto> createAdminUser(UserAdminCreateRequestDto requestDto) {
         if (requestDto == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.", ApiErrorCode.VALIDATION_FAILED);
         }
 
         try {
@@ -174,7 +208,7 @@ public class UserService {
             String tier = normalizeRequired(requestDto.getTier(), "tier");
 
             if (userRepository.existsByUserIdIgnoreCase(userId)) {
-                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.");
+                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.", ApiErrorCode.CONFLICT);
             }
 
             UserEntity savedUser = userRepository.save(UserEntity.builder()
@@ -191,18 +225,18 @@ public class UserService {
 
             return ResponseDto.success(toUserAdminResponseDto(savedUser));
         } catch (IllegalArgumentException e) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), ApiErrorCode.VALIDATION_FAILED);
         }
     }
 
     public ResponseDto<UserAdminResponseDto> updateAdminUser(Long id, UserAdminUpdateRequestDto requestDto) {
         if (requestDto == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.", ApiErrorCode.VALIDATION_FAILED);
         }
 
         UserEntity user = userRepository.findById(id).orElse(null);
         if (user == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.", ApiErrorCode.RESOURCE_NOT_FOUND);
         }
 
         try {
@@ -213,29 +247,33 @@ public class UserService {
 
             UserEntity existingUser = userRepository.findByUserIdIgnoreCase(userId);
             if (existingUser != null && !existingUser.getId().equals(id)) {
-                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.");
+                return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.", ApiErrorCode.CONFLICT);
             }
 
             user.updateAdminProfile(userId, name, race, tier);
             return ResponseDto.success(toUserAdminResponseDto(user));
         } catch (IllegalArgumentException e) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), ApiErrorCode.VALIDATION_FAILED);
         }
     }
 
     public ResponseDto<UserAdminResponseDto> updateAdminUserStatus(Long id, UserAdminStatusUpdateRequestDto requestDto) {
         if (requestDto == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.");
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.", ApiErrorCode.VALIDATION_FAILED);
         }
 
         UserEntity user = userRepository.findById(id).orElse(null);
         if (user == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.");
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.", ApiErrorCode.RESOURCE_NOT_FOUND);
         }
 
         String normalizedStatus = normalizeManagedUserStatus(requestDto.getStatus());
         if (normalizedStatus == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "status는 ACTIVE 또는 INACTIVE 중 하나여야 합니다.");
+            return ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "status는 ACTIVE 또는 INACTIVE 중 하나여야 합니다.",
+                    ApiErrorCode.VALIDATION_FAILED
+            );
         }
 
         user.updateStatus(normalizedStatus);
@@ -244,19 +282,20 @@ public class UserService {
 
     public ResponseDto<UserAdminResponseDto> updateAdminUserRole(Long id, UserAdminRoleUpdateRequestDto requestDto) {
         if (requestDto == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "Request body is required.");
+            return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, "요청 본문이 필요합니다.", ApiErrorCode.VALIDATION_FAILED);
         }
 
         UserEntity user = userRepository.findById(id).orElse(null);
         if (user == null) {
-            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "User could not be found.");
+            return ResponseDto.fail(HttpServletResponse.SC_NOT_FOUND, "사용자를 찾을 수 없습니다.", ApiErrorCode.RESOURCE_NOT_FOUND);
         }
 
         String normalizedUserType = normalizeManagedUserType(resolveRequestedUserType(requestDto));
         if (normalizedUserType == null) {
             return ResponseDto.fail(
                     HttpServletResponse.SC_BAD_REQUEST,
-                    "userType must be one of ROLE_USER, ROLE_MANAGER, ROLE_MASTER, ROLE_ADMIN."
+                    "userType must be one of ROLE_USER, ROLE_MANAGER, ROLE_MASTER, ROLE_ADMIN.",
+                    ApiErrorCode.VALIDATION_FAILED
             );
         }
 
@@ -333,7 +372,7 @@ public class UserService {
 
     private String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + "는 필수입니다.");
+            throw new IllegalArgumentException(fieldName + "은 필수입니다.");
         }
         return value.trim();
     }

@@ -1,20 +1,24 @@
 package io.github.gyulbbe.jwt;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.common.error.ApiErrorResponseWriter;
 import io.github.gyulbbe.user.dto.CustomUserDetails;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import java.io.IOException;
@@ -26,17 +30,28 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
+    private static final String INVALID_LOGIN_REQUEST_MESSAGE = "아이디와 비밀번호를 입력해주세요.";
+    private static final TypeReference<Map<String, String>> LOGIN_REQUEST_TYPE = new TypeReference<>() {
+    };
+
     private final AuthenticationManager authenticationManager;
     private final JWTUtil jwtUtil;
 
-    @SneakyThrows
     @Override
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) {
         ObjectMapper objectMapper = new ObjectMapper();
-        Map<String, String> data = objectMapper.readValue(request.getInputStream(), Map.class);
+        Map<String, String> data;
+        try {
+            data = objectMapper.readValue(request.getInputStream(), LOGIN_REQUEST_TYPE);
+        } catch (IOException e) {
+            throw new InvalidLoginRequestException(INVALID_LOGIN_REQUEST_MESSAGE, e);
+        }
 
         String username = data.get("username");
         String password = data.get("password");
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new InvalidLoginRequestException(INVALID_LOGIN_REQUEST_MESSAGE);
+        }
 
         UsernamePasswordAuthenticationToken authenticationToken =
                 new UsernamePasswordAuthenticationToken(username, password, null);
@@ -72,20 +87,23 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
             HttpServletResponse response,
             AuthenticationException failed
     ) throws IOException, ServletException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+        ApiErrorCode errorCode = resolveLoginErrorCode(failed);
+        String message = failed instanceof InvalidLoginRequestException
+                ? INVALID_LOGIN_REQUEST_MESSAGE
+                : errorCode.getDefaultMessage();
+        ApiErrorResponseWriter.write(response, errorCode, message);
+    }
 
-        String message = failed instanceof DisabledException
-                ? "비활성화된 계정입니다."
-                : "로그인 실패: 아이디 또는 비밀번호가 올바르지 않습니다.";
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        Map<String, Object> errorResponse = Map.of(
-                "message", message,
-                "error", message
-        );
-
-        response.getWriter().write(objectMapper.writeValueAsString(errorResponse));
+    private ApiErrorCode resolveLoginErrorCode(AuthenticationException failed) {
+        if (failed instanceof InvalidLoginRequestException) {
+            return ApiErrorCode.VALIDATION_FAILED;
+        }
+        if (failed instanceof DisabledException) {
+            return ApiErrorCode.AUTH_ACCOUNT_INACTIVE;
+        }
+        if (failed instanceof BadCredentialsException || failed instanceof UsernameNotFoundException) {
+            return ApiErrorCode.AUTH_INVALID_CREDENTIALS;
+        }
+        return ApiErrorCode.AUTH_INVALID_CREDENTIALS;
     }
 }

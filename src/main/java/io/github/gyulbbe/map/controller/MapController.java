@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RequestMapping("/map")
 @RequiredArgsConstructor
 @RestController
@@ -19,21 +21,21 @@ public class MapController {
 
     @PostMapping("/insert")
     public ResponseEntity<ResponseDto<Void>> insertMap(@Valid @RequestBody MapDto mapDto) {
-        return ResponseEntity.ok(mapService.insertMap(mapDto));
+        return respond(mapService.insertMap(mapDto));
     }
 
     @GetMapping("/get")
     public ResponseEntity<ResponseDto<MapDto>> findMapById(@RequestBody MapDto mapDto) {
-        return ResponseEntity.ok(mapService.findMapById(mapDto.getId()));
+        return respond(mapService.findMapById(mapDto.getId()));
     }
 
     @PutMapping("/update")
     public ResponseEntity<ResponseDto<Void>> updateMap(@Valid @RequestBody MapDto mapDto) {
-        return ResponseEntity.ok(mapService.updateMap(mapDto.getId(), mapDto));
+        return respond(mapService.updateMap(mapDto.getId(), mapDto));
     }
 
     @GetMapping("/list")
     public ResponseEntity<ResponseDto<List<MapDto>>> list() {
-        return ResponseEntity.ok(mapService.list());
+        return respond(mapService.list());
     }
 }

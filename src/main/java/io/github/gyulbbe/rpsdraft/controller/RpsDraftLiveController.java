@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/rps-drafts/live")
@@ -28,22 +30,22 @@ public class RpsDraftLiveController {
     @GetMapping("/sessions/{sessionId}/snapshot")
     public ResponseEntity<ResponseDto<RpsDraftLiveSnapshotResponseDto>> getSnapshot(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     ResponseDto.success(rpsDraftSnapshotService.getSnapshot(sessionId, rpsDraftActorResolver.resolveOptional()))
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/sessions/{sessionId}/start")
     public ResponseEntity<ResponseDto<RpsDraftLiveSnapshotResponseDto>> start(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     ResponseDto.success(rpsDraftLiveCommandService.startSession(sessionId, rpsDraftActorResolver.resolveRequired()))
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -53,7 +55,7 @@ public class RpsDraftLiveController {
             @RequestBody RpsDraftRpsSubmitRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     ResponseDto.success(
                             rpsDraftLiveCommandService.submitRps(
                                     sessionId,
@@ -63,7 +65,7 @@ public class RpsDraftLiveController {
                     )
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -73,7 +75,7 @@ public class RpsDraftLiveController {
             @RequestBody RpsDraftPickRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     ResponseDto.success(
                             rpsDraftLiveCommandService.pick(
                                     sessionId,
@@ -83,20 +85,20 @@ public class RpsDraftLiveController {
                     )
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/sessions/{sessionId}/finish")
     public ResponseEntity<ResponseDto<RpsDraftLiveSnapshotResponseDto>> finish(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     ResponseDto.success(
                             rpsDraftLiveCommandService.finishSession(sessionId, rpsDraftActorResolver.resolveRequired())
                     )
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 }

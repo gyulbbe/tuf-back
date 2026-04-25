@@ -46,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import({
         DraftService.class,
         DraftLiveSessionTracker.class,
+        DraftOrderPatternService.class,
         DraftQueryRepositoryImpl.class,
         QueryDslConfig.class,
         DraftPermissionService.class,
@@ -230,6 +231,48 @@ class DraftServiceTest {
         assertThat(sessionResponse.getData().getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(deletePickResponse.getStatus()).isEqualTo(200);
         assertThat(draftPickRepository.findAllByDraftSessionIdOrderByPickNoAsc(sessionId)).isEmpty();
+    }
+
+    @Test
+    void legacy_create_pick_repeats_order_pattern_until_waiting_candidates_are_exhausted() {
+        AuthActor owner = createActor("owner-repeat-pick", "Owner Repeat Pick", "ROLE_USER");
+        Long pickerUserId = createUser("picker-repeat-pick", "Picker Repeat Pick", "ROLE_USER");
+        Long candidate1Id = createUser("candidate-repeat-pick-1", "Candidate Repeat Pick One", "ROLE_USER");
+        Long candidate2Id = createUser("candidate-repeat-pick-2", "Candidate Repeat Pick Two", "ROLE_USER");
+        Long candidate3Id = createUser("candidate-repeat-pick-3", "Candidate Repeat Pick Three", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Legacy Repeating Pick Session", 2, 45);
+        Long teamAId = createTeam(owner, sessionId, "Repeat Red", 1);
+        Long teamBId = createTeam(owner, sessionId, "Repeat Blue", 2);
+        draftAdminService.assignPicker(teamAId, pickerUserId, owner);
+        draftAdminService.assignPicker(teamBId, pickerUserId, owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate1Id, "Candidate Repeat Pick One", "ZERG"), owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate2Id, "Candidate Repeat Pick Two", "TERRAN"), owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate3Id, "Candidate Repeat Pick Three", "PROTOSS"), owner);
+        draftService.createOrder(orderRequest(sessionId, 1L, teamAId), owner);
+        draftService.createOrder(orderRequest(sessionId, 2L, teamBId), owner);
+        draftService.updateSession(sessionId, liveSessionRequest(teamAId), owner);
+
+        ResponseDto<DraftPickResponseDto> pick1 =
+                draftService.createPick(pickRequest(sessionId, 1L, teamAId, candidate1Id, pickerUserId), owner);
+        ResponseDto<DraftPickResponseDto> pick2 =
+                draftService.createPick(pickRequest(sessionId, 2L, teamBId, candidate2Id, pickerUserId), owner);
+        ResponseDto<DraftSessionDetailResponseDto> afterSecondPick = draftService.getSession(sessionId);
+        ResponseDto<DraftPickResponseDto> pick3 =
+                draftService.createPick(pickRequest(sessionId, 3L, teamAId, candidate3Id, pickerUserId), owner);
+        ResponseDto<DraftSessionDetailResponseDto> afterFinalPick = draftService.getSession(sessionId);
+
+        assertThat(pick1.getStatus()).isEqualTo(200);
+        assertThat(pick2.getStatus()).isEqualTo(200);
+        assertThat(afterSecondPick.getData().getStatus()).isEqualTo("LIVE");
+        assertThat(afterSecondPick.getData().getCurrentPickNo()).isEqualTo(3);
+        assertThat(afterSecondPick.getData().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(afterSecondPick.getData().getOrders()).filteredOn("pickNo", 3L)
+                .extracting("draftTeamId")
+                .containsExactly(teamAId);
+        assertThat(pick3.getStatus()).isEqualTo(200);
+        assertThat(afterFinalPick.getData().getStatus()).isEqualTo("FINISHED");
+        assertThat(afterFinalPick.getData().getCurrentDraftTeamId()).isNull();
     }
 
     @Test

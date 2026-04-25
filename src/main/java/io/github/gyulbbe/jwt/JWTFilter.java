@@ -1,7 +1,10 @@
 package io.github.gyulbbe.jwt;
 
+import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.common.error.ApiErrorResponseWriter;
 import io.github.gyulbbe.user.dto.CustomUserDetails;
 import io.github.gyulbbe.user.entity.UserEntity;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,16 +31,27 @@ public class JWTFilter extends OncePerRequestFilter {
             return;
         }
 
-        String token = authorization.split(" ")[1];
-
-        //토큰 소멸 시간 검증
-        if (Boolean.TRUE.equals(jwtUtil.isExpired(token))) {
-            filterChain.doFilter(request, response);
-
+        String token = authorization.substring("Bearer".length()).trim();
+        if (token.isBlank()) {
+            ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_REQUIRED);
             return;
         }
 
+        try {
+            authenticateToken(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            SecurityContextHolder.clearContext();
+            ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_REQUIRED);
+            return;
+        }
 
+        filterChain.doFilter(request, response);
+    }
+
+    private void authenticateToken(String token) {
+        if (Boolean.TRUE.equals(jwtUtil.isExpired(token))) {
+            return;
+        }
 
         String username = jwtUtil.getUsername(token);
         String role = jwtUtil.getRole(token);
@@ -57,7 +71,5 @@ public class JWTFilter extends OncePerRequestFilter {
         
         //세션 사용자 등록
         SecurityContextHolder.getContext().setAuthentication(authToken);
-
-        filterChain.doFilter(request, response);
     }
 }

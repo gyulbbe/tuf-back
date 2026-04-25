@@ -10,7 +10,6 @@ import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
-import io.github.gyulbbe.draft.repository.DraftOrderRepository;
 import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
@@ -29,9 +28,9 @@ public class DraftLiveCommandService {
     private static final String CANDIDATE_WAITING = "WAITING";
 
     private final DraftSessionRepository draftSessionRepository;
-    private final DraftOrderRepository draftOrderRepository;
     private final DraftCandidateRepository draftCandidateRepository;
     private final DraftPickRepository draftPickRepository;
+    private final DraftOrderPatternService draftOrderPatternService;
     private final DraftPermissionService draftPermissionService;
     private final DraftSnapshotService draftSnapshotService;
     private final DraftEventPublisher draftEventPublisher;
@@ -224,12 +223,12 @@ public class DraftLiveCommandService {
 
     private void advanceTurnOrFinish(DraftSessionEntity session, LocalDateTime now) {
         long nextPickNo = session.getCurrentPickNo() + 1L;
-        DraftOrderEntity nextOrder = draftOrderRepository.findByDraftSessionIdAndPickNo(session.getId(), nextPickNo)
-                .orElse(null);
-        if (nextOrder == null) {
+        if (draftCandidateRepository.countByDraftSessionIdAndStatus(session.getId(), CANDIDATE_WAITING) <= 0) {
             session.finish(now);
             return;
         }
+
+        DraftOrderEntity nextOrder = draftOrderPatternService.getOrCreateOrder(session.getId(), nextPickNo);
         session.advanceTurn((int) nextPickNo, nextOrder.getDraftTeamId(), now.plusSeconds(session.getPickTimeSeconds()));
     }
 
@@ -245,8 +244,7 @@ public class DraftLiveCommandService {
     }
 
     private DraftOrderEntity requireOrder(Long sessionId, long pickNo) {
-        return draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, pickNo)
-                .orElseThrow(() -> new IllegalArgumentException("Draft order could not be found."));
+        return draftOrderPatternService.requireExistingOrder(sessionId, pickNo);
     }
 
     private Long synchronizeCurrentTurnWithOrder(DraftSessionEntity session, DraftOrderEntity currentOrder) {

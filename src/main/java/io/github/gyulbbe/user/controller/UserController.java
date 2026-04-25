@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @Slf4j
 @RequestMapping("/user")
 @AllArgsConstructor
@@ -32,7 +34,7 @@ public class UserController {
             @RequestParam String keyword,
             @RequestParam(required = false) Integer limit
     ) {
-        return ResponseEntity.ok(userService.searchUsers(keyword, limit));
+        return respond(userService.searchUsers(keyword, limit));
     }
 
     @GetMapping("/draft-search")
@@ -40,21 +42,21 @@ public class UserController {
             @RequestParam String keyword,
             @RequestParam(required = false) Integer limit
     ) {
-        return ResponseEntity.ok(userService.searchDraftUsers(keyword, limit));
+        return respond(userService.searchDraftUsers(keyword, limit));
     }
 
     @PatchMapping("/password/{id}")
     public ResponseEntity<ResponseDto<Void>> updatePassword(@PathVariable Long id, @RequestBody String newPassword) {
-        return ResponseEntity.ok(userService.updatePassword(id, newPassword));
+        return respond(userService.updatePassword(id, newPassword));
     }
 
     @PostMapping("/insert")
     public ResponseEntity<ResponseDto<Void>> insertUser(@Valid @RequestBody UserDto userDto) {
-        return ResponseEntity.ok(userService.insertUser(userDto));
+        return respond(userService.insertUser(userDto));
     }
 
     @PostMapping("/insert-list")
     public ResponseEntity<ResponseDto<Void>> insertUserList(@Valid @RequestBody List<UserDto> userList) {
-        return ResponseEntity.ok(userService.insertUserList(userList));
+        return respond(userService.insertUserList(userList));
     }
 }

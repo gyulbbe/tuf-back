@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @Slf4j
 @RequestMapping("/speech-learning")
 @RequiredArgsConstructor
@@ -27,6 +29,6 @@ public class SpeechController {
     public ResponseEntity<ResponseDto<String>> insertSpeechLearningList(@Valid @RequestBody List<SpeechDto> dtoList) {
         log.info("채팅 리스트 저장 요청 - 개수: {}", dtoList.size());
         ResponseDto<String> response = speechLearningService.insertSpeechLearningList(dtoList);
-        return ResponseEntity.ok(response);
+        return respond(response);
     }
 }

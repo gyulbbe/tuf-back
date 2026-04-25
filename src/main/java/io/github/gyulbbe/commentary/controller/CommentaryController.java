@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RequestMapping("/commentary")
 @RequiredArgsConstructor
 @RestController
@@ -18,11 +20,11 @@ public class CommentaryController {
 
     @PostMapping("/insert")
     public ResponseEntity<ResponseDto<Void>> insertCommentary(@Valid @RequestBody CommentaryDto commentaryDto) {
-        return ResponseEntity.ok(commentaryService.insertCommentary(commentaryDto));
+        return respond(commentaryService.insertCommentary(commentaryDto));
     }
 
     @PostMapping("/embed-all")
     public ResponseEntity<ResponseDto<String>> embedAllCommentaries() {
-        return ResponseEntity.ok(commentaryService.embedAllCommentaries());
+        return respond(commentaryService.embedAllCommentaries());
     }
 }

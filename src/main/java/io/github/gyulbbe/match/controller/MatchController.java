@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RequestMapping("/match")
 @RequiredArgsConstructor
 @RestController
@@ -19,21 +21,21 @@ public class MatchController {
 
     @PostMapping("/insert")
     public ResponseEntity<ResponseDto<Void>> insertMatchInfo(@Valid @RequestBody MatchInfoDto matchInfoDto) {
-        return ResponseEntity.ok(matchService.insertMatchInfo(matchInfoDto));
+        return respond(matchService.insertMatchInfo(matchInfoDto));
     }
 
     @GetMapping("/get")
     public ResponseEntity<ResponseDto<MatchInfoDto>> findMatchInfoById(@RequestBody MatchInfoDto matchInfoDto) {
-        return ResponseEntity.ok(matchService.findMatchInfoById(matchInfoDto.getId()));
+        return respond(matchService.findMatchInfoById(matchInfoDto.getId()));
     }
 
     @PutMapping("/update")
     public ResponseEntity<ResponseDto<Void>> updateMatchInfo(@Valid @RequestBody MatchInfoDto matchInfoDto) {
-        return ResponseEntity.ok(matchService.updateMatchInfo(matchInfoDto.getId(), matchInfoDto));
+        return respond(matchService.updateMatchInfo(matchInfoDto.getId(), matchInfoDto));
     }
 
     @GetMapping("/list")
     public ResponseEntity<ResponseDto<List<MatchInfoDto>>> list() {
-        return ResponseEntity.ok(matchService.list());
+        return respond(matchService.list());
     }
 }

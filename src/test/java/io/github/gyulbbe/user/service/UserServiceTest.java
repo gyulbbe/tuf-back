@@ -1,6 +1,7 @@
 package io.github.gyulbbe.user.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
+import io.github.gyulbbe.user.dto.UserDto;
 import io.github.gyulbbe.user.dto.UserSearchDto;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
@@ -73,6 +74,22 @@ class UserServiceTest {
         assertThat(response.getData())
                 .extracting(UserSearchDto::getUserId)
                 .containsExactly("blackmagic", "BlueDragon");
+    }
+
+    @Test
+    void insertUser_returnsConflictErrorCode_whenUserIdAlreadyExistsIgnoringCase() {
+        saveUser("blackmagic", "Black", "ACTIVE");
+
+        UserDto requestDto = new UserDto();
+        requestDto.setUserId("BlackMagic");
+        requestDto.setPassword("secret");
+
+        ResponseDto<Void> response = userService.insertUser(requestDto);
+
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(response.getMessage()).isEqualTo("이미 사용 중인 userId입니다.");
+        assertThat(response.getData()).isNull();
+        assertThat(response.getErrorCode()).isEqualTo("CONFLICT");
     }
 
     private void saveUser(String userId, String name, String status) {

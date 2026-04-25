@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/draft/admin")
@@ -33,7 +35,7 @@ public class DraftAdminController {
             @RequestBody DraftPickerAssignRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(
+            return respond(
                     draftAdminService.assignPicker(
                             teamId,
                             requestDto.resolvePickerUserId(),
@@ -41,29 +43,29 @@ public class DraftAdminController {
                     )
             );
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/sessions/{sessionId}/start")
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> startSession(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.startSession(sessionId, draftActorResolver.resolveRequired())
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
     @PostMapping("/sessions/{sessionId}/pause")
     public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> pauseSession(@PathVariable Long sessionId) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.pauseSession(sessionId, draftActorResolver.resolveRequired())
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -73,7 +75,7 @@ public class DraftAdminController {
             @RequestBody(required = false) DraftResumeRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.resumeSession(
                             sessionId,
                             draftActorResolver.resolveRequired(),
@@ -81,7 +83,7 @@ public class DraftAdminController {
                     )
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -91,7 +93,7 @@ public class DraftAdminController {
             @RequestBody DraftExtendTimeRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.extendTime(
                             sessionId,
                             draftActorResolver.resolveRequired(),
@@ -99,7 +101,7 @@ public class DraftAdminController {
                     )
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -109,7 +111,7 @@ public class DraftAdminController {
             @RequestBody(required = false) DraftReasonRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.forceSkip(
                             sessionId,
                             draftActorResolver.resolveRequired(),
@@ -117,7 +119,7 @@ public class DraftAdminController {
                     )
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 
@@ -127,7 +129,7 @@ public class DraftAdminController {
             @RequestBody(required = false) DraftReasonRequestDto requestDto
     ) {
         try {
-            return ResponseEntity.ok(ResponseDto.success(
+            return respond(ResponseDto.success(
                     draftLiveCommandService.finishSession(
                             sessionId,
                             draftActorResolver.resolveRequired(),
@@ -135,7 +137,7 @@ public class DraftAdminController {
                     )
             ));
         } catch (Exception e) {
-            return ResponseEntity.ok(ResponseDto.fail(e.getMessage()));
+            return respond(ResponseDto.fail(e.getMessage()));
         }
     }
 }

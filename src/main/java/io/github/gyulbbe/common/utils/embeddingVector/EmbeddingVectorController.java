@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/vector")
@@ -29,10 +31,10 @@ public class EmbeddingVectorController {
                     requestDto.getReferenceTable(),
                     requestDto.getTopK()
             );
-            return ResponseEntity.ok(ResponseDto.success(results));
+            return respond(ResponseDto.success(results));
         } catch (Exception e) {
             log.error("유사도 검색 실패", e);
-            return ResponseEntity.ok(ResponseDto.fail("유사도 검색 실패: " + e.getMessage()));
+            return respond(ResponseDto.fail("유사도 검색 실패: " + e.getMessage()));
         }
     }
 
@@ -46,13 +48,13 @@ public class EmbeddingVectorController {
         try {
             EmbeddingVectorDto result = embeddingService.findMostSimilarVector(queryText, referenceTable);
             if (result != null) {
-                return ResponseEntity.ok(ResponseDto.success(result));
+                return respond(ResponseDto.success(result));
             } else {
-                return ResponseEntity.ok(ResponseDto.fail("검색 결과 없음"));
+                return respond(ResponseDto.fail("검색 결과 없음"));
             }
         } catch (Exception e) {
             log.error("가장 유사한 벡터 검색 실패", e);
-            return ResponseEntity.ok(ResponseDto.fail("검색 실패: " + e.getMessage()));
+            return respond(ResponseDto.fail("검색 실패: " + e.getMessage()));
         }
     }
 
@@ -67,13 +69,13 @@ public class EmbeddingVectorController {
         try {
             int result = embeddingService.embedAndSave(referenceId, referenceTable, text);
             if (result > 0) {
-                return ResponseEntity.ok(ResponseDto.success("임베딩 저장 완료"));
+                return respond(ResponseDto.success("임베딩 저장 완료"));
             } else {
-                return ResponseEntity.ok(ResponseDto.fail("임베딩 저장 실패"));
+                return respond(ResponseDto.fail("임베딩 저장 실패"));
             }
         } catch (Exception e) {
             log.error("임베딩 저장 실패", e);
-            return ResponseEntity.ok(ResponseDto.fail("임베딩 저장 실패: " + e.getMessage()));
+            return respond(ResponseDto.fail("임베딩 저장 실패: " + e.getMessage()));
         }
     }
 
@@ -86,10 +88,10 @@ public class EmbeddingVectorController {
         try {
             int result = embeddingService.embedAndSaveBatch(dtos);
             String message = String.format("배치 임베딩 완료 - 저장된 레코드 수: %d", result);
-            return ResponseEntity.ok(ResponseDto.success(message));
+            return respond(ResponseDto.success(message));
         } catch (Exception e) {
             log.error("배치 임베딩 실패", e);
-            return ResponseEntity.ok(ResponseDto.fail("배치 임베딩 실패: " + e.getMessage()));
+            return respond(ResponseDto.fail("배치 임베딩 실패: " + e.getMessage()));
         }
     }
 
