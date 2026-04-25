@@ -26,6 +26,14 @@ import java.util.Objects;
 public class DraftLiveCommandService {
 
     private static final String CANDIDATE_WAITING = "WAITING";
+    private static final String MESSAGE_SESSION_STARTED = "드래프트를 시작했습니다.";
+    private static final String MESSAGE_SESSION_PAUSED = "드래프트를 일시정지했습니다.";
+    private static final String MESSAGE_SESSION_RESUMED = "드래프트를 재개했습니다.";
+    private static final String MESSAGE_TIMER_EXTENDED = "제한 시간을 연장했습니다.";
+    private static final String MESSAGE_PICK_COMPLETED = "지명을 완료했습니다.";
+    private static final String MESSAGE_FINAL_PICK_FINISHED = "마지막 지명이 완료되어 드래프트가 종료되었습니다.";
+    private static final String MESSAGE_SESSION_FINISHED = "드래프트가 종료되었습니다.";
+    private static final String MESSAGE_PICK_SKIPPED = "현재 턴을 스킵했습니다.";
 
     private final DraftSessionRepository draftSessionRepository;
     private final DraftCandidateRepository draftCandidateRepository;
@@ -52,7 +60,7 @@ public class DraftLiveCommandService {
         draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_STARTED, actor, "Draft session started.");
+        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_STARTED, actor, MESSAGE_SESSION_STARTED);
         return snapshot;
     }
 
@@ -66,7 +74,7 @@ public class DraftLiveCommandService {
         draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_PAUSED);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_PAUSED, actor, "Draft session paused.");
+        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_PAUSED, actor, MESSAGE_SESSION_PAUSED);
         return snapshot;
     }
 
@@ -89,7 +97,7 @@ public class DraftLiveCommandService {
         draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_RESUMED, actor, "Draft session resumed.");
+        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_RESUMED, actor, MESSAGE_SESSION_RESUMED);
         return snapshot;
     }
 
@@ -108,7 +116,7 @@ public class DraftLiveCommandService {
         session.extendDeadlineAt(session.getDeadlineAt().plusSeconds(seconds));
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        publishAfterCommit(sessionId, DraftLiveEventType.TIMER_EXTENDED, actor, "Turn timer extended.");
+        publishAfterCommit(sessionId, DraftLiveEventType.TIMER_EXTENDED, actor, MESSAGE_TIMER_EXTENDED);
         return snapshot;
     }
 
@@ -154,10 +162,10 @@ public class DraftLiveCommandService {
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
-            publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Final pick completed. Draft session finished.");
+            publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_FINAL_PICK_FINISHED);
         } else {
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
-            publishAfterCommit(sessionId, DraftLiveEventType.PICK_COMPLETED, actor, "Pick completed.");
+            publishAfterCommit(sessionId, DraftLiveEventType.PICK_COMPLETED, actor, MESSAGE_PICK_COMPLETED);
         }
         return snapshot;
     }
@@ -174,11 +182,10 @@ public class DraftLiveCommandService {
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
-            publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Draft session finished.");
+            publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_SESSION_FINISHED);
         } else {
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
-            String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;
-            publishAfterCommit(sessionId, DraftLiveEventType.PICK_SKIPPED, actor, "Current pick skipped" + suffix + ".");
+            publishAfterCommit(sessionId, DraftLiveEventType.PICK_SKIPPED, actor, MESSAGE_PICK_SKIPPED);
         }
         return snapshot;
     }
@@ -196,8 +203,7 @@ public class DraftLiveCommandService {
         draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
-        String suffix = reason == null || reason.isBlank() ? "" : ": " + reason;
-        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, "Draft session finished" + suffix + ".");
+        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_SESSION_FINISHED);
         return snapshot;
     }
 
