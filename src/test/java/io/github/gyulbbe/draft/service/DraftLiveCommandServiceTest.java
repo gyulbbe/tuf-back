@@ -232,6 +232,45 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
+    void force_skip_extends_snake_order_by_next_pick_no() {
+        AuthActor owner = createActor("owner-snake-skip", "Owner Snake Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-snake-skip", "Candidate Snake Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Snake Force Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "Snake A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Snake B", 2);
+        createCandidate(owner, sessionId, candidateId, "Candidate Snake Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        createOrder(owner, sessionId, 3L, teamBId);
+        createOrder(owner, sessionId, 4L, teamAId);
+        createOrder(owner, sessionId, 5L, teamAId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 2");
+        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 3");
+        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 4");
+        DraftLiveSnapshotResponseDto skipTo5 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 5");
+        DraftLiveSnapshotResponseDto skipTo6 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 6");
+        DraftLiveSnapshotResponseDto skipTo7 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 7");
+        DraftLiveSnapshotResponseDto skipTo8 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 8");
+
+        assertThat(skipTo5.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(skipTo5.getSession().getCurrentPickNo()).isEqualTo(5);
+        assertThat(skipTo5.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(skipTo6.getSession().getCurrentPickNo()).isEqualTo(6);
+        assertThat(skipTo6.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo7.getSession().getCurrentPickNo()).isEqualTo(7);
+        assertThat(skipTo7.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo8.getSession().getCurrentPickNo()).isEqualTo(8);
+        assertThat(skipTo8.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 6L)).isPresent()
+                .get()
+                .extracting(DraftOrderEntity::getDraftTeamId)
+                .isEqualTo(teamBId);
+    }
+
+    @Test
     void turn_beyond_existing_orders_repeats_existing_order_pattern() {
         AuthActor owner = createActor("owner-repeat-order", "Owner Repeat Order", "ROLE_USER");
         Long candidateId = createUser("candidate-repeat-order", "Candidate Repeat Order", "ROLE_USER");

@@ -276,6 +276,48 @@ class DraftServiceTest {
     }
 
     @Test
+    void legacy_create_pick_extends_snake_order_after_mid_cycle_prefix() {
+        AuthActor owner = createActor("owner-snake-pick", "Owner Snake Pick", "ROLE_USER");
+        Long pickerUserId = createUser("picker-snake-pick", "Picker Snake Pick", "ROLE_USER");
+        Long candidate1Id = createUser("candidate-snake-pick-1", "Candidate Snake Pick One", "ROLE_USER");
+        Long candidate2Id = createUser("candidate-snake-pick-2", "Candidate Snake Pick Two", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Legacy Snake Pick Session", 2, 45);
+        Long teamAId = createTeam(owner, sessionId, "Snake Red", 1);
+        Long teamBId = createTeam(owner, sessionId, "Snake Blue", 2);
+        draftService.createCandidate(candidateRequest(sessionId, candidate1Id, "Candidate Snake Pick One", "ZERG"), owner);
+        draftService.createCandidate(candidateRequest(sessionId, candidate2Id, "Candidate Snake Pick Two", "TERRAN"), owner);
+        draftService.createOrder(orderRequest(sessionId, 1L, teamAId), owner);
+        draftService.createOrder(orderRequest(sessionId, 2L, teamBId), owner);
+        draftService.createOrder(orderRequest(sessionId, 3L, teamBId), owner);
+        draftService.createOrder(orderRequest(sessionId, 4L, teamAId), owner);
+        draftService.createOrder(orderRequest(sessionId, 5L, teamAId), owner);
+
+        DraftSessionRequestDto liveAtFifthPick = liveSessionRequest(teamAId);
+        liveAtFifthPick.setCurrentPickNo(5);
+        draftService.updateSession(sessionId, liveAtFifthPick, owner);
+
+        ResponseDto<DraftPickResponseDto> pickAtFive =
+                draftService.createPick(pickRequest(sessionId, 5L, teamAId, candidate1Id, pickerUserId), owner);
+        ResponseDto<DraftSessionDetailResponseDto> afterPickAtFive = draftService.getSession(sessionId);
+        ResponseDto<DraftPickResponseDto> finalPick =
+                draftService.createPick(pickRequest(sessionId, 6L, teamBId, candidate2Id, pickerUserId), owner);
+        ResponseDto<DraftSessionDetailResponseDto> afterFinalPick = draftService.getSession(sessionId);
+
+        assertThat(pickAtFive.getStatus()).isEqualTo(200);
+        assertThat(afterPickAtFive.getData().getStatus()).isEqualTo("LIVE");
+        assertThat(afterPickAtFive.getData().getCurrentPickNo()).isEqualTo(6);
+        assertThat(afterPickAtFive.getData().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 6L)).isPresent()
+                .get()
+                .extracting(DraftOrderEntity::getDraftTeamId)
+                .isEqualTo(teamBId);
+        assertThat(finalPick.getStatus()).isEqualTo(200);
+        assertThat(afterFinalPick.getData().getStatus()).isEqualTo("FINISHED");
+        assertThat(afterFinalPick.getData().getCurrentDraftTeamId()).isNull();
+    }
+
+    @Test
     void owner_can_replace_orders_in_one_request() {
         AuthActor owner = createActor("owner-orders", "Owner Orders", "ROLE_USER");
         Long sessionId = createSession(owner, "Bulk Orders", 2, 60);

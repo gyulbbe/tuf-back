@@ -16,6 +16,8 @@ public interface DraftTeamRepository extends JpaRepository<DraftTeamEntity, Long
 
     List<DraftTeamEntity> findAllByDraftSessionId(Long draftSessionId);
 
+    List<DraftTeamEntity> findAllByDraftSessionIdOrderByDisplayOrderAsc(Long draftSessionId);
+
     Optional<DraftTeamEntity> findByDraftSessionIdAndDisplayOrder(Long draftSessionId, Integer displayOrder);
 
     @Modifying
