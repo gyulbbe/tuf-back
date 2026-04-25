@@ -1,20 +1,28 @@
 package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
+import io.github.gyulbbe.draft.entity.DraftSessionEntity;
 import io.github.gyulbbe.draft.entity.DraftTeamEntity;
 import io.github.gyulbbe.draft.repository.DraftOrderRepository;
+import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class DraftOrderPatternService {
 
+    private static final String BASIC_ORDER_MODE = "BASIC";
+    private static final String SNAKE_ORDER_MODE = "SNAKE";
+    private static final Set<String> SUPPORTED_ORDER_MODES = Set.of(BASIC_ORDER_MODE, SNAKE_ORDER_MODE);
+
+    private final DraftSessionRepository draftSessionRepository;
     private final DraftOrderRepository draftOrderRepository;
     private final DraftTeamRepository draftTeamRepository;
 
@@ -34,7 +42,14 @@ public class DraftOrderPatternService {
             throw new IllegalArgumentException("Draft order could not be found.");
         }
 
-        PatternResolver patternResolver = resolvePattern(sessionId, orders);
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Draft session could not be found."));
+        String orderMode = normalizeOrderMode(session.getOrderMode());
+        List<DraftTeamEntity> orderedTeams = draftTeamRepository.findAllByDraftSessionIdOrderByDisplayOrderAsc(sessionId);
+        if (orderedTeams.isEmpty()) {
+            throw new IllegalArgumentException("Draft order could not be found.");
+        }
+
         Set<Long> existingPickNos = new HashSet<>();
         orders.forEach(order -> existingPickNos.add(order.getPickNo()));
 
@@ -44,7 +59,7 @@ public class DraftOrderPatternService {
                 continue;
             }
 
-            DraftOrderEntity generatedOrder = savePatternOrder(sessionId, nextPickNo, patternResolver);
+            DraftOrderEntity generatedOrder = savePatternOrder(sessionId, nextPickNo, orderMode, orderedTeams);
             existingPickNos.add(nextPickNo);
             if (nextPickNo == pickNo) {
                 targetOrder = generatedOrder;
@@ -52,53 +67,6 @@ public class DraftOrderPatternService {
         }
 
         return targetOrder;
-    }
-
-    private PatternResolver resolvePattern(Long sessionId, List<DraftOrderEntity> orders) {
-        List<DraftTeamEntity> orderedTeams = draftTeamRepository.findAllByDraftSessionIdOrderByDisplayOrderAsc(sessionId);
-        if (orderedTeams.isEmpty()) {
-            throw new IllegalArgumentException("Draft order could not be found.");
-        }
-
-        int basicPrefixLength = matchedPrefixLength(orders, orderedTeams, OrderMode.BASIC);
-        int snakePrefixLength = matchedPrefixLength(orders, orderedTeams, OrderMode.SNAKE);
-
-        if (snakePrefixLength > basicPrefixLength && snakePrefixLength > orderedTeams.size()) {
-            return pickNo -> teamIdForSnakePick(pickNo, orderedTeams);
-        }
-        if (basicPrefixLength >= orders.size()) {
-            return pickNo -> teamIdForBasicPick(pickNo, orderedTeams);
-        }
-        if (snakePrefixLength >= orders.size()) {
-            return pickNo -> teamIdForSnakePick(pickNo, orderedTeams);
-        }
-        return pickNo -> teamIdForFallbackPick(pickNo, orders);
-    }
-
-    private int matchedPrefixLength(
-            List<DraftOrderEntity> orders,
-            List<DraftTeamEntity> orderedTeams,
-            OrderMode orderMode
-    ) {
-        int matchedCount = 0;
-        long expectedPickNo = 1L;
-        for (DraftOrderEntity order : orders) {
-            if (order.getPickNo() == null || !order.getPickNo().equals(expectedPickNo)) {
-                break;
-            }
-
-            Long expectedTeamId = switch (orderMode) {
-                case BASIC -> teamIdForBasicPick(order.getPickNo(), orderedTeams);
-                case SNAKE -> teamIdForSnakePick(order.getPickNo(), orderedTeams);
-            };
-            if (!expectedTeamId.equals(order.getDraftTeamId())) {
-                break;
-            }
-
-            matchedCount++;
-            expectedPickNo++;
-        }
-        return matchedCount;
     }
 
     private Long teamIdForBasicPick(long pickNo, List<DraftTeamEntity> orderedTeams) {
@@ -118,13 +86,21 @@ public class DraftOrderPatternService {
         return orderedTeams.get(teamIndex).getId();
     }
 
-    private Long teamIdForFallbackPick(long pickNo, List<DraftOrderEntity> orders) {
-        int orderIndex = (int) ((pickNo - 1L) % orders.size());
-        return orders.get(orderIndex).getDraftTeamId();
+    private Long teamIdForPick(long pickNo, String orderMode, List<DraftTeamEntity> orderedTeams) {
+        return switch (orderMode) {
+            case BASIC_ORDER_MODE -> teamIdForBasicPick(pickNo, orderedTeams);
+            case SNAKE_ORDER_MODE -> teamIdForSnakePick(pickNo, orderedTeams);
+            default -> throw new IllegalArgumentException("Draft order mode must be BASIC or SNAKE.");
+        };
     }
 
-    private DraftOrderEntity savePatternOrder(Long sessionId, long pickNo, PatternResolver patternResolver) {
-        Long draftTeamId = patternResolver.resolveTeamId(pickNo);
+    private DraftOrderEntity savePatternOrder(
+            Long sessionId,
+            long pickNo,
+            String orderMode,
+            List<DraftTeamEntity> orderedTeams
+    ) {
+        Long draftTeamId = teamIdForPick(pickNo, orderMode, orderedTeams);
         return draftOrderRepository.save(DraftOrderEntity.builder()
                 .draftSessionId(sessionId)
                 .pickNo(pickNo)
@@ -132,13 +108,13 @@ public class DraftOrderPatternService {
                 .build());
     }
 
-    private enum OrderMode {
-        BASIC,
-        SNAKE
-    }
-
-    @FunctionalInterface
-    private interface PatternResolver {
-        Long resolveTeamId(long pickNo);
+    private String normalizeOrderMode(String orderMode) {
+        String normalized = orderMode == null || orderMode.isBlank()
+                ? BASIC_ORDER_MODE
+                : orderMode.trim().toUpperCase(Locale.ROOT);
+        if (!SUPPORTED_ORDER_MODES.contains(normalized)) {
+            throw new IllegalArgumentException("Draft order mode must be BASIC or SNAKE.");
+        }
+        return normalized;
     }
 }

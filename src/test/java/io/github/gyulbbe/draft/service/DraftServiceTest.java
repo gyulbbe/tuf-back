@@ -111,12 +111,14 @@ class DraftServiceTest {
         assertThat(response.getData().getOwnerUserId()).isEqualTo(owner.userPk());
         assertThat(response.getData().getOwnerUserLoginId()).isEqualTo("owner01");
         assertThat(response.getData().getOwnerName()).isEqualTo("owner01");
+        assertThat(response.getData().getOrderMode()).isEqualTo("BASIC");
 
         ResponseDto<DraftSessionDetailResponseDto> detail = draftService.getSession(response.getData().getId());
         assertThat(detail.getStatus()).isEqualTo(200);
         assertThat(detail.getData().getOwnerUserId()).isEqualTo(owner.userPk());
         assertThat(detail.getData().getOwnerUserLoginId()).isEqualTo("owner01");
         assertThat(detail.getData().getOwnerName()).isEqualTo("owner01");
+        assertThat(detail.getData().getOrderMode()).isEqualTo("BASIC");
         assertThat(detail.getData().getTeams()).extracting("teamName").containsExactly("1팀", "2팀");
     }
 
@@ -282,7 +284,7 @@ class DraftServiceTest {
         Long candidate1Id = createUser("candidate-snake-pick-1", "Candidate Snake Pick One", "ROLE_USER");
         Long candidate2Id = createUser("candidate-snake-pick-2", "Candidate Snake Pick Two", "ROLE_USER");
 
-        Long sessionId = createSession(owner, "Legacy Snake Pick Session", 2, 45);
+        Long sessionId = createSession(owner, "Legacy Snake Pick Session", 2, 45, "SNAKE");
         Long teamAId = createTeam(owner, sessionId, "Snake Red", 1);
         Long teamBId = createTeam(owner, sessionId, "Snake Blue", 2);
         draftService.createCandidate(candidateRequest(sessionId, candidate1Id, "Candidate Snake Pick One", "ZERG"), owner);
@@ -399,7 +401,13 @@ class DraftServiceTest {
     }
 
     private Long createSession(AuthActor actor, String title, int teamCount, int pickTimeSeconds) {
-        return draftService.createSession(sessionRequest(title, teamCount, pickTimeSeconds), actor).getData().getId();
+        return createSession(actor, title, teamCount, pickTimeSeconds, "BASIC");
+    }
+
+    private Long createSession(AuthActor actor, String title, int teamCount, int pickTimeSeconds, String orderMode) {
+        DraftSessionRequestDto requestDto = sessionRequest(title, teamCount, pickTimeSeconds);
+        requestDto.setOrderMode(orderMode);
+        return draftService.createSession(requestDto, actor).getData().getId();
     }
 
     private Long createTeam(AuthActor actor, Long sessionId, String teamName, int displayOrder) {
@@ -410,6 +418,7 @@ class DraftServiceTest {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
+        requestDto.setOrderMode("BASIC");
         requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(pickTimeSeconds);
         requestDto.setCurrentPickNo(1);

@@ -149,6 +149,7 @@ class DraftAdminServiceTest {
                 .title("Draft Session")
                 .ownerUserId(ownerUserId)
                 .status("READY")
+                .orderMode("BASIC")
                 .teamCount(2)
                 .pickTimeSeconds(30)
                 .currentPickNo(1)

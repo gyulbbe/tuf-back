@@ -236,7 +236,7 @@ class DraftLiveCommandServiceTest {
         AuthActor owner = createActor("owner-snake-skip", "Owner Snake Skip", "ROLE_USER");
         Long candidateId = createUser("candidate-snake-skip", "Candidate Snake Skip", "ROLE_USER");
 
-        Long sessionId = createSession(owner, "Snake Force Skip Session");
+        Long sessionId = createSession(owner, "Snake Force Skip Session", 2, "SNAKE");
         Long teamAId = createTeam(owner, sessionId, "Snake A", 1);
         Long teamBId = createTeam(owner, sessionId, "Snake B", 2);
         createCandidate(owner, sessionId, candidateId, "Candidate Snake Skip", "ZERG");
@@ -351,6 +351,7 @@ class DraftLiveCommandServiceTest {
         session.update(
                 session.getTitle(),
                 "PAUSED",
+                session.getOrderMode(),
                 session.getTeamCount(),
                 session.getPickTimeSeconds(),
                 2,
@@ -374,9 +375,14 @@ class DraftLiveCommandServiceTest {
     }
 
     private Long createSession(AuthActor actor, String title, int teamCount) {
+        return createSession(actor, title, teamCount, "BASIC");
+    }
+
+    private Long createSession(AuthActor actor, String title, int teamCount, String orderMode) {
         DraftSessionRequestDto requestDto = new DraftSessionRequestDto();
         requestDto.setTitle(title);
         requestDto.setStatus("READY");
+        requestDto.setOrderMode(orderMode);
         requestDto.setTeamCount(teamCount);
         requestDto.setPickTimeSeconds(30);
         requestDto.setCurrentPickNo(1);

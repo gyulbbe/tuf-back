@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class DraftSessionRequestDto {
     private String title;
     private String status;
+    private String orderMode;
     private Integer teamCount;
     private Integer pickTimeSeconds;
     private Integer currentPickNo;

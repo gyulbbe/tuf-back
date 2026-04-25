@@ -14,6 +14,7 @@ public class DraftSessionDetailResponseDto {
     private String ownerUserLoginId;
     private String ownerName;
     private String status;
+    private String orderMode;
     private Integer teamCount;
     private Integer pickTimeSeconds;
     private Integer currentPickNo;

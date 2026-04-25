@@ -48,6 +48,10 @@ public class DraftSessionEntity {
     @Column(name = "STATUS", nullable = false)
     private String status;
 
+    @Builder.Default
+    @Column(name = "ORDER_MODE", nullable = false)
+    private String orderMode = "BASIC";
+
     @Column(name = "TEAM_COUNT", nullable = false)
     private Integer teamCount;
 
@@ -72,6 +76,7 @@ public class DraftSessionEntity {
     public void update(
             String title,
             String status,
+            String orderMode,
             Integer teamCount,
             Integer pickTimeSeconds,
             Integer currentPickNo,
@@ -82,6 +87,7 @@ public class DraftSessionEntity {
     ) {
         this.title = title;
         this.status = status;
+        this.orderMode = orderMode;
         this.teamCount = teamCount;
         this.pickTimeSeconds = pickTimeSeconds;
         this.currentPickNo = currentPickNo;

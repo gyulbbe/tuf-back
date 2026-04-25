@@ -111,6 +111,7 @@ class DraftSnapshotServiceTest {
         assertThat(snapshot.getSession().getOwnerUserId()).isEqualTo(owner.userPk());
         assertThat(snapshot.getSession().getOwnerUserLoginId()).isEqualTo("owner01");
         assertThat(snapshot.getSession().getOwnerName()).isEqualTo("owner01");
+        assertThat(snapshot.getSession().getOrderMode()).isEqualTo("BASIC");
         assertThat(snapshot.getCurrentTurn().getPickNo()).isEqualTo(2L);
         assertThat(snapshot.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
         assertThat(snapshot.getTeams()).hasSize(2);
@@ -224,6 +225,7 @@ class DraftSnapshotServiceTest {
         session.update(
                 session.getTitle(),
                 "LIVE",
+                session.getOrderMode(),
                 session.getTeamCount(),
                 session.getPickTimeSeconds(),
                 2,

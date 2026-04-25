@@ -41,6 +41,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -52,6 +53,7 @@ import java.util.Set;
 public class DraftService {
 
     private static final Set<String> SESSION_STATUSES = Set.of("READY", "LIVE", "PAUSED", "FINISHED", "CANCELLED");
+    private static final Set<String> SUPPORTED_ORDER_MODES = Set.of("BASIC", "SNAKE");
     private static final Set<String> RACES = Set.of("ZERG", "TERRAN", "PROTOSS", "RANDOM");
     private static final Set<String> CANDIDATE_STATUSES = Set.of("WAITING", "PICKED", "SKIPPED", "EXCLUDED");
 
@@ -75,6 +77,7 @@ public class DraftService {
                     .title(requestDto.getTitle())
                     .ownerUserId(actor.userPk())
                     .status(defaultIfBlank(requestDto.getStatus(), "READY"))
+                    .orderMode(resolveOrderMode(requestDto.getOrderMode(), "BASIC"))
                     .teamCount(requestDto.getTeamCount())
                     .pickTimeSeconds(requestDto.getPickTimeSeconds())
                     .currentPickNo(requestDto.getCurrentPickNo() != null ? requestDto.getCurrentPickNo() : 1)
@@ -135,6 +138,7 @@ public class DraftService {
             entity.update(
                     defaultIfBlank(requestDto.getTitle(), entity.getTitle()),
                     defaultIfBlank(requestDto.getStatus(), entity.getStatus()),
+                    resolveOrderMode(requestDto.getOrderMode(), entity.getOrderMode()),
                     requestDto.getTeamCount() != null ? requestDto.getTeamCount() : entity.getTeamCount(),
                     requestDto.getPickTimeSeconds() != null ? requestDto.getPickTimeSeconds() : entity.getPickTimeSeconds(),
                     requestDto.getCurrentPickNo() != null ? requestDto.getCurrentPickNo() : entity.getCurrentPickNo(),
@@ -629,6 +633,7 @@ public class DraftService {
         detail.setOwnerUserLoginId(summary.getOwnerUserLoginId());
         detail.setOwnerName(summary.getOwnerName());
         detail.setStatus(summary.getStatus());
+        detail.setOrderMode(summary.getOrderMode());
         detail.setTeamCount(summary.getTeamCount());
         detail.setPickTimeSeconds(summary.getPickTimeSeconds());
         detail.setCurrentPickNo(summary.getCurrentPickNo());
@@ -779,6 +784,9 @@ public class DraftService {
         if (requestDto.getStatus() != null) {
             validateSessionStatus(requestDto.getStatus());
         }
+        if (requestDto.getOrderMode() != null) {
+            validateOrderMode(requestDto.getOrderMode());
+        }
     }
 
     private void validateTeamRequest(DraftTeamRequestDto requestDto) {
@@ -893,6 +901,10 @@ public class DraftService {
         validateAllowed(status, SESSION_STATUSES, "Session status");
     }
 
+    private void validateOrderMode(String orderMode) {
+        validateAllowed(normalizeOrderMode(orderMode), SUPPORTED_ORDER_MODES, "Order mode");
+    }
+
     private void validateRace(String race) {
         validateAllowed(race, RACES, "Race");
     }
@@ -921,6 +933,21 @@ public class DraftService {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String resolveOrderMode(String requestedOrderMode, String defaultOrderMode) {
+        String normalized = requestedOrderMode == null
+                ? normalizeOrderMode(defaultIfBlank(defaultOrderMode, "BASIC"))
+                : normalizeOrderMode(requestedOrderMode);
+        validateAllowed(normalized, SUPPORTED_ORDER_MODES, "Order mode");
+        return normalized;
+    }
+
+    private String normalizeOrderMode(String orderMode) {
+        if (orderMode == null || orderMode.isBlank()) {
+            throw new IllegalArgumentException("Order mode is invalid.");
+        }
+        return orderMode.trim().toUpperCase(Locale.ROOT);
     }
 
     private record DraftSessionDeleteStats(

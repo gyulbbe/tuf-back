@@ -134,6 +134,7 @@ public class DraftSnapshotService {
         responseDto.setOwnerUserLoginId(sessionSummary.getOwnerUserLoginId());
         responseDto.setOwnerName(sessionSummary.getOwnerName());
         responseDto.setStatus(sessionSummary.getStatus());
+        responseDto.setOrderMode(sessionSummary.getOrderMode());
         responseDto.setTeamCount(sessionSummary.getTeamCount());
         responseDto.setPickTimeSeconds(sessionSummary.getPickTimeSeconds());
         responseDto.setCurrentPickNo(sessionSummary.getCurrentPickNo());
