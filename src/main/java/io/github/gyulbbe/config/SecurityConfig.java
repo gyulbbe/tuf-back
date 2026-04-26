@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -79,6 +80,7 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/admin").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/admin/menu-visibility").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/user/admin", "/user/admin/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .anyRequest().permitAll());
 
