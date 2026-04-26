@@ -8,6 +8,7 @@ import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
 import io.github.gyulbbe.draft.entity.DraftCandidateEntity;
+import io.github.gyulbbe.draft.entity.DraftCandidateId;
 import io.github.gyulbbe.draft.entity.DraftOrderEntity;
 import io.github.gyulbbe.draft.entity.DraftPickEntity;
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
@@ -95,6 +96,9 @@ class DraftLiveCommandServiceTest {
     private DraftOrderRepository draftOrderRepository;
 
     @Autowired
+    private DraftCandidateRepository draftCandidateRepository;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Test
@@ -172,6 +176,86 @@ class DraftLiveCommandServiceTest {
 
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+    }
+
+    @Test
+    void current_picker_can_force_skip_current_turn() {
+        AuthActor owner = createActor("owner-picker-skip", "Owner Picker Skip", "ROLE_USER");
+        AuthActor pickerA = createActor("picker-skip-a", "Picker Skip A", "ROLE_USER");
+        AuthActor pickerB = createActor("picker-skip-b", "Picker Skip B", "ROLE_USER");
+        Long candidate1Id = createUser("candidate-picker-skip-1", "Candidate Picker Skip One", "ROLE_USER");
+        Long candidate2Id = createUser("candidate-picker-skip-2", "Candidate Picker Skip Two", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Picker Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "Picker Skip A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Picker Skip B", 2);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        assignPicker(owner, teamBId, pickerB.userPk());
+        createCandidate(owner, sessionId, candidate1Id, "Candidate Picker Skip One", "ZERG");
+        createCandidate(owner, sessionId, candidate2Id, "Candidate Picker Skip Two", "PROTOSS");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, pickerA, "picker-skip");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipped.getAvailableCandidates()).hasSize(2);
+        assertThat(draftCandidateRepository.findById(new DraftCandidateId(sessionId, candidate1Id))).isPresent()
+                .get()
+                .extracting(DraftCandidateEntity::getStatus)
+                .isEqualTo("WAITING");
+    }
+
+    @Test
+    void other_team_picker_cannot_force_skip_current_turn() {
+        AuthActor owner = createActor("owner-other-picker-skip", "Owner Other Picker Skip", "ROLE_USER");
+        AuthActor pickerA = createActor("picker-current-skip", "Picker Current Skip", "ROLE_USER");
+        AuthActor pickerB = createActor("picker-other-skip", "Picker Other Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-other-picker-skip", "Candidate Other Picker Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Other Picker Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "Current Skip Team", 1);
+        Long teamBId = createTeam(owner, sessionId, "Other Skip Team", 2);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        assignPicker(owner, teamBId, pickerB.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Other Picker Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, pickerB, "wrong-picker"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("current picker");
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getCurrentPickNo()).isEqualTo(1);
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(teamAId);
+    }
+
+    @Test
+    void spectator_cannot_force_skip_current_turn() {
+        AuthActor owner = createActor("owner-spectator-skip", "Owner Spectator Skip", "ROLE_USER");
+        AuthActor pickerA = createActor("picker-spectator-skip", "Picker Spectator Skip", "ROLE_USER");
+        AuthActor spectator = createActor("spectator-skip", "Spectator Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-spectator-skip", "Candidate Spectator Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Spectator Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "Spectator Skip Team", 1);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Spectator Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, owner);
+
+        assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, spectator, "spectator"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("current picker");
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getCurrentPickNo()).isEqualTo(1);
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(teamAId);
     }
 
     @Test

@@ -6,6 +6,7 @@ import io.github.gyulbbe.draft.dto.DraftLivePermissionsResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLivePickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewPayloadDto;
 import io.github.gyulbbe.draft.dto.DraftLiveSnapshotResponseDto;
+import io.github.gyulbbe.draft.dto.DraftReasonRequestDto;
 import io.github.gyulbbe.draft.service.DraftLiveCommandService;
 import io.github.gyulbbe.draft.service.DraftLivePreviewRelayService;
 import io.github.gyulbbe.draft.service.DraftSnapshotService;
@@ -69,6 +70,24 @@ public class DraftLiveController {
                             sessionId,
                             requestDto.getCandidateUserId(),
                             draftActorResolver.resolveRequired()
+                    )
+            ));
+        } catch (Exception e) {
+            return respond(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sessions/{sessionId}/skip")
+    public ResponseEntity<ResponseDto<DraftLiveSnapshotResponseDto>> skip(
+            @PathVariable Long sessionId,
+            @RequestBody(required = false) DraftReasonRequestDto requestDto
+    ) {
+        try {
+            return respond(ResponseDto.success(
+                    draftLiveCommandService.forceSkip(
+                            sessionId,
+                            draftActorResolver.resolveRequired(),
+                            requestDto != null ? requestDto.getReason() : null
                     )
             ));
         } catch (Exception e) {

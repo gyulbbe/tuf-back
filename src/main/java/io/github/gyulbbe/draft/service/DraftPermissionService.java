@@ -76,6 +76,22 @@ public class DraftPermissionService {
         throw new IllegalArgumentException("Only the session owner, an administrator, or the system can perform this action.");
     }
 
+    public boolean isCurrentPicker(Long draftTeamId, AuthActor actor) {
+        return actor != null && canPickForTeam(draftTeamId, actor.userPk());
+    }
+
+    public void assertOwnerAdminSystemOrCurrentPicker(DraftSessionEntity session, Long draftTeamId, AuthActor actor) {
+        if (isSystem(actor) || isOwnerOrAdmin(session, actor) || isCurrentPicker(draftTeamId, actor)) {
+            return;
+        }
+
+        if (actor == null || actor.userPk() == null) {
+            throw new IllegalArgumentException("Authentication is required.");
+        }
+
+        throw new IllegalArgumentException("Only the session owner, an administrator, the system, or the current picker can skip this turn.");
+    }
+
     public boolean canPickForTeam(Long draftTeamId, Long userPk) {
         if (draftTeamId == null || userPk == null) {
             return false;

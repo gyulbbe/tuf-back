@@ -172,10 +172,11 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto forceSkip(Long sessionId, AuthActor actor, String reason) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdminOrSystem(session, actor);
+        DraftOrderEntity currentOrder = requireCurrentOrder(session);
+        draftPermissionService.assertOwnerAdminSystemOrCurrentPicker(session, currentOrder.getDraftTeamId(), actor);
         assertLiveSession(session);
 
-        synchronizeCurrentTurnWithOrder(session, requireCurrentOrder(session));
+        synchronizeCurrentTurnWithOrder(session, currentOrder);
         advanceTurnOrFinish(session, LocalDateTime.now());
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
