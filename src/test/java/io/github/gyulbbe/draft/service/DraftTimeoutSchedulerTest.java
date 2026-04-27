@@ -83,6 +83,9 @@ class DraftTimeoutSchedulerTest {
     private DraftSessionRepository draftSessionRepository;
 
     @Autowired
+    private DraftCandidateRepository draftCandidateRepository;
+
+    @Autowired
     private DraftTimeoutScheduler draftTimeoutScheduler;
 
     @Autowired
@@ -93,6 +96,7 @@ class DraftTimeoutSchedulerTest {
         Long sessionId = createSession();
         Long teamAId = createTeam(sessionId, "A", 1);
         Long teamBId = createTeam(sessionId, "B", 2);
+        createCandidate(sessionId, 1001L);
         createOrder(sessionId, 1L, teamAId);
         createOrder(sessionId, 2L, teamBId);
 
@@ -106,6 +110,24 @@ class DraftTimeoutSchedulerTest {
         assertThat(updated.getCurrentPickNo()).isEqualTo(2);
         assertThat(updated.getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(updated.getStatus()).isEqualTo("LIVE");
+    }
+
+    @Test
+    void overdue_live_session_without_waiting_candidates_finishes() {
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "A", 1);
+        createOrder(sessionId, 1L, teamAId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
+        draftLiveSessionTracker.synchronizeWithDatabase();
+
+        draftTimeoutScheduler.processTimeouts();
+
+        DraftSessionEntity updated = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo("FINISHED");
+        assertThat(updated.getCurrentPickNo()).isEqualTo(1);
+        assertThat(updated.getCurrentDraftTeamId()).isNull();
     }
 
     @Test
@@ -149,6 +171,16 @@ class DraftTimeoutSchedulerTest {
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto, adminActor());
+    }
+
+    private void createCandidate(Long sessionId, Long candidateUserId) {
+        draftCandidateRepository.save(DraftCandidateEntity.builder()
+                .draftSessionId(sessionId)
+                .candidateUserId(candidateUserId)
+                .candidateName("Candidate " + candidateUserId)
+                .race("ZERG")
+                .status("WAITING")
+                .build());
     }
 
     private AuthActor adminActor() {

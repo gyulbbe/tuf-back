@@ -47,7 +47,7 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        draftPermissionService.assertAdmin(actor);
 
         if (!"READY".equals(session.getStatus())) {
             throw new IllegalArgumentException("Only READY sessions can be started.");
@@ -66,7 +66,7 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto pauseSession(Long sessionId, AuthActor actor) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        draftPermissionService.assertAdmin(actor);
         assertLiveSession(session);
 
         session.pause();
@@ -80,7 +80,7 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto resumeSession(Long sessionId, AuthActor actor, Integer seconds) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        draftPermissionService.assertAdmin(actor);
 
         if (!"PAUSED".equals(session.getStatus())) {
             throw new IllegalArgumentException("Only PAUSED sessions can be resumed.");
@@ -103,7 +103,7 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto extendTime(Long sessionId, AuthActor actor, Integer seconds) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        draftPermissionService.assertAdmin(actor);
         assertLiveSession(session);
 
         if (seconds == null || seconds <= 0) {
@@ -173,7 +173,7 @@ public class DraftLiveCommandService {
     public DraftLiveSnapshotResponseDto forceSkip(Long sessionId, AuthActor actor, String reason) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
         DraftOrderEntity currentOrder = requireCurrentOrder(session);
-        draftPermissionService.assertOwnerAdminSystemOrCurrentPicker(session, currentOrder.getDraftTeamId(), actor);
+        draftPermissionService.assertSystemOrCurrentPicker(currentOrder.getDraftTeamId(), actor);
         assertLiveSession(session);
 
         synchronizeCurrentTurnWithOrder(session, currentOrder);
@@ -193,7 +193,7 @@ public class DraftLiveCommandService {
 
     public DraftLiveSnapshotResponseDto finishSession(Long sessionId, AuthActor actor, String reason) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
-        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        draftPermissionService.assertAdmin(actor);
 
         if ("FINISHED".equals(session.getStatus())) {
             throw new IllegalArgumentException("The session is already finished.");

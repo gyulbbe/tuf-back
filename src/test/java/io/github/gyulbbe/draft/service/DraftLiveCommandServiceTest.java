@@ -102,55 +102,64 @@ class DraftLiveCommandServiceTest {
     private UserRepository userRepository;
 
     @Test
-    void owner_can_start_pause_resume_and_finish_session() {
+    void admin_can_start_extend_pause_resume_and_finish_session() {
         AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
-        Long sessionId = createSession(owner, "Owner Live Session");
+        AuthActor admin = adminActor();
+        Long sessionId = createSession(owner, "Admin Live Session");
         Long teamAId = createTeam(owner, sessionId, "A", 1);
         createTeam(owner, sessionId, "B", 2);
         createOrder(owner, sessionId, 1L, teamAId);
 
-        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(sessionId, owner);
-        DraftLiveSnapshotResponseDto paused = draftLiveCommandService.pauseSession(sessionId, owner);
-        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, owner, 15);
-        DraftLiveSnapshotResponseDto finished = draftLiveCommandService.finishSession(sessionId, owner, "manual");
+        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(sessionId, admin);
+        DraftLiveSnapshotResponseDto extended = draftLiveCommandService.extendTime(sessionId, admin, 5);
+        DraftLiveSnapshotResponseDto paused = draftLiveCommandService.pauseSession(sessionId, admin);
+        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, admin, 15);
+        DraftLiveSnapshotResponseDto finished = draftLiveCommandService.finishSession(sessionId, admin, "manual");
 
         assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(started.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(extended.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(paused.getSession().getStatus()).isEqualTo("PAUSED");
         assertThat(resumed.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(finished.getSession().getStatus()).isEqualTo("FINISHED");
     }
 
     @Test
-    void admin_can_control_foreign_session() {
+    void owner_only_cannot_control_live_session() {
         AuthActor owner = createActor("owner02", "Owner Two", "ROLE_USER");
-        AuthActor admin = createActor("admin01", "Admin One", "ROLE_ADMIN");
-        Long sessionId = createSession(owner, "Admin Controlled Session");
+        AuthActor admin = adminActor();
+        Long sessionId = createSession(owner, "Owner Not Controlled Session");
         Long teamAId = createTeam(owner, sessionId, "Alpha", 1);
         createOrder(owner, sessionId, 1L, teamAId);
 
-        DraftLiveSnapshotResponseDto started = draftLiveCommandService.startSession(sessionId, admin);
-        DraftLiveSnapshotResponseDto paused = draftLiveCommandService.pauseSession(sessionId, admin);
-
-        assertThat(started.getSession().getStatus()).isEqualTo("LIVE");
-        assertThat(paused.getSession().getStatus()).isEqualTo("PAUSED");
-    }
-
-    @Test
-    void non_owner_non_admin_cannot_control_foreign_session() {
-        AuthActor owner = createActor("owner03", "Owner Three", "ROLE_USER");
-        AuthActor otherUser = createActor("other01", "Other One", "ROLE_USER");
-        Long sessionId = createSession(owner, "Forbidden Session");
-        Long teamAId = createTeam(owner, sessionId, "Alpha", 1);
-        createOrder(owner, sessionId, 1L, teamAId);
-
-        assertThatThrownBy(() -> draftLiveCommandService.startSession(sessionId, otherUser))
+        assertThatThrownBy(() -> draftLiveCommandService.startSession(sessionId, owner))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("session owner or an administrator");
+                .hasMessageContaining("administrator");
+
+        draftLiveCommandService.startSession(sessionId, admin);
+
+        assertThatThrownBy(() -> draftLiveCommandService.pauseSession(sessionId, owner))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("administrator");
+        assertThatThrownBy(() -> draftLiveCommandService.extendTime(sessionId, owner, 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("administrator");
+
+        draftLiveCommandService.pauseSession(sessionId, admin);
+
+        assertThatThrownBy(() -> draftLiveCommandService.resumeSession(sessionId, owner, 15))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("administrator");
+
+        draftLiveCommandService.resumeSession(sessionId, admin, 15);
+
+        assertThatThrownBy(() -> draftLiveCommandService.finishSession(sessionId, owner, "manual"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("administrator");
     }
 
     @Test
-    void owner_can_force_skip_but_owner_cannot_pick_without_picker_role() {
+    void owner_cannot_force_skip_when_not_current_picker() {
         AuthActor owner = createActor("owner04", "Owner Four", "ROLE_USER");
         AuthActor pickerA = createActor("picker01", "Picker One", "ROLE_USER");
         AuthActor pickerB = createActor("picker02", "Picker Two", "ROLE_USER");
@@ -166,14 +175,60 @@ class DraftLiveCommandServiceTest {
         createCandidate(owner, sessionId, candidate2Id, "Candidate Two", "PROTOSS");
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         assertThatThrownBy(() -> draftLiveCommandService.pick(sessionId, candidate1Id, owner))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Only the picker");
 
-        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "owner-skip");
+        assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, owner, "owner-skip"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("current picker");
 
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getCurrentPickNo()).isEqualTo(1);
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(teamAId);
+    }
+
+    @Test
+    void admin_cannot_force_skip_when_not_current_picker() {
+        AuthActor owner = createActor("owner-admin-skip", "Owner Admin Skip", "ROLE_USER");
+        AuthActor admin = adminActor();
+        AuthActor pickerA = createActor("picker-admin-skip", "Picker Admin Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-admin-skip", "Candidate Admin Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Admin Skip Forbidden Session");
+        Long teamAId = createTeam(owner, sessionId, "Admin Skip Team", 1);
+        assignPicker(owner, teamAId, pickerA.userPk());
+        createCandidate(owner, sessionId, candidateId, "Candidate Admin Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, admin);
+
+        assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, admin, "admin-skip"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("current picker");
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getCurrentPickNo()).isEqualTo(1);
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(teamAId);
+    }
+
+    @Test
+    void system_can_force_skip_without_picker() {
+        AuthActor owner = createActor("owner-system-skip", "Owner System Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-system-skip", "Candidate System Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "System Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "System Skip A", 1);
+        Long teamBId = createTeam(owner, sessionId, "System Skip B", 2);
+        createCandidate(owner, sessionId, candidateId, "Candidate System Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, systemActor(), "timeout");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
     }
@@ -195,7 +250,7 @@ class DraftLiveCommandServiceTest {
         createCandidate(owner, sessionId, candidate2Id, "Candidate Picker Skip Two", "PROTOSS");
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, pickerA, "picker-skip");
 
@@ -224,7 +279,7 @@ class DraftLiveCommandServiceTest {
         createCandidate(owner, sessionId, candidateId, "Candidate Other Picker Skip", "ZERG");
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, pickerB, "wrong-picker"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -247,7 +302,7 @@ class DraftLiveCommandServiceTest {
         assignPicker(owner, teamAId, pickerA.userPk());
         createCandidate(owner, sessionId, candidateId, "Candidate Spectator Skip", "ZERG");
         createOrder(owner, sessionId, 1L, teamAId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         assertThatThrownBy(() -> draftLiveCommandService.forceSkip(sessionId, spectator, "spectator"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -275,7 +330,7 @@ class DraftLiveCommandServiceTest {
         createCandidate(owner, sessionId, candidate2Id, "Candidate Four", "TERRAN");
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(sessionId, candidate1Id, pickerA);
 
@@ -300,10 +355,10 @@ class DraftLiveCommandServiceTest {
         createCandidate(owner, sessionId, candidate3Id, "Candidate Skip Last Three", "TERRAN");
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
-        draftLiveCommandService.startSession(sessionId, owner);
-        draftLiveCommandService.forceSkip(sessionId, owner, "first skip");
+        draftLiveCommandService.startSession(sessionId, adminActor());
+        draftLiveCommandService.forceSkip(sessionId, systemActor(), "first skip");
 
-        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "last configured order skip");
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, systemActor(), "last configured order skip");
 
         assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(3);
@@ -329,16 +384,22 @@ class DraftLiveCommandServiceTest {
         createOrder(owner, sessionId, 3L, teamBId);
         createOrder(owner, sessionId, 4L, teamAId);
         createOrder(owner, sessionId, 5L, teamAId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
-        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 2");
-        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 3");
-        draftLiveCommandService.forceSkip(sessionId, owner, "skip to 4");
-        DraftLiveSnapshotResponseDto skipTo5 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 5");
-        DraftLiveSnapshotResponseDto skipTo6 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 6");
-        DraftLiveSnapshotResponseDto skipTo7 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 7");
-        DraftLiveSnapshotResponseDto skipTo8 = draftLiveCommandService.forceSkip(sessionId, owner, "skip to 8");
+        DraftLiveSnapshotResponseDto skipTo2 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 2");
+        DraftLiveSnapshotResponseDto skipTo3 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 3");
+        DraftLiveSnapshotResponseDto skipTo4 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 4");
+        DraftLiveSnapshotResponseDto skipTo5 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 5");
+        DraftLiveSnapshotResponseDto skipTo6 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 6");
+        DraftLiveSnapshotResponseDto skipTo7 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 7");
+        DraftLiveSnapshotResponseDto skipTo8 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 8");
 
+        assertThat(skipTo2.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(skipTo2.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo3.getSession().getCurrentPickNo()).isEqualTo(3);
+        assertThat(skipTo3.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo4.getSession().getCurrentPickNo()).isEqualTo(4);
+        assertThat(skipTo4.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
         assertThat(skipTo5.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipTo5.getSession().getCurrentPickNo()).isEqualTo(5);
         assertThat(skipTo5.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
@@ -355,6 +416,32 @@ class DraftLiveCommandServiceTest {
     }
 
     @Test
+    void force_skip_advances_every_click_in_basic_two_team_order() {
+        AuthActor owner = createActor("owner-basic-skip", "Owner Basic Skip", "ROLE_USER");
+        Long candidateId = createUser("candidate-basic-skip", "Candidate Basic Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "Basic Force Skip Session", 2, "BASIC");
+        Long teamAId = createTeam(owner, sessionId, "Basic A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Basic B", 2);
+        createCandidate(owner, sessionId, candidateId, "Candidate Basic Skip", "ZERG");
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
+
+        DraftLiveSnapshotResponseDto skipTo2 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 2");
+        DraftLiveSnapshotResponseDto skipTo3 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 3");
+        DraftLiveSnapshotResponseDto skipTo4 = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip to 4");
+
+        assertThat(skipTo2.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(skipTo2.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo3.getSession().getCurrentPickNo()).isEqualTo(3);
+        assertThat(skipTo3.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(skipTo4.getSession().getCurrentPickNo()).isEqualTo(4);
+        assertThat(skipTo4.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+        assertThat(skipTo4.getAvailableCandidates()).hasSize(1);
+    }
+
+    @Test
     void turn_beyond_existing_orders_repeats_existing_order_pattern() {
         AuthActor owner = createActor("owner-repeat-order", "Owner Repeat Order", "ROLE_USER");
         Long candidateId = createUser("candidate-repeat-order", "Candidate Repeat Order", "ROLE_USER");
@@ -367,11 +454,11 @@ class DraftLiveCommandServiceTest {
         createOrder(owner, sessionId, 1L, teamAId);
         createOrder(owner, sessionId, 2L, teamBId);
         createOrder(owner, sessionId, 3L, teamCId);
-        draftLiveCommandService.startSession(sessionId, owner);
-        draftLiveCommandService.forceSkip(sessionId, owner, "skip 1");
-        draftLiveCommandService.forceSkip(sessionId, owner, "skip 2");
+        draftLiveCommandService.startSession(sessionId, adminActor());
+        draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip 1");
+        draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip 2");
 
-        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "skip 3");
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, systemActor(), "skip 3");
 
         assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(4);
@@ -393,7 +480,7 @@ class DraftLiveCommandServiceTest {
         assignPicker(owner, teamAId, pickerA.userPk());
         createCandidate(owner, sessionId, candidateId, "Candidate Final Pick", "ZERG");
         createOrder(owner, sessionId, 1L, teamAId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
         DraftLiveSnapshotResponseDto result = draftLiveCommandService.pick(sessionId, candidateId, pickerA);
 
@@ -410,15 +497,17 @@ class DraftLiveCommandServiceTest {
 
         Long sessionId = createSession(owner, "Force Skip Waiting Session");
         Long teamAId = createTeam(owner, sessionId, "Force Skip Team", 1);
+        Long teamBId = createTeam(owner, sessionId, "Force Skip Next Team", 2);
         createCandidate(owner, sessionId, candidateId, "Candidate Force Skip Waiting", "ZERG");
         createOrder(owner, sessionId, 1L, teamAId);
-        draftLiveCommandService.startSession(sessionId, owner);
+        createOrder(owner, sessionId, 2L, teamBId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
 
-        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, owner, "only skip");
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, systemActor(), "only skip");
 
         assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
-        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(skipped.getAvailableCandidates()).hasSize(1);
     }
 
@@ -445,7 +534,7 @@ class DraftLiveCommandServiceTest {
                 null
         );
 
-        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, owner, 20);
+        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, adminActor(), 20);
 
         assertThat(resumed.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(resumed.getSession().getCurrentPickNo()).isEqualTo(2);
@@ -501,6 +590,14 @@ class DraftLiveCommandServiceTest {
         requestDto.setPickNo(pickNo);
         requestDto.setDraftTeamId(teamId);
         draftService.createOrder(requestDto, actor);
+    }
+
+    private AuthActor adminActor() {
+        return new AuthActor(-1L, "admin", "ROLE_ADMIN");
+    }
+
+    private AuthActor systemActor() {
+        return new AuthActor(null, "system", "ROLE_SYSTEM");
     }
 
     private AuthActor createActor(String userId, String name, String role) {
