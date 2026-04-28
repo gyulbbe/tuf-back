@@ -37,6 +37,8 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @DataJpaTest
 @Import({
@@ -80,6 +82,9 @@ class DraftLiveCommandServiceTest {
     @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
+    @MockitoBean
+    private DraftAiAdviceService draftAiAdviceService;
+
     @Autowired
     private DraftService draftService;
 
@@ -122,6 +127,7 @@ class DraftLiveCommandServiceTest {
         assertThat(paused.getSession().getStatus()).isEqualTo("PAUSED");
         assertThat(resumed.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(finished.getSession().getStatus()).isEqualTo("FINISHED");
+        verify(draftAiAdviceService).evictContext(sessionId);
     }
 
     @Test
@@ -156,6 +162,48 @@ class DraftLiveCommandServiceTest {
         assertThatThrownBy(() -> draftLiveCommandService.finishSession(sessionId, owner, "manual"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("administrator");
+    }
+
+    @Test
+    void system_can_pause_session_after_timeout_guard() {
+        AuthActor owner = createActor("owner-timeout-guard", "Owner Timeout Guard", "ROLE_USER");
+        Long sessionId = createSession(owner, "Timeout Guard Pause Session");
+        Long teamAId = createTeam(owner, sessionId, "Timeout Guard A", 1);
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
+
+        DraftLiveSnapshotResponseDto paused = draftLiveCommandService.pauseAfterTimeoutGuard(sessionId, systemActor());
+
+        assertThat(paused.getSession().getStatus()).isEqualTo("PAUSED");
+        assertThat(paused.getSession().getDeadlineAt()).isNull();
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo("PAUSED");
+        assertThat(session.getDeadlineAt()).isNull();
+    }
+
+    @Test
+    void non_system_actor_cannot_pause_session_after_timeout_guard() {
+        AuthActor owner = createActor("owner-timeout-guard-denied", "Owner Timeout Guard Denied", "ROLE_USER");
+        AuthActor picker = createActor("picker-timeout-guard-denied", "Picker Timeout Guard Denied", "ROLE_USER");
+        Long sessionId = createSession(owner, "Timeout Guard Denied Session");
+        Long teamAId = createTeam(owner, sessionId, "Timeout Guard Denied A", 1);
+        assignPicker(owner, teamAId, picker.userPk());
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
+
+        assertThatThrownBy(() -> draftLiveCommandService.pauseAfterTimeoutGuard(sessionId, owner))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("system");
+        assertThatThrownBy(() -> draftLiveCommandService.pauseAfterTimeoutGuard(sessionId, adminActor()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("system");
+        assertThatThrownBy(() -> draftLiveCommandService.pauseAfterTimeoutGuard(sessionId, picker))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("system");
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo("LIVE");
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(teamAId);
     }
 
     @Test
@@ -231,6 +279,22 @@ class DraftLiveCommandServiceTest {
         assertThat(skipped.getSession().getStatus()).isEqualTo("LIVE");
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
+    }
+
+    @Test
+    void force_skip_that_finishes_session_evicts_ai_context() {
+        AuthActor owner = createActor("owner-system-finish-skip", "Owner System Finish Skip", "ROLE_USER");
+
+        Long sessionId = createSession(owner, "System Finish Skip Session");
+        Long teamAId = createTeam(owner, sessionId, "System Finish Skip A", 1);
+        createOrder(owner, sessionId, 1L, teamAId);
+        draftLiveCommandService.startSession(sessionId, adminActor());
+
+        DraftLiveSnapshotResponseDto skipped = draftLiveCommandService.forceSkip(sessionId, systemActor(), "timeout");
+
+        assertThat(skipped.getSession().getStatus()).isEqualTo("FINISHED");
+        assertThat(skipped.getSession().getCurrentDraftTeamId()).isNull();
+        verify(draftAiAdviceService).evictContext(sessionId);
     }
 
     @Test
@@ -338,6 +402,7 @@ class DraftLiveCommandServiceTest {
         assertThat(result.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(result.getPickedCandidates()).hasSize(1);
         assertThat(result.getRecentPicks()).hasSize(1);
+        verify(draftAiAdviceService).scheduleAdviceAfterPick(sessionId);
     }
 
     @Test
@@ -488,6 +553,8 @@ class DraftLiveCommandServiceTest {
         assertThat(result.getSession().getCurrentDraftTeamId()).isNull();
         assertThat(result.getAvailableCandidates()).isEmpty();
         assertThat(result.getPickedCandidates()).hasSize(1);
+        verify(draftAiAdviceService, never()).scheduleAdviceAfterPick(sessionId);
+        verify(draftAiAdviceService).evictContext(sessionId);
     }
 
     @Test
@@ -509,6 +576,7 @@ class DraftLiveCommandServiceTest {
         assertThat(skipped.getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(skipped.getSession().getCurrentDraftTeamId()).isEqualTo(teamBId);
         assertThat(skipped.getAvailableCandidates()).hasSize(1);
+        verify(draftAiAdviceService, never()).evictContext(sessionId);
     }
 
     @Test

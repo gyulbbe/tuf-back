@@ -1,6 +1,7 @@
 package io.github.gyulbbe.draft.ws;
 
 import io.github.gyulbbe.draft.auth.AuthActor;
+import io.github.gyulbbe.draft.dto.DraftAiAdviceResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventType;
 import io.github.gyulbbe.draft.dto.DraftLivePreviewPayloadDto;
@@ -65,6 +66,20 @@ public class DraftEventPublisher {
                 .actorUserId(actor != null ? actor.userPk() : null)
                 .actorUserLoginId(actor != null ? actor.username() : null)
                 .preview(preview)
+                .build();
+
+        simpMessagingTemplate.convertAndSend(TOPIC_PREFIX + sessionId, event);
+    }
+
+    public void publishAiAdvice(Long sessionId, DraftLiveEventType type, DraftAiAdviceResponseDto aiAdvice) {
+        LocalDateTime now = LocalDateTime.now();
+        DraftLiveEventResponseDto event = DraftLiveEventResponseDto.builder()
+                .type(type)
+                .sessionId(sessionId)
+                .occurredAt(now)
+                .serverNow(now)
+                .message(aiAdvice != null ? aiAdvice.getMessage() : null)
+                .aiAdvice(aiAdvice)
                 .build();
 
         simpMessagingTemplate.convertAndSend(TOPIC_PREFIX + sessionId, event);

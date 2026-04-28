@@ -34,6 +34,7 @@ public class DraftLiveCommandService {
     private static final String MESSAGE_FINAL_PICK_FINISHED = "마지막 지명이 완료되어 드래프트가 종료되었습니다.";
     private static final String MESSAGE_SESSION_FINISHED = "드래프트가 종료되었습니다.";
     private static final String MESSAGE_PICK_SKIPPED = "현재 턴을 스킵했습니다.";
+    private static final String MESSAGE_TIMEOUT_GUARD_PAUSED = "자동 스킵이 반복되어 드래프트를 일시정지했습니다.";
 
     private final DraftSessionRepository draftSessionRepository;
     private final DraftCandidateRepository draftCandidateRepository;
@@ -44,6 +45,7 @@ public class DraftLiveCommandService {
     private final DraftEventPublisher draftEventPublisher;
     private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftLivePreviewRelayService draftLivePreviewRelayService;
+    private final DraftAiAdviceService draftAiAdviceService;
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
@@ -163,9 +165,11 @@ public class DraftLiveCommandService {
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_FINAL_PICK_FINISHED);
+            draftAiAdviceService.evictContext(sessionId);
         } else {
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
             publishAfterCommit(sessionId, DraftLiveEventType.PICK_COMPLETED, actor, MESSAGE_PICK_COMPLETED);
+            draftAiAdviceService.scheduleAdviceAfterPick(sessionId);
         }
         return snapshot;
     }
@@ -184,6 +188,7 @@ public class DraftLiveCommandService {
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_SESSION_FINISHED);
+            draftAiAdviceService.evictContext(sessionId);
         } else {
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.TURN_CHANGED);
             publishAfterCommit(sessionId, DraftLiveEventType.PICK_SKIPPED, actor, MESSAGE_PICK_SKIPPED);
@@ -205,6 +210,21 @@ public class DraftLiveCommandService {
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_SESSION_FINISHED);
+        draftAiAdviceService.evictContext(sessionId);
+        return snapshot;
+    }
+
+    public DraftLiveSnapshotResponseDto pauseAfterTimeoutGuard(Long sessionId, AuthActor actor) {
+        DraftSessionEntity session = loadSessionForUpdate(sessionId);
+        draftPermissionService.assertSystem(actor);
+        assertLiveSession(session);
+
+        session.pause();
+        draftLiveSessionTracker.refreshAfterCommit();
+        draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_PAUSED);
+
+        DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
+        publishAfterCommit(sessionId, DraftLiveEventType.SESSION_PAUSED, actor, MESSAGE_TIMEOUT_GUARD_PAUSED);
         return snapshot;
     }
 

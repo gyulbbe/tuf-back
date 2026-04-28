@@ -17,4 +17,5 @@ public class DraftLiveEventResponseDto {
     private String message;
     private DraftLiveSnapshotResponseDto snapshot;
     private DraftLivePreviewPayloadDto preview;
+    private DraftAiAdviceResponseDto aiAdvice;
 }

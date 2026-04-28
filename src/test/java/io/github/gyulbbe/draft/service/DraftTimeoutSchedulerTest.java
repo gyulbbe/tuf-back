@@ -33,6 +33,7 @@ import org.springframework.test.context.TestPropertySource;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 
 @DataJpaTest
 @Import({
@@ -75,6 +76,9 @@ class DraftTimeoutSchedulerTest {
 
     @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
+
+    @MockitoBean
+    private DraftAiAdviceService draftAiAdviceService;
 
     @Autowired
     private DraftService draftService;
@@ -128,6 +132,95 @@ class DraftTimeoutSchedulerTest {
         assertThat(updated.getStatus()).isEqualTo("FINISHED");
         assertThat(updated.getCurrentPickNo()).isEqualTo(1);
         assertThat(updated.getCurrentDraftTeamId()).isNull();
+        verify(draftAiAdviceService).evictContext(sessionId);
+    }
+
+    @Test
+    void repeated_timeout_auto_skips_pause_session_after_two_full_rounds() {
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "A", 1);
+        Long teamBId = createTeam(sessionId, "B", 2);
+        createCandidate(sessionId, 1001L);
+        createOrder(sessionId, 1L, teamAId);
+        createOrder(sessionId, 2L, teamBId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
+        draftLiveSessionTracker.synchronizeWithDatabase();
+
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        assertLiveTurn(sessionId, 2, teamBId);
+
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        assertLiveTurn(sessionId, 3, teamAId);
+
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        assertLiveTurn(sessionId, 4, teamBId);
+
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+
+        DraftSessionEntity paused = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(paused.getStatus()).isEqualTo("PAUSED");
+        assertThat(paused.getCurrentPickNo()).isEqualTo(5);
+        assertThat(paused.getCurrentDraftTeamId()).isEqualTo(teamAId);
+        assertThat(paused.getDeadlineAt()).isNull();
+    }
+
+    @Test
+    void manual_turn_change_resets_consecutive_timeout_skip_guard() {
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "A", 1);
+        Long teamBId = createTeam(sessionId, "B", 2);
+        createCandidate(sessionId, 1001L);
+        for (long pickNo = 1L; pickNo <= 8L; pickNo++) {
+            createOrder(sessionId, pickNo, pickNo % 2 == 1 ? teamAId : teamBId);
+        }
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
+        draftLiveSessionTracker.synchronizeWithDatabase();
+
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        expireSession(sessionId);
+        draftTimeoutScheduler.processTimeouts();
+        assertLiveTurn(sessionId, 4, teamBId);
+
+        DraftSessionEntity manuallyAdvanced = draftSessionRepository.findById(sessionId).orElseThrow();
+        manuallyAdvanced.advanceTurn(5, teamAId, LocalDateTime.now().minusSeconds(5));
+
+        draftTimeoutScheduler.processTimeouts();
+
+        DraftSessionEntity updated = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo("LIVE");
+        assertThat(updated.getCurrentPickNo()).isEqualTo(6);
+        assertThat(updated.getCurrentDraftTeamId()).isEqualTo(teamBId);
+    }
+
+    @Test
+    void timeout_skip_domain_failure_pauses_session() {
+        Long sessionId = createSession();
+        Long teamAId = createTeam(sessionId, "A", 1);
+        createCandidate(sessionId, 1001L);
+        createOrder(sessionId, 1L, teamAId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.start(teamAId, LocalDateTime.now().minusMinutes(1), LocalDateTime.now().minusSeconds(5));
+        session.advanceTurn(99, null, LocalDateTime.now().minusSeconds(5));
+        draftLiveSessionTracker.synchronizeWithDatabase();
+
+        draftTimeoutScheduler.processTimeouts();
+
+        DraftSessionEntity updated = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo("PAUSED");
+        assertThat(updated.getCurrentPickNo()).isEqualTo(99);
+        assertThat(updated.getDeadlineAt()).isNull();
     }
 
     @Test
@@ -181,6 +274,18 @@ class DraftTimeoutSchedulerTest {
                 .race("ZERG")
                 .status("WAITING")
                 .build());
+    }
+
+    private void expireSession(Long sessionId) {
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.extendDeadlineAt(LocalDateTime.now().minusSeconds(5));
+    }
+
+    private void assertLiveTurn(Long sessionId, int currentPickNo, Long currentDraftTeamId) {
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        assertThat(session.getStatus()).isEqualTo("LIVE");
+        assertThat(session.getCurrentPickNo()).isEqualTo(currentPickNo);
+        assertThat(session.getCurrentDraftTeamId()).isEqualTo(currentDraftTeamId);
     }
 
     private AuthActor adminActor() {
