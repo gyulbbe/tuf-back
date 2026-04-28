@@ -57,6 +57,12 @@ public class DraftPermissionService {
         }
     }
 
+    public void assertSystem(AuthActor actor) {
+        if (!isSystem(actor)) {
+            throw new IllegalArgumentException("Only the system can perform this action.");
+        }
+    }
+
     public void assertOwnerOrAdmin(DraftSessionEntity session, AuthActor actor) {
         assertAuthenticated(actor);
         if (!isOwnerOrAdmin(session, actor)) {

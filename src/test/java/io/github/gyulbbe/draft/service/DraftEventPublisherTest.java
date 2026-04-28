@@ -2,6 +2,7 @@ package io.github.gyulbbe.draft.service;
 
 import io.github.gyulbbe.config.QueryDslConfig;
 import io.github.gyulbbe.draft.auth.AuthActor;
+import io.github.gyulbbe.draft.dto.DraftAiAdviceResponseDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventResponseDto;
 import io.github.gyulbbe.draft.dto.DraftLiveEventType;
@@ -83,6 +84,9 @@ class DraftEventPublisherTest {
     @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
+    @MockitoBean
+    private DraftAiAdviceService draftAiAdviceService;
+
     @Autowired
     private DraftService draftService;
 
@@ -91,6 +95,9 @@ class DraftEventPublisherTest {
 
     @Autowired
     private DraftLiveCommandService draftLiveCommandService;
+
+    @Autowired
+    private DraftEventPublisher draftEventPublisher;
 
     @Autowired
     private UserRepository userRepository;
@@ -143,6 +150,64 @@ class DraftEventPublisherTest {
         assertThat(event.getActorUserId()).isEqualTo(pickerId);
         assertThat(event.getSnapshot().getSession().getCurrentPickNo()).isEqualTo(2);
         assertThat(event.getSnapshot().getPermissions()).isNull();
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void aiPickReviewReadyEventPublishesAdviceWithoutSnapshot() {
+        DraftAiAdviceResponseDto aiAdvice = DraftAiAdviceResponseDto.builder()
+                .pickNo(5L)
+                .evaluatedTeamId(10L)
+                .evaluatedTeamName("Red")
+                .evaluatedCandidateUserId(100L)
+                .evaluatedCandidateName("FLASH")
+                .nextPickNo(6L)
+                .recommendedTeamId(20L)
+                .recommendedTeamName("Blue")
+                .recommendedCandidateUserId(200L)
+                .recommendedCandidateName("HONEY")
+                .message("방금 픽은 좋았다. 다음은 HONEY를 추천한다.")
+                .build();
+
+        draftEventPublisher.publishAiAdvice(99L, DraftLiveEventType.AI_PICK_REVIEW_READY, aiAdvice);
+
+        ArgumentCaptor<DraftLiveEventResponseDto> captor = ArgumentCaptor.forClass(DraftLiveEventResponseDto.class);
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/drafts/99"), captor.capture());
+
+        DraftLiveEventResponseDto event = captor.getValue();
+        assertThat(event.getType()).isEqualTo(DraftLiveEventType.AI_PICK_REVIEW_READY);
+        assertThat(event.getSnapshot()).isNull();
+        assertThat(event.getAiAdvice()).isEqualTo(aiAdvice);
+        assertThat(event.getMessage()).isEqualTo(aiAdvice.getMessage());
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void aiRecommendationReadyEventPublishesAdviceWithoutSnapshot() {
+        DraftAiAdviceResponseDto aiAdvice = DraftAiAdviceResponseDto.builder()
+                .pickNo(5L)
+                .evaluatedTeamId(10L)
+                .evaluatedTeamName("Red")
+                .evaluatedCandidateUserId(100L)
+                .evaluatedCandidateName("FLASH")
+                .nextPickNo(6L)
+                .recommendedTeamId(20L)
+                .recommendedTeamName("Blue")
+                .recommendedCandidateUserId(200L)
+                .recommendedCandidateName("HONEY")
+                .message("다음은 HONEY를 추천한다.")
+                .build();
+
+        draftEventPublisher.publishAiAdvice(99L, DraftLiveEventType.AI_RECOMMENDATION_READY, aiAdvice);
+
+        ArgumentCaptor<DraftLiveEventResponseDto> captor = ArgumentCaptor.forClass(DraftLiveEventResponseDto.class);
+        verify(simpMessagingTemplate).convertAndSend(eq("/topic/drafts/99"), captor.capture());
+
+        DraftLiveEventResponseDto event = captor.getValue();
+        assertThat(event.getType()).isEqualTo(DraftLiveEventType.AI_RECOMMENDATION_READY);
+        assertThat(event.getSnapshot()).isNull();
+        assertThat(event.getAiAdvice()).isEqualTo(aiAdvice);
+        assertThat(event.getMessage()).isEqualTo(aiAdvice.getMessage());
     }
 
     private Long createSession() {
