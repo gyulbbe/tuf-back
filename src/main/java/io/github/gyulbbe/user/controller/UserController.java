@@ -1,21 +1,22 @@
 package io.github.gyulbbe.user.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
-import io.github.gyulbbe.user.dto.CustomUserDetails;
-import io.github.gyulbbe.user.dto.RegisterUserDto;
-import io.github.gyulbbe.user.dto.UserInsertDto;
+import io.github.gyulbbe.user.dto.DraftUserSearchDto;
+import io.github.gyulbbe.user.dto.UserDetailDto;
+import io.github.gyulbbe.user.dto.UserDto;
+import io.github.gyulbbe.user.dto.UserSearchDto;
 import io.github.gyulbbe.user.service.UserService;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 
+import static io.github.gyulbbe.common.web.ApiResponses.respond;
+
+@Slf4j
 @RequestMapping("/user")
 @AllArgsConstructor
 @RestController
@@ -23,34 +24,39 @@ public class UserController {
 
     private final UserService userService;
 
-    @GetMapping("/test")
-    public String test() {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        Collection<? extends GrantedAuthority> authorities = SecurityContextHolder.getContext().getAuthentication().getAuthorities();
+    @GetMapping("/get/{userId}")
+    public ResponseEntity<UserDetailDto> getUserDetail(@Valid @PathVariable String userId) {
+        return ResponseEntity.ok(userService.getUserDetail(userId));
+    }
 
-        System.out.println("Username: " + username);
-        System.out.println("Authorities size: " + authorities.size());
+    @GetMapping("/search")
+    public ResponseEntity<ResponseDto<List<UserSearchDto>>> searchUsers(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return respond(userService.searchUsers(keyword, limit));
+    }
 
-        if (authorities.isEmpty()) {
-            return username + " (no authorities)";
-        }
+    @GetMapping("/draft-search")
+    public ResponseEntity<ResponseDto<List<DraftUserSearchDto>>> searchDraftUsers(
+            @RequestParam String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return respond(userService.searchDraftUsers(keyword, limit));
+    }
 
-        Iterator<? extends GrantedAuthority> iterator = authorities.iterator();
-        GrantedAuthority auth = iterator.next();
-        String role = auth.getAuthority();
-
-        System.out.println("Role: " + role);
-
-        return username + " " + role;
+    @PatchMapping("/password/{id}")
+    public ResponseEntity<ResponseDto<Void>> updatePassword(@PathVariable Long id, @RequestBody String newPassword) {
+        return respond(userService.updatePassword(id, newPassword));
     }
 
     @PostMapping("/insert")
-    public ResponseEntity<ResponseDto<Void>> insertUser(@Valid @RequestBody RegisterUserDto registerUserDto) {
-        return ResponseEntity.ok(userService.insertUser(registerUserDto));
+    public ResponseEntity<ResponseDto<Void>> insertUser(@Valid @RequestBody UserDto userDto) {
+        return respond(userService.insertUser(userDto));
     }
 
     @PostMapping("/insert-list")
-    public ResponseEntity<ResponseDto<Void>> insertUserList(@Valid @RequestBody List<RegisterUserDto> userList) {
-        return ResponseEntity.ok(userService.insertUserList(userList));
+    public ResponseEntity<ResponseDto<Void>> insertUserList(@Valid @RequestBody List<UserDto> userList) {
+        return respond(userService.insertUserList(userList));
     }
 }

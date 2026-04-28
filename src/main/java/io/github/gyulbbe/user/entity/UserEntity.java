@@ -1,15 +1,25 @@
 package io.github.gyulbbe.user.entity;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
+
+import java.io.Serializable;
 
 @Entity
-@Data
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@SequenceGenerator(
+        name = "users_seq_gen",
+        sequenceName = "USERS_SEQ",
+        allocationSize = 1
+)
 @Table(name = "USERS")
-public class UserEntity {
+public class UserEntity implements Serializable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq_gen")
     private Long id;
 
     @Column(name = "USER_ID", nullable = false)
@@ -20,6 +30,9 @@ public class UserEntity {
 
     @Column(name = "NAME")
     private String name;
+
+    @Column(name = "PHONE")
+    private String phone;
 
     @Column(name = "TIER")
     private String tier;
@@ -38,4 +51,26 @@ public class UserEntity {
 
     @Column(name = "PHOTO")
     private String photo;
+
+    @Column(name = "coin")
+    private Long coin;
+
+    public void updateAdminProfile(String userId, String name, String race, String tier) {
+        this.userId = userId;
+        this.name = name;
+        this.race = race;
+        this.tier = tier;
+    }
+
+    public void updateStatus(String status) {
+        this.status = status;
+    }
+
+    public void updateUserType(String userType) {
+        this.userType = userType;
+    }
+
+    public void updatePassword(String password) {
+        this.password = password;
+    }
 }

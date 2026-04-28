@@ -1,11 +1,12 @@
 package io.github.gyulbbe.jwt;
 
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.WeakKeyException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
@@ -15,7 +16,15 @@ public class JWTUtil {
     private SecretKey secretKey;
 
     public JWTUtil(@Value("${spring.jwt.secret}") String secret) {
-        secretKey = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), Jwts.SIG.HS256.key().build().getAlgorithm());
+        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        try {
+            secretKey = Keys.hmacShaKeyFor(keyBytes);
+        } catch (WeakKeyException e) {
+            throw new IllegalArgumentException(
+                    "spring.jwt.secret 값이 너무 짧음. HS256은 최소 32바이트 이상 필요함. 현재: " + keyBytes.length + " bytes",
+                    e
+            );
+        }
     }
 
     public String getUsername(String token) {
@@ -26,17 +35,28 @@ public class JWTUtil {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().get("role", String.class);
     }
 
+    public String getPhoto(String token) {
+        return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().get("photo", String.class);
+    }
+
+    public Long getUserPk(String token) {
+        Number userPk = Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().get("userPk", Number.class);
+        return userPk != null ? userPk.longValue() : null;
+    }
+
     public Boolean isExpired(String token) {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().getExpiration().before(new Date());
     }
 
-    public String createJwt(String username, String role, Long expiredMs) {
+    public String createJwt(String username, Long userPk, String role, String photo, Long expiredMs) {
         return Jwts.builder()
                 .claim("username", username)
+                .claim("userPk", userPk)
                 .claim("role", role)
+                .claim("photo", photo)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + expiredMs))
-                .signWith(secretKey)
+                .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 }

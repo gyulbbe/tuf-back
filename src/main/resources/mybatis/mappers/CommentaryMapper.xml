@@ -2,25 +2,4 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.github.gyulbbe.commentary.mapper.CommentaryMapper">
 
-    <!-- 해설 등록 -->
-    <insert id="insertCommentary" parameterType="insertCommentaryDto">
-        INSERT INTO commentary (
-            match_info_id,
-            match_summary
-        ) VALUES (
-            #{matchInfoId},
-            #{matchSummary}
-        )
-    </insert>
-
-    <!-- 모든 해설 조회 -->
-    <select id="findAllCommentaries" resultType="CommentaryDto">
-        SELECT
-            id as commentaryId,
-            match_info_id as matchInfoId,
-            match_summary as matchSummary
-        FROM commentary
-        ORDER BY id
-    </select>
-
 </mapper>

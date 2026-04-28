@@ -2,47 +2,4 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.github.gyulbbe.league.mapper.LeagueMapper">
 
-    <!-- 리그 등록 -->
-    <insert id="insertLeague" parameterType="insertLeagueDto">
-        INSERT INTO league (
-            league_name,
-            start_date,
-            end_date
-        ) VALUES (
-            #{leagueName},
-            #{startDate},
-            #{endDate}
-        )
-    </insert>
-
-    <!-- 프로리그 참가 등록 -->
-    <insert id="insertLeagueParticipation" parameterType="insertLeagueParticipationDto">
-        INSERT INTO league_participation (
-            league_id,
-            user_id,
-            race,
-            status
-        ) VALUES (
-            #{leagueId},
-            #{userId},
-            #{race},
-            'ACTIVE'
-        )
-    </insert>
-
-    <!-- 프로리그 팀 등록 -->
-    <insert id="insertProleagueTeam" parameterType="insertProleagueTeamDto">
-        INSERT INTO proleague_team (
-            team_name,
-            league_id,
-            leader_id,
-            vice_leader_id
-        ) VALUES (
-            #{teamName},
-            #{leagueId},
-            #{leaderId},
-            #{viceLeaderId}
-        )
-    </insert>
-
 </mapper>

@@ -5,66 +5,58 @@
     <!-- ResultMap 정의 -->
     <resultMap id="embeddingVectorResultMap" type="EmbeddingVectorDto">
         <result column="reference_id" property="referenceId" />
-        <result column="reference_type" property="referenceType" />
+        <result column="reference_table" property="referenceTable" />
         <result column="text" property="text" />
         <result column="vector" property="embeddingVector"
                 typeHandler="io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler" />
         <result column="distance" property="distance" />
     </resultMap>
 
-    <!-- 임베딩 벡터 등록 (KoSimCSE-RoBERTa 모델로 생성된 벡터) -->
+    <!-- 임베딩 벡터 등록 (KURE v1 모델로 생성된 벡터) -->
     <insert id="insertEmbeddingVector" parameterType="EmbeddingVectorDto">
         INSERT INTO vectors (
             reference_id,
-            reference_type,
-            vector
+            reference_table,
+            imbedding_vector
         ) VALUES (
             #{referenceId},
-            #{referenceType},
+            #{referenceTable},
             #{embeddingVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}
         )
     </insert>
 
-    <!-- 모든 벡터 조회 (Java에서 유사도 계산용) -->
-    <select id="findAllVectors" resultMap="embeddingVectorResultMap">
-        SELECT
-            reference_id,
-            reference_type,
-            vector
-        FROM vectors
-        <where>
-            <if test="referenceType != null and referenceType != ''">
-                AND reference_type = #{referenceType}
-            </if>
-        </where>
-    </select>
-
-    <!-- 유사도 검색 (Deprecated - Java에서 처리) -->
+    <!-- 유사도 검색 (Oracle 23ai VECTOR_DISTANCE 사용) -->
     <select id="findSimilarVectors" parameterType="SimilaritySearchRequestDto" resultMap="embeddingVectorResultMap">
         SELECT
             reference_id,
-            reference_type,
-            vector
+            reference_table,
+            imbedding_vector,
+            VECTOR_DISTANCE(imbedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
         FROM vectors
         <where>
-            <if test="referenceType != null and referenceType != ''">
-                AND reference_type = #{referenceType}
+            <if test="referenceTable != null and referenceTable != ''">
+                AND reference_table = #{referenceTable}
             </if>
         </where>
+        ORDER BY distance
+        FETCH FIRST #{topK} ROWS ONLY
     </select>
 
-    <!-- 가장 유사한 벡터 하나 조회 (Deprecated - Java에서 처리) -->
+    <!-- 가장 유사한 벡터 하나 조회 (Oracle 23ai VECTOR_DISTANCE 사용) -->
     <select id="findMostSimilarVector" parameterType="SimilaritySearchRequestDto" resultMap="embeddingVectorResultMap">
         SELECT
             reference_id,
-            reference_type,
-            vector
+            reference_table,
+        imbedding_vector,
+            VECTOR_DISTANCE(imbedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
         FROM vectors
         <where>
-            <if test="referenceType != null and referenceType != ''">
-                AND reference_type = #{referenceType}
+            <if test="referenceTable != null and referenceTable != ''">
+                AND reference_table = #{referenceTable}
             </if>
         </where>
+        ORDER BY distance
+        FETCH FIRST 1 ROWS ONLY
     </select>
 
 </mapper>

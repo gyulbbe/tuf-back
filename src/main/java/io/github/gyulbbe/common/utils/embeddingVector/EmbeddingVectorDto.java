@@ -9,7 +9,7 @@ public class EmbeddingVectorDto {
     @NotNull
     private Long referenceId;
     @NotNull
-    private String referenceType;
+    private String referenceTable;
     @NotNull
     private String text;
     private float[] embeddingVector;

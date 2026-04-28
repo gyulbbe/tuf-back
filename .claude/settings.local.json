@@ -19,7 +19,8 @@
       "Bash(python:*)",
       "Bash(find:*)",
       "Bash(nul)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(./gradlew clean build:*)"
     ],
     "deny": [],
     "ask": []

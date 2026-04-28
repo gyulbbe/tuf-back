@@ -6,5 +6,4 @@ import lombok.Data;
 public class RequestChatDto {
     private String userId;
     private String text;
-    private String type; // 말투
 }

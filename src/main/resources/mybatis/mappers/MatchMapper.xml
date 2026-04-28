@@ -2,27 +2,4 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="io.github.gyulbbe.match.mapper.MatchMapper">
 
-    <!-- 매치 정보 등록 -->
-    <insert id="insertMatchInfo" parameterType="insertMatchInfoDto">
-        INSERT INTO match_info (
-            league_id,
-            match_type,
-            format,
-            winner,
-            loser,
-            round,
-            sets,
-            match_date
-        ) VALUES (
-            #{leagueId},
-            #{matchType},
-            #{format},
-            #{winner},
-            #{loser},
-            #{round},
-            #{sets},
-            #{matchDate}
-        )
-    </insert>
-
 </mapper>

@@ -13,5 +13,8 @@ public class SimilaritySearchRequestDto {
     @Min(1)
     private Integer topK = 10;
 
-    private String referenceType;
+    private String referenceTable;
+
+    // Oracle VECTOR_DISTANCE 함수에 전달할 쿼리 벡터
+    private float[] queryVector;
 }

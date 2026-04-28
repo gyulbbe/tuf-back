@@ -1,7 +1,10 @@
 package io.github.gyulbbe.jwt;
 
+import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.common.error.ApiErrorResponseWriter;
 import io.github.gyulbbe.user.dto.CustomUserDetails;
 import io.github.gyulbbe.user.entity.UserEntity;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,29 +27,42 @@ public class JWTFilter extends OncePerRequestFilter {
         String authorization = request.getHeader("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer")) {
 
-            System.out.println("token null");
             filterChain.doFilter(request, response);
             return;
         }
 
-        System.out.println("authorization now");
-        String token = authorization.split(" ")[1];
+        String token = authorization.substring("Bearer".length()).trim();
+        if (token.isBlank()) {
+            ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_REQUIRED);
+            return;
+        }
 
-        //토큰 소멸 시간 검증
-        if (jwtUtil.isExpired(token)) {
-            System.out.println("token expired");
-            filterChain.doFilter(request, response);
+        try {
+            authenticateToken(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            SecurityContextHolder.clearContext();
+            ApiErrorResponseWriter.write(response, ApiErrorCode.AUTH_REQUIRED);
+            return;
+        }
 
+        filterChain.doFilter(request, response);
+    }
+
+    private void authenticateToken(String token) {
+        if (Boolean.TRUE.equals(jwtUtil.isExpired(token))) {
             return;
         }
 
         String username = jwtUtil.getUsername(token);
         String role = jwtUtil.getRole(token);
+        Long userPk = jwtUtil.getUserPk(token);
 
-        UserEntity userEntity = new UserEntity();
-        userEntity.setUserId(username);
-        userEntity.setPassword("tempassword");
-        userEntity.setUserType(role);
+        UserEntity userEntity = UserEntity.builder()
+                .id(userPk)
+                .userId(username)
+                .password("tempassword")
+                .userType(role)
+                .build();
 
         CustomUserDetails customUserDetails = new CustomUserDetails(userEntity);
 
@@ -55,7 +71,5 @@ public class JWTFilter extends OncePerRequestFilter {
         
         //세션 사용자 등록
         SecurityContextHolder.getContext().setAuthentication(authToken);
-
-        filterChain.doFilter(request, response);
     }
 }
