@@ -171,3 +171,28 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/gradle,intellij,windows
+
+# 잘못 만들어진 프로젝트 내부 Gradle 캐시
+.gradle-home/
+.gradle-user-home/
+
+# 에이전트 작업 폴더 (로컬 전용)
+.agent/
+
+# 임시 디버그 폴더
+.tmp-jwtprobe/
+
+# Windows 리다이렉트 사고로 생긴 빈 파일
+nul
+
+# IntelliJ 모듈 파일 (Gradle 프로젝트는 자동 생성)
+tuf.iml
+
+# Spring Initializr 기본 파일
+HELP.md
+
+# VS Code 설정 (사용 안 하면)
+.vscode/
+
+# QueryDSL 자동 생성 클래스
+src/main/generated/
