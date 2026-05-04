@@ -53,6 +53,8 @@ public class ExternalProcessRunner {
             Process process = processBuilder.start();
             boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!finished) {
+                log.error("external command timed out. jobId={}, step={}, timeout={}, command={}, stdoutLog={}, stderrLog={}",
+                        jobId, step, timeout, command, stdoutLog, stderrLog);
                 process.destroy();
                 if (!process.waitFor(FORCE_DESTROY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                     process.destroyForcibly();
@@ -77,9 +79,13 @@ public class ExternalProcessRunner {
                     jobId, step, stdoutLog, stderrLog);
             return result;
         } catch (IOException e) {
+            log.error("external command start failed. jobId={}, step={}, command={}, workingDirectory={}, stdoutLog={}, stderrLog={}",
+                    jobId, step, command, workingDirectory, stdoutLog, stderrLog, e);
             throw new ExternalProcessException("external command could not start", e, -1, stdoutLog, stderrLog);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.error("external command interrupted. jobId={}, step={}, command={}, stdoutLog={}, stderrLog={}",
+                    jobId, step, command, stdoutLog, stderrLog, e);
             throw new ExternalProcessException("external command interrupted", e, -1, stdoutLog, stderrLog);
         }
     }
