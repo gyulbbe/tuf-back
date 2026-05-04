@@ -44,8 +44,10 @@ public class DraftAiAdviceService {
             "없는 정보는 지어내지 않는다.",
             "서버가 제공한 드래프트 상태만 근거로 말한다.",
             "방금 지명에 대한 평가와 훈수만 말한다.",
+            "답변에는 방금 지명한 선수 이름을 반드시 포함한다.",
+            "저그는 팀플 운영에 유리해서 여러 명이어도 장점이 있다. 단 티어와 전체 밸런스도 같이 본다.",
             "다음 픽 추천은 말하지 않는다.",
-            "답변은 최대 2문장으로 제한한다."
+            "답변은 1문장으로 제한한다."
     );
 
     private static final String RECOMMENDATION_SYSTEM_PROMPT = String.join("\n",
@@ -56,12 +58,13 @@ public class DraftAiAdviceService {
             "없는 정보는 지어내지 않는다.",
             "서버가 제공한 드래프트 상태만 근거로 말한다.",
             "현재 픽커에게 남은 후보 중 누구를 뽑으면 좋을지만 추천한다.",
-            "추천 선수 이름을 반드시 포함한다.",
+            "답변에는 추천 선수 이름을 반드시 포함한다.",
             "티어, 종족 밸런스, 현재 팀 로스터, 남은 후보 구성을 근거로 판단한다.",
-            "답변은 최대 2문장으로 제한한다."
+            "저그는 팀플 운영에 유리해서 여러 명이어도 장점이 있다. 단 티어와 전체 밸런스도 같이 본다.",
+            "답변은 1문장으로 제한한다."
     );
 
-    private static final int AVAILABLE_CANDIDATE_SUMMARY_LIMIT = 10;
+    private static final int AVAILABLE_CANDIDATE_SUMMARY_LIMIT = 5;
     private static final Duration CONTEXT_TTL = Duration.ofHours(6);
 
     private final DraftSnapshotService draftSnapshotService;
@@ -366,8 +369,6 @@ public class DraftAiAdviceService {
                 "방금 완료된 드래프트 지명을 평가해줘.",
                 "",
                 "[방금 지명]",
-                "픽 번호: " + valueOrUnknown(justPicked.getPickNo()),
-                "팀: " + valueOrUnknown(justPicked.getDraftTeamName()),
                 "선수: " + displayCandidateName(justPicked),
                 "티어: " + valueOrUnknown(justPicked.getTier()),
                 "종족: " + valueOrUnknown(justPicked.getRace()),
@@ -375,27 +376,21 @@ public class DraftAiAdviceService {
                 "[지명 팀 로스터]",
                 teamRosterSummary(context.evaluatedTeam()),
                 "",
-                "[전체 팀 종족/티어 현황]",
-                teamBalanceSummary(context.draftContext()),
-                "",
                 "출력 조건:",
                 "- 방금 지명 평가와 훈수만 말한다.",
+                "- 방금 지명한 선수 이름(" + displayCandidateName(justPicked) + ")을 문장 안에 반드시 포함한다.",
                 "- 다음 픽 추천은 말하지 않는다.",
-                "- 1~2문장.",
+                "- 저그는 팀플 운영에 유리한 종족으로 본다.",
+                "- 1문장.",
                 "- JSON 말고 자연어만 출력."
         );
     }
 
     private String buildRecommendationPrompt(RecommendationContext context) {
         CandidateAiState recommendedCandidate = context.recommendedCandidate();
-        DraftLiveCurrentTurnResponseDto currentTurn = context.currentTurn();
 
         return String.join("\n",
                 "현재 픽커에게 다음 지명 추천을 해줘.",
-                "",
-                "[현재 추천 대상]",
-                "다음 픽 번호: " + valueOrUnknown(currentTurn.getPickNo()),
-                "현재 픽커 팀: " + valueOrUnknown(currentTurn.getTeamName()),
                 "",
                 "[서버 추천 후보]",
                 "추천 선수: " + displayCandidateName(recommendedCandidate),
@@ -405,17 +400,15 @@ public class DraftAiAdviceService {
                 "[현재 픽커 팀 로스터]",
                 teamRosterSummary(context.currentTeam()),
                 "",
-                "[전체 팀 종족/티어 현황]",
-                teamBalanceSummary(context.draftContext()),
-                "",
                 "[남은 후보 Top 후보]",
                 availableCandidateSummary(context.draftContext(), context.currentTeam()),
                 "",
                 "출력 조건:",
                 "- 현재 픽커에게 추천할 선수와 이유만 말한다.",
-                "- 추천 선수 이름을 명확히 포함.",
+                "- 추천 선수 이름(" + displayCandidateName(recommendedCandidate) + ")을 문장 안에 반드시 포함한다.",
                 "- 방금 지명 평가는 반복하지 않는다.",
-                "- 1~2문장.",
+                "- 저그는 팀플 운영에 유리한 종족으로 본다.",
+                "- 1문장.",
                 "- JSON 말고 자연어만 출력."
         );
     }
@@ -426,7 +419,7 @@ public class DraftAiAdviceService {
     ) {
         List<CandidateAiState> ranked = new ArrayList<>(availableCandidates);
         ranked.sort(Comparator
-                .comparingInt((CandidateAiState candidate) -> currentTeamRaceCount(currentTeam, candidate.race()))
+                .comparingInt((CandidateAiState candidate) -> racePenalty(currentTeam, candidate.race()))
                 .thenComparingInt(candidate -> parseTier(candidate.tier()))
                 .thenComparing(candidate -> displayCandidateName(candidate), Comparator.nullsLast(String::compareToIgnoreCase))
                 .thenComparing(CandidateAiState::candidateUserId, Comparator.nullsLast(Long::compareTo)));
@@ -501,6 +494,22 @@ public class DraftAiAdviceService {
         }
 
         return currentTeam.raceCounts().getOrDefault(race, 0);
+    }
+
+    private int racePenalty(TeamAiState currentTeam, String race) {
+        int count = currentTeamRaceCount(currentTeam, race);
+        if (isZerg(race)) {
+            return Math.max(0, count - 2);
+        }
+        return count;
+    }
+
+    private boolean isZerg(String race) {
+        if (race == null) {
+            return false;
+        }
+        String normalized = race.trim();
+        return "ZERG".equalsIgnoreCase(normalized) || "저그".equals(normalized);
     }
 
     private int parseTier(String tier) {
