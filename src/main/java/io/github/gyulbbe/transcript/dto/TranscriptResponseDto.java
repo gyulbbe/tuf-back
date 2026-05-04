@@ -5,9 +5,9 @@ import lombok.Data;
 
 @Data
 @Builder
-public class YoutubeTranscriptResponseDto {
+public class TranscriptResponseDto {
 
-    private String videoId;
+    private String sourceId;
     private String transcript;
     private String outputFile;
     private long elapsedSeconds;

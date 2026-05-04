@@ -3,8 +3,8 @@ package io.github.gyulbbe.transcript.service;
 import io.github.gyulbbe.common.error.ApiErrorCode;
 import io.github.gyulbbe.common.error.ApiException;
 import io.github.gyulbbe.transcript.config.TranscriptProperties;
-import io.github.gyulbbe.transcript.dto.YoutubeTranscriptRequestDto;
-import io.github.gyulbbe.transcript.dto.YoutubeTranscriptResponseDto;
+import io.github.gyulbbe.transcript.dto.TranscriptRequestDto;
+import io.github.gyulbbe.transcript.dto.TranscriptResponseDto;
 import io.github.gyulbbe.transcript.service.ExternalProcessRunner.ExternalProcessException;
 import io.github.gyulbbe.transcript.service.ExternalProcessRunner.ProcessResult;
 import lombok.RequiredArgsConstructor;
@@ -30,9 +30,9 @@ import java.util.stream.Stream;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class YoutubeTranscriptService {
+public class TranscriptService {
 
-    private static final Duration VIDEO_ID_TIMEOUT = Duration.ofMinutes(1);
+    private static final Duration SOURCE_ID_TIMEOUT = Duration.ofMinutes(1);
     private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(30);
     private static final Duration FFMPEG_TIMEOUT = Duration.ofMinutes(10);
     private static final Duration WHISPER_TIMEOUT = Duration.ofHours(2);
@@ -41,9 +41,9 @@ public class YoutubeTranscriptService {
     private final TranscriptProperties properties;
     private final ExternalProcessRunner processRunner;
 
-    public YoutubeTranscriptResponseDto createYoutubeTranscript(YoutubeTranscriptRequestDto requestDto) {
+    public TranscriptResponseDto createTranscript(TranscriptRequestDto requestDto) {
         Instant startedAt = Instant.now();
-        String url = validateSupportedVideoUrl(requestDto);
+        String url = normalizeSoopVodUrl(validateSoopVodUrl(requestDto));
         validateRequiredProperties();
         String jobId = createJobId();
         Path workRoot = Path.of(properties.getWorkDir());
@@ -54,7 +54,7 @@ public class YoutubeTranscriptService {
             Files.createDirectories(jobDir);
             Files.createDirectories(outputDir);
 
-            String videoId = fetchVideoId(jobId, url, jobDir);
+            String sourceId = fetchSourceId(jobId, url, jobDir);
             Path downloadedAudio = downloadAudio(jobId, url, jobDir);
             Path wavAudio = convertToWhisperWav(jobId, downloadedAudio, jobDir);
             Path transcriptFile = runWhisper(jobId, wavAudio, outputDir);
@@ -62,19 +62,19 @@ public class YoutubeTranscriptService {
 
             // TODO: MVP에서는 작업 파일을 남긴다. 운영 전에는 오래된 work-dir 작업 폴더 정리 정책을 추가해야 한다.
             long elapsedSeconds = Duration.between(startedAt, Instant.now()).toSeconds();
-            return YoutubeTranscriptResponseDto.builder()
-                    .videoId(videoId)
+            return TranscriptResponseDto.builder()
+                    .sourceId(sourceId)
                     .transcript(transcript)
                     .outputFile(transcriptFile.toString())
                     .elapsedSeconds(elapsedSeconds)
                     .build();
         } catch (IOException e) {
-            log.error("video transcript file handling failed. jobId={}", jobId, e);
+            log.error("transcript file handling failed. jobId={}", jobId, e);
             throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "스크립트 작업 파일을 처리하지 못했습니다.");
         }
     }
 
-    private String validateSupportedVideoUrl(YoutubeTranscriptRequestDto requestDto) {
+    private String validateSoopVodUrl(TranscriptRequestDto requestDto) {
         if (requestDto == null || requestDto.getUrl() == null || requestDto.getUrl().isBlank()) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "영상 URL을 입력해 주세요.");
         }
@@ -84,35 +84,37 @@ public class YoutubeTranscriptService {
         try {
             uri = new URI(url);
         } catch (URISyntaxException e) {
-            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "올바른 YouTube URL 형식이 아닙니다.");
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "올바른 영상 URL 형식이 아닙니다.");
         }
 
         String scheme = uri.getScheme();
         String host = uri.getHost();
         if (scheme == null || host == null) {
-            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "올바른 YouTube URL 형식이 아닙니다.");
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "올바른 영상 URL 형식이 아닙니다.");
         }
 
         String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
         String normalizedHost = host.toLowerCase(Locale.ROOT);
         boolean allowedScheme = "http".equals(normalizedScheme) || "https".equals(normalizedScheme);
-        boolean allowedHost = isYoutubeHost(normalizedHost) || isSoopVodHost(normalizedHost);
-        if (!allowedScheme || !allowedHost) {
+        if (!allowedScheme || !isSoopVodHost(normalizedHost)) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED,
-                    "지원하는 영상 URL만 입력할 수 있습니다. youtube.com, youtu.be, vod.sooplive.com 주소를 사용해 주세요.");
+                    "현재는 SOOP VOD URL만 입력할 수 있습니다. vod.sooplive.com 또는 vod.sooplive.co.kr 주소를 사용해 주세요.");
         }
 
         return url;
     }
 
-    private boolean isYoutubeHost(String host) {
-        return "youtu.be".equals(host)
-                || "youtube.com".equals(host)
-                || host.endsWith(".youtube.com");
+    private String normalizeSoopVodUrl(String url) {
+        URI uri = URI.create(url);
+        String host = uri.getHost();
+        if (host != null && "vod.sooplive.com".equals(host.toLowerCase(Locale.ROOT))) {
+            return url.replaceFirst("(?i)://vod\\.sooplive\\.com", "://vod.sooplive.co.kr");
+        }
+        return url;
     }
 
     private boolean isSoopVodHost(String host) {
-        return "vod.sooplive.com".equals(host);
+        return "vod.sooplive.com".equals(host) || "vod.sooplive.co.kr".equals(host);
     }
 
     private void validateRequiredProperties() {
@@ -146,10 +148,10 @@ public class YoutubeTranscriptService {
         }
     }
 
-    private String fetchVideoId(String jobId, String url, Path jobDir) {
+    private String fetchSourceId(String jobId, String url, Path jobDir) {
         ProcessResult result = runExternalCommand(
                 jobId,
-                "video-id",
+                "source-id",
                 List.of(
                         properties.getYtDlpPath(),
                         "--no-playlist",
@@ -159,8 +161,8 @@ public class YoutubeTranscriptService {
                         url
                 ),
                 jobDir,
-                VIDEO_ID_TIMEOUT,
-                "영상 정보를 확인하지 못했습니다. URL이 공개 영상인지 확인해 주세요."
+                SOURCE_ID_TIMEOUT,
+                "영상 정보를 확인하지 못했습니다. URL이 공개 VOD인지 확인해 주세요."
         );
 
         return result.stdout().lines()
