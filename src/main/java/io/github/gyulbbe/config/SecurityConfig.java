@@ -79,7 +79,7 @@ public class SecurityConfig {
 //                .anyRequest().authenticated());
 
         http.authorizeHttpRequests(auth -> auth
-                .requestMatchers("/admin").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers("/admin", "/admin/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/admin/menu-visibility").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/user/admin", "/user/admin/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .anyRequest().permitAll());
