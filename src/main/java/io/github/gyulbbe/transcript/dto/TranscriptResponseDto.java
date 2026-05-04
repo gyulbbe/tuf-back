@@ -7,8 +7,11 @@ import lombok.Data;
 @Builder
 public class TranscriptResponseDto {
 
+    private String jobId;
+    private TranscriptJobStatus status;
     private String sourceId;
     private String transcript;
     private String outputFile;
-    private long elapsedSeconds;
+    private Long elapsedSeconds;
+    private String errorMessage;
 }

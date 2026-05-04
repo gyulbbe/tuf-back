@@ -5,6 +5,8 @@ import io.github.gyulbbe.transcript.dto.TranscriptRequestDto;
 import io.github.gyulbbe.transcript.dto.TranscriptResponseDto;
 import io.github.gyulbbe.transcript.service.TranscriptService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +26,11 @@ public class TranscriptController {
     public ResponseEntity<ResponseDto<TranscriptResponseDto>> createTranscript(
             @RequestBody TranscriptRequestDto requestDto
     ) {
-        return respond(ResponseDto.success(transcriptService.createTranscript(requestDto)));
+        return respond(ResponseDto.success(transcriptService.createTranscriptJob(requestDto)));
+    }
+
+    @GetMapping("/{jobId}")
+    public ResponseEntity<ResponseDto<TranscriptResponseDto>> getTranscript(@PathVariable String jobId) {
+        return respond(ResponseDto.success(transcriptService.getTranscriptJob(jobId)));
     }
 }
