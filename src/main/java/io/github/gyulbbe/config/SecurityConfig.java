@@ -81,6 +81,11 @@ public class SecurityConfig {
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/admin").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/admin/menu-visibility").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/tournaments").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/tournaments/*/matches/*/score-submissions/*/approve").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/tournaments/*/matches/*/score-submissions/*/reject").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/tournaments/*/matches/*/score-submissions").authenticated()
+                .requestMatchers(HttpMethod.GET, "/tournaments/*/matches/*/score-submissions").authenticated()
                 .requestMatchers("/user/admin", "/user/admin/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .anyRequest().permitAll());
 

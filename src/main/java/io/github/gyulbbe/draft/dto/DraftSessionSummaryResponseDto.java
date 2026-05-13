@@ -15,6 +15,7 @@ public class DraftSessionSummaryResponseDto {
     private String orderMode;
     private Integer teamCount;
     private Integer pickTimeSeconds;
+    private Long pickedCount;
     private Integer currentPickNo;
     private Long currentDraftTeamId;
     private LocalDateTime deadlineAt;

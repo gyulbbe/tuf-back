@@ -4,12 +4,14 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.DraftActorResolver;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftHistoryPageResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderBulkReplaceRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
+import io.github.gyulbbe.draft.dto.DraftSessionDeleteRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
 import io.github.gyulbbe.draft.dto.DraftTeamRequestDto;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -52,6 +55,15 @@ public class DraftController {
         return respond(draftService.listSessions());
     }
 
+    @GetMapping("/sessions/history")
+    public ResponseEntity<ResponseDto<DraftHistoryPageResponseDto>> listHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword
+    ) {
+        return respond(draftService.listHistory(page, size, keyword));
+    }
+
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<DraftSessionDetailResponseDto>> getSession(@PathVariable Long sessionId) {
         return respond(draftService.getSession(sessionId));
@@ -64,6 +76,16 @@ public class DraftController {
     ) {
         try {
             return respond(draftService.updateSession(sessionId, requestDto, draftActorResolver.resolveRequired()));
+        } catch (Exception e) {
+            return respond(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sessions/delete")
+    public ResponseEntity<ResponseDto<Void>> deleteSessions(@RequestBody DraftSessionDeleteRequestDto requestDto) {
+        try {
+            List<Long> sessionIds = requestDto == null ? List.of() : requestDto.getSessionIds();
+            return respond(draftService.deleteSessions(sessionIds, draftActorResolver.resolveRequired()));
         } catch (Exception e) {
             return respond(ResponseDto.fail(e.getMessage()));
         }

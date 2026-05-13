@@ -5,6 +5,7 @@ import io.github.gyulbbe.config.QueryDslConfig;
 import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftHistoryPageResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderBulkReplaceRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
@@ -38,6 +39,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.TestPropertySource;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -400,6 +402,52 @@ class DraftServiceTest {
         assertThat(createTeamResponse.getData().getTeamName()).isEqualTo("Admin Team");
     }
 
+    @Test
+    void listHistory_returnsFinishedSessionsWithPagingKeywordAndPickedCount() {
+        Long ownerUserId = createUser("history-owner", "History Owner", "ROLE_USER");
+        LocalDateTime baseTime = LocalDateTime.of(2026, 5, 11, 20, 0);
+        DraftSessionEntity first = createHistorySession(ownerUserId, "May Alpha Draft", "FINISHED", "SNAKE", baseTime);
+        DraftSessionEntity second = createHistorySession(ownerUserId, "May Beta Draft", "FINISHED", "BASIC", baseTime.minusHours(1));
+        DraftSessionEntity third = createHistorySession(ownerUserId, "May Empty Draft", "FINISHED", "BASIC", baseTime.minusHours(2));
+        createHistorySession(ownerUserId, "May Live Draft", "LIVE", "BASIC", null);
+        createHistorySession(ownerUserId, "April Finished Draft", "FINISHED", "BASIC", baseTime.minusHours(3));
+        createHistoryPick(first, 1L);
+        createHistoryPick(first, 2L);
+        createHistoryPick(second, 1L);
+
+        ResponseDto<DraftHistoryPageResponseDto> firstPage =
+                draftService.listHistory(0, 2, "  may  ");
+        ResponseDto<DraftHistoryPageResponseDto> secondPage =
+                draftService.listHistory(1, 2, "may");
+        ResponseDto<List<DraftSessionSummaryResponseDto>> allSessions = draftService.listSessions();
+
+        assertThat(firstPage.getStatus()).isEqualTo(200);
+        assertThat(firstPage.getData().getPage()).isEqualTo(0);
+        assertThat(firstPage.getData().getSize()).isEqualTo(2);
+        assertThat(firstPage.getData().getTotalElements()).isEqualTo(3);
+        assertThat(firstPage.getData().getTotalPages()).isEqualTo(2);
+        assertThat(firstPage.getData().isHasNext()).isTrue();
+        assertThat(firstPage.getData().isHasPrevious()).isFalse();
+        assertThat(firstPage.getData().getItems())
+                .extracting("id", "title", "status", "pickedCount")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(first.getId(), "May Alpha Draft", "FINISHED", 2L),
+                        org.assertj.core.groups.Tuple.tuple(second.getId(), "May Beta Draft", "FINISHED", 1L)
+                );
+
+        assertThat(secondPage.getStatus()).isEqualTo(200);
+        assertThat(secondPage.getData().isHasNext()).isFalse();
+        assertThat(secondPage.getData().isHasPrevious()).isTrue();
+        assertThat(secondPage.getData().getItems())
+                .extracting("id", "title", "pickedCount")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(third.getId(), "May Empty Draft", 0L));
+
+        assertThat(allSessions.getStatus()).isEqualTo(200);
+        assertThat(allSessions.getData()).filteredOn("id", first.getId())
+                .extracting("pickedCount")
+                .containsExactly(2L);
+    }
+
     private Long createSession(AuthActor actor, String title, int teamCount, int pickTimeSeconds) {
         return createSession(actor, title, teamCount, pickTimeSeconds, "BASIC");
     }
@@ -408,6 +456,59 @@ class DraftServiceTest {
         DraftSessionRequestDto requestDto = sessionRequest(title, teamCount, pickTimeSeconds);
         requestDto.setOrderMode(orderMode);
         return draftService.createSession(requestDto, actor).getData().getId();
+    }
+
+    private DraftSessionEntity createHistorySession(
+            Long ownerUserId,
+            String title,
+            String status,
+            String orderMode,
+            LocalDateTime endedAt
+    ) {
+        return draftSessionRepository.save(DraftSessionEntity.builder()
+                .title(title)
+                .ownerUserId(ownerUserId)
+                .status(status)
+                .orderMode(orderMode)
+                .teamCount(2)
+                .pickTimeSeconds(45)
+                .currentPickNo(1)
+                .startedAt(endedAt == null ? null : endedAt.minusHours(1))
+                .endedAt(endedAt)
+                .build());
+    }
+
+    private void createHistoryPick(DraftSessionEntity session, Long pickNo) {
+        Long candidateUserId = createUser(
+                "history-candidate-" + session.getId() + "-" + pickNo,
+                "History Candidate " + session.getId() + "-" + pickNo,
+                "ROLE_USER"
+        );
+        DraftTeamEntity team = draftTeamRepository.save(DraftTeamEntity.builder()
+                .draftSessionId(session.getId())
+                .teamName("History Team " + session.getId() + "-" + pickNo)
+                .displayOrder(pickNo.intValue())
+                .pickerUserId(null)
+                .build());
+        LocalDateTime pickedAt = session.getEndedAt() == null ? LocalDateTime.now() : session.getEndedAt();
+
+        draftCandidateRepository.save(DraftCandidateEntity.builder()
+                .draftSessionId(session.getId())
+                .candidateUserId(candidateUserId)
+                .candidateName("History Candidate " + candidateUserId)
+                .race("ZERG")
+                .status("PICKED")
+                .pickedDraftTeamId(team.getId())
+                .pickedAt(pickedAt)
+                .build());
+        draftPickRepository.save(DraftPickEntity.builder()
+                .draftSessionId(session.getId())
+                .pickNo(pickNo)
+                .draftTeamId(team.getId())
+                .candidateUserId(candidateUserId)
+                .pickedByUserId(candidateUserId)
+                .pickedAt(pickedAt)
+                .build());
     }
 
     private Long createTeam(AuthActor actor, Long sessionId, String teamName, int displayOrder) {

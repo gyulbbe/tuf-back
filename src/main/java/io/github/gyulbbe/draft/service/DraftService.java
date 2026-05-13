@@ -4,6 +4,7 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.draft.auth.AuthActor;
 import io.github.gyulbbe.draft.dto.DraftCandidateRequestDto;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftHistoryPageResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderBulkReplaceRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
@@ -124,6 +125,24 @@ public class DraftService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public ResponseDto<DraftHistoryPageResponseDto> listHistory(int page, int size, String keyword) {
+        try {
+            int normalizedPage = Math.max(page, 0);
+            int normalizedSize = normalizeHistoryPageSize(size);
+            String normalizedKeyword = normalizeKeyword(keyword);
+
+            return ResponseDto.success(draftQueryRepository.findFinishedSessionHistory(
+                    normalizedKeyword,
+                    normalizedPage,
+                    normalizedSize
+            ));
+        } catch (Exception e) {
+            log.error("Failed to list draft session history.", e);
+            return ResponseDto.fail(e.getMessage());
+        }
+    }
+
     public ResponseDto<DraftSessionDetailResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
             DraftSessionEntity entity = getSessionEntityForUpdate(sessionId);
@@ -161,46 +180,76 @@ public class DraftService {
         }
     }
 
-    public ResponseDto<Void> deleteSession(Long sessionId, AuthActor actor) {
+    public ResponseDto<Void> deleteSessions(List<Long> sessionIds, AuthActor actor) {
         try {
-            DraftSessionEntity session = getSessionEntityForUpdate(sessionId);
-            draftPermissionService.assertOwnerOrAdmin(session, actor);
-            DraftSessionDeleteStats deleteStats = collectDeleteStats(session);
-            log.info(
-                    "Deleting draft session. sessionId={}, status={}, currentDraftTeamId={}, picks={}, orders={}, candidates={}, teams={}",
-                    deleteStats.sessionId(),
-                    deleteStats.status(),
-                    deleteStats.currentDraftTeamId(),
-                    deleteStats.pickCount(),
-                    deleteStats.orderCount(),
-                    deleteStats.candidateCount(),
-                    deleteStats.teamCount()
-            );
+            List<Long> normalizedSessionIds = normalizeDeleteSessionIds(sessionIds);
 
-            session.clearCurrentDraftTeam();
-            draftSessionRepository.flush();
+            if (normalizedSessionIds.isEmpty()) {
+                throw new IllegalArgumentException("Draft session ids are required.");
+            }
 
-            int deletedPicks = draftPickRepository.deleteByDraftSessionId(sessionId);
-            int deletedOrders = draftOrderRepository.deleteByDraftSessionId(sessionId);
-            int deletedCandidates = draftCandidateRepository.deleteByDraftSessionId(sessionId);
-            int deletedTeams = draftTeamRepository.deleteByDraftSessionId(sessionId);
-            draftSessionRepository.delete(session);
+            for (Long sessionId : normalizedSessionIds) {
+                deleteSessionInternal(sessionId, actor);
+            }
+
             draftLiveSessionTracker.refreshAfterCommit();
-
-            log.info(
-                    "Deleted draft session. sessionId={}, deletedPicks={}, deletedOrders={}, deletedCandidates={}, deletedTeams={}",
-                    sessionId,
-                    deletedPicks,
-                    deletedOrders,
-                    deletedCandidates,
-                    deletedTeams
-            );
 
             return ResponseDto.success(null);
         } catch (Exception e) {
-            log.error("Failed to delete draft session. sessionId={}", sessionId, e);
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            log.error("Failed to delete draft sessions. sessionIds={}", sessionIds, e);
             return ResponseDto.fail(e.getMessage());
         }
+    }
+
+    public ResponseDto<Void> deleteSession(Long sessionId, AuthActor actor) {
+        return deleteSessions(List.of(sessionId), actor);
+    }
+
+    private List<Long> normalizeDeleteSessionIds(List<Long> sessionIds) {
+        if (sessionIds == null) {
+            return List.of();
+        }
+
+        return sessionIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private void deleteSessionInternal(Long sessionId, AuthActor actor) {
+        DraftSessionEntity session = getSessionEntityForUpdate(sessionId);
+        draftPermissionService.assertOwnerOrAdmin(session, actor);
+        DraftSessionDeleteStats deleteStats = collectDeleteStats(session);
+        log.info(
+                "Deleting draft session. sessionId={}, status={}, currentDraftTeamId={}, picks={}, orders={}, candidates={}, teams={}",
+                deleteStats.sessionId(),
+                deleteStats.status(),
+                deleteStats.currentDraftTeamId(),
+                deleteStats.pickCount(),
+                deleteStats.orderCount(),
+                deleteStats.candidateCount(),
+                deleteStats.teamCount()
+        );
+
+        session.clearCurrentDraftTeam();
+        draftSessionRepository.flush();
+
+        int deletedPicks = draftPickRepository.deleteByDraftSessionId(sessionId);
+        int deletedOrders = draftOrderRepository.deleteByDraftSessionId(sessionId);
+        int deletedCandidates = draftCandidateRepository.deleteByDraftSessionId(sessionId);
+        int deletedTeams = draftTeamRepository.deleteByDraftSessionId(sessionId);
+        draftSessionRepository.delete(session);
+
+        log.info(
+                "Deleted draft session. sessionId={}, deletedPicks={}, deletedOrders={}, deletedCandidates={}, deletedTeams={}",
+                sessionId,
+                deletedPicks,
+                deletedOrders,
+                deletedCandidates,
+                deletedTeams
+        );
     }
 
     public ResponseDto<DraftTeamResponseDto> createTeam(DraftTeamRequestDto requestDto, AuthActor actor) {
@@ -917,6 +966,21 @@ public class DraftService {
         if (value == null || !allowed.contains(value)) {
             throw new IllegalArgumentException(fieldName + " is invalid.");
         }
+    }
+
+    private int normalizeHistoryPageSize(int size) {
+        if (size <= 0) {
+            return 10;
+        }
+        return Math.min(size, 50);
+    }
+
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String trimmed = keyword.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 
     private void validateText(String value, String fieldName) {

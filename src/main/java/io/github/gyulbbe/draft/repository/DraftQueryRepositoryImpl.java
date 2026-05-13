@@ -1,8 +1,12 @@
 package io.github.gyulbbe.draft.repository;
 
+import com.querydsl.core.types.ExpressionUtils;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.github.gyulbbe.draft.dto.DraftCandidateResponseDto;
+import io.github.gyulbbe.draft.dto.DraftHistoryPageResponseDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
@@ -42,6 +46,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.orderMode,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
+                        pickedCountProjection(draftSession),
                         draftSession.currentPickNo,
                         draftSession.currentDraftTeamId,
                         draftSession.deadlineAt,
@@ -72,6 +77,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.orderMode,
                         draftSession.teamCount,
                         draftSession.pickTimeSeconds,
+                        pickedCountProjection(draftSession),
                         draftSession.currentPickNo,
                         draftSession.currentDraftTeamId,
                         draftSession.deadlineAt,
@@ -82,6 +88,57 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
                 .orderBy(draftSession.id.desc())
                 .fetch();
+    }
+
+    @Override
+    public DraftHistoryPageResponseDto findFinishedSessionHistory(String keyword, int page, int size) {
+        QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
+        QUserEntity owner = new QUserEntity("draftSessionHistoryOwner");
+
+        BooleanExpression condition = historyCondition(draftSession, keyword);
+        Long totalElementsResult = queryFactory
+                .select(draftSession.count())
+                .from(draftSession)
+                .where(condition)
+                .fetchOne();
+        long totalElements = totalElementsResult == null ? 0L : totalElementsResult;
+
+        List<DraftSessionSummaryResponseDto> items = queryFactory
+                .select(Projections.bean(
+                        DraftSessionSummaryResponseDto.class,
+                        draftSession.id,
+                        draftSession.title,
+                        draftSession.ownerUserId,
+                        owner.userId.as("ownerUserLoginId"),
+                        owner.userId.as("ownerName"),
+                        draftSession.status,
+                        draftSession.orderMode,
+                        draftSession.teamCount,
+                        draftSession.pickTimeSeconds,
+                        pickedCountProjection(draftSession),
+                        draftSession.currentPickNo,
+                        draftSession.currentDraftTeamId,
+                        draftSession.deadlineAt,
+                        draftSession.startedAt,
+                        draftSession.endedAt
+                ))
+                .from(draftSession)
+                .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
+                .where(condition)
+                .orderBy(draftSession.endedAt.desc().nullsLast(), draftSession.id.desc())
+                .offset((long) page * size)
+                .limit(size)
+                .fetch();
+
+        DraftHistoryPageResponseDto response = new DraftHistoryPageResponseDto();
+        response.setItems(items);
+        response.setPage(page);
+        response.setSize(size);
+        response.setTotalElements(totalElements);
+        response.setTotalPages(calculateTotalPages(totalElements, size));
+        response.setHasNext(page + 1 < response.getTotalPages());
+        response.setHasPrevious(page > 0);
+        return response;
     }
 
     @Override
@@ -333,5 +390,31 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         .where(draftPick.draftSessionId.eq(sessionId), draftPick.pickNo.eq(pickNo))
                         .fetchOne()
         );
+    }
+
+    private BooleanExpression historyCondition(QDraftSessionEntity draftSession, String keyword) {
+        BooleanExpression condition = draftSession.status.eq("FINISHED");
+        if (keyword != null && !keyword.isBlank()) {
+            condition = condition.and(draftSession.title.containsIgnoreCase(keyword));
+        }
+        return condition;
+    }
+
+    private com.querydsl.core.types.Expression<Long> pickedCountProjection(QDraftSessionEntity draftSession) {
+        QDraftPickEntity draftPick = new QDraftPickEntity("draftSessionPickedCount");
+        return ExpressionUtils.as(
+                JPAExpressions
+                        .select(draftPick.count())
+                        .from(draftPick)
+                        .where(draftPick.draftSessionId.eq(draftSession.id)),
+                "pickedCount"
+        );
+    }
+
+    private int calculateTotalPages(long totalElements, int size) {
+        if (totalElements <= 0) {
+            return 0;
+        }
+        return Math.toIntExact((totalElements + size - 1) / size);
     }
 }

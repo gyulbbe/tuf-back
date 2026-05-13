@@ -10,6 +10,8 @@ public interface DraftQueryRepository {
 
     List<DraftSessionSummaryResponseDto> findSessionSummaries();
 
+    DraftHistoryPageResponseDto findFinishedSessionHistory(String keyword, int page, int size);
+
     Optional<DraftTeamResponseDto> findTeam(Long teamId);
 
     List<DraftTeamResponseDto> findTeamsBySessionId(Long sessionId);
