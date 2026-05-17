@@ -88,7 +88,7 @@ public class DraftLiveCommandService {
             throw new IllegalArgumentException("Only PAUSED sessions can be resumed.");
         }
 
-        DraftOrderEntity currentOrder = requireCurrentOrder(session);
+        DraftOrderEntity currentOrder = getOrCreateCurrentOrder(session);
         int resumeSeconds = seconds != null ? seconds : session.getPickTimeSeconds();
         if (resumeSeconds <= 0) {
             throw new IllegalArgumentException("Resume seconds must be greater than 0.");
@@ -268,6 +268,10 @@ public class DraftLiveCommandService {
 
     private DraftOrderEntity requireCurrentOrder(DraftSessionEntity session) {
         return requireOrder(session.getId(), requireCurrentPickNo(session));
+    }
+
+    private DraftOrderEntity getOrCreateCurrentOrder(DraftSessionEntity session) {
+        return draftOrderPatternService.getOrCreateOrder(session.getId(), requireCurrentPickNo(session));
     }
 
     private DraftOrderEntity requireOrder(Long sessionId, long pickNo) {

@@ -611,6 +611,50 @@ class DraftLiveCommandServiceTest {
         assertThat(resumed.getCurrentTurn().getTeamId()).isEqualTo(teamBId);
     }
 
+    @Test
+    void resume_creates_missing_current_order_from_pattern() {
+        AuthActor owner = createActor("owner-resume-missing-order", "Owner Resume Missing Order", "ROLE_USER");
+        Long sessionId = createSession(owner, "Resume Missing Current Order Session", 4, "SNAKE");
+        Long teamAId = createTeam(owner, sessionId, "Resume A", 1);
+        Long teamBId = createTeam(owner, sessionId, "Resume B", 2);
+        Long teamCId = createTeam(owner, sessionId, "Resume C", 3);
+        Long teamDId = createTeam(owner, sessionId, "Resume D", 4);
+        createOrder(owner, sessionId, 1L, teamAId);
+        createOrder(owner, sessionId, 2L, teamBId);
+        createOrder(owner, sessionId, 3L, teamCId);
+        createOrder(owner, sessionId, 4L, teamDId);
+        createOrder(owner, sessionId, 5L, teamDId);
+        createOrder(owner, sessionId, 6L, teamCId);
+        createOrder(owner, sessionId, 7L, teamBId);
+        createOrder(owner, sessionId, 8L, teamAId);
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        session.update(
+                session.getTitle(),
+                "PAUSED",
+                session.getOrderMode(),
+                session.getTeamCount(),
+                session.getPickTimeSeconds(),
+                12,
+                teamAId,
+                null,
+                LocalDateTime.now().minusMinutes(1),
+                null
+        );
+
+        DraftLiveSnapshotResponseDto resumed = draftLiveCommandService.resumeSession(sessionId, adminActor(), 20);
+
+        assertThat(resumed.getSession().getStatus()).isEqualTo("LIVE");
+        assertThat(resumed.getSession().getCurrentPickNo()).isEqualTo(12);
+        assertThat(resumed.getSession().getCurrentDraftTeamId()).isEqualTo(teamDId);
+        assertThat(resumed.getCurrentTurn()).isNotNull();
+        assertThat(resumed.getCurrentTurn().getTeamId()).isEqualTo(teamDId);
+        assertThat(draftOrderRepository.findByDraftSessionIdAndPickNo(sessionId, 12L)).isPresent()
+                .get()
+                .extracting(DraftOrderEntity::getDraftTeamId)
+                .isEqualTo(teamDId);
+    }
+
     private Long createSession(AuthActor actor, String title) {
         return createSession(actor, title, 2);
     }

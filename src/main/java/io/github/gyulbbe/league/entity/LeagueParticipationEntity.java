@@ -3,6 +3,8 @@ package io.github.gyulbbe.league.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Getter
 @Builder
@@ -32,4 +34,28 @@ public class LeagueParticipationEntity {
     @Builder.Default
     @Column(name = "STATUS")
     private String status = "ACTIVE";
+
+    @Column(name = "REG_DATE")
+    private LocalDateTime regDate;
+
+    @Column(name = "UPDATE_DATE")
+    private LocalDateTime updateDate;
+
+    @PrePersist
+    public void prePersist() {
+        if (regDate == null) {
+            regDate = LocalDateTime.now();
+        }
+        if (updateDate == null) {
+            updateDate = regDate;
+        }
+        if (status == null || status.isBlank()) {
+            status = "ACTIVE";
+        }
+    }
+
+    @PreUpdate
+    public void preUpdate() {
+        updateDate = LocalDateTime.now();
+    }
 }

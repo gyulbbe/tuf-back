@@ -111,14 +111,14 @@ public class LeagueService {
                 return ResponseDto.fail("리그를 찾을 수 없습니다.");
             }
 
-            LeagueEntity updated = LeagueEntity.builder()
-                    .id(entity.getId())
-                    .leagueName(leagueDto.getLeagueName())
-                    .startDate(leagueDto.getStartDate())
-                    .endDate(leagueDto.getEndDate())
-                    .build();
-
-            leagueRepository.save(updated);
+            entity.updateBasic(
+                    leagueDto.getLeagueName(),
+                    entity.getSeasonName(),
+                    entity.getDescription(),
+                    entity.getStatus(),
+                    leagueDto.getStartDate(),
+                    leagueDto.getEndDate()
+            );
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("리그 수정 실패", e);
@@ -210,15 +210,13 @@ public class LeagueService {
                 return ResponseDto.fail("프로리그 팀을 찾을 수 없습니다.");
             }
 
-            ProleagueTeamEntity updated = ProleagueTeamEntity.builder()
-                    .id(entity.getId())
-                    .teamName(proleagueTeamDto.getTeamName())
-                    .leagueId(proleagueTeamDto.getLeagueId())
-                    .leaderId(proleagueTeamDto.getLeaderId())
-                    .viceLeaderId(proleagueTeamDto.getViceLeaderId())
-                    .build();
-
-            proleagueTeamRepository.save(updated);
+            entity.update(
+                    proleagueTeamDto.getTeamName(),
+                    proleagueTeamDto.getLeaderId(),
+                    proleagueTeamDto.getViceLeaderId(),
+                    entity.getDisplayOrder(),
+                    entity.getDraftTeamId()
+            );
             return ResponseDto.success(null);
         } catch (Exception e) {
             log.error("프로리그 팀 수정 실패", e);

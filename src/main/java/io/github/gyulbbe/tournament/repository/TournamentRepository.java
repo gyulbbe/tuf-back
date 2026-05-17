@@ -21,6 +21,19 @@ public interface TournamentRepository extends JpaRepository<TournamentEntity, Lo
 
     Optional<TournamentEntity> findByIdAndStatusIn(Long id, List<String> statuses);
 
+    @Query("""
+            select t
+            from TournamentEntity t
+            where t.status = :status
+            order by coalesce(t.updateDate, t.regDate) desc,
+                     t.regDate desc,
+                     t.id desc
+            """)
+    List<TournamentEntity> findHomeMainLiveTournaments(
+            @Param("status") String status,
+            Pageable pageable
+    );
+
     @Query(
             value = """
                     select t

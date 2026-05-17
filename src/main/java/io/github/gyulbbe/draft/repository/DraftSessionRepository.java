@@ -1,9 +1,11 @@
 package io.github.gyulbbe.draft.repository;
 
 import io.github.gyulbbe.draft.entity.DraftSessionEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.LockModeType;
 
@@ -19,4 +21,17 @@ public interface DraftSessionRepository extends JpaRepository<DraftSessionEntity
     boolean existsByStatus(String status);
 
     List<DraftSessionEntity> findAllByStatusAndDeadlineAtLessThanEqual(String status, LocalDateTime deadlineAt);
+
+    @Query("""
+            select s
+            from DraftSessionEntity s
+            where s.status in :statuses
+            order by coalesce(s.updateDate, s.regDate) desc,
+                     s.regDate desc,
+                     s.id desc
+            """)
+    List<DraftSessionEntity> findHomeMainOngoingSessions(
+            @Param("statuses") List<String> statuses,
+            Pageable pageable
+    );
 }

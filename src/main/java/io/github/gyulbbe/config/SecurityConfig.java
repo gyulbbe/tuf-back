@@ -80,7 +80,13 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/admin").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.GET, "/home/main").permitAll()
+                .requestMatchers(HttpMethod.GET, "/home/schedules").permitAll()
+                .requestMatchers(HttpMethod.GET, "/home/schedules/*/redirect").permitAll()
                 .requestMatchers(HttpMethod.PUT, "/admin/menu-visibility").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers("/admin/home/schedules", "/admin/home/schedules/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers("/admin/maps", "/admin/maps/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers("/admin/proleagues", "/admin/proleagues/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/tournaments").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/tournaments/*/matches/*/score-submissions/*/approve").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/tournaments/*/matches/*/score-submissions/*/reject").hasAnyRole("MANAGER", "MASTER", "ADMIN")

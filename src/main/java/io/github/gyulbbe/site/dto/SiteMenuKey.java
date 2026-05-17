@@ -17,6 +17,7 @@ public enum SiteMenuKey {
     GALLERY("gallery"),
     ADMIN_DRAFT_HISTORY("admin.draftHistory"),
     ADMIN_USERS("admin.users"),
+    ADMIN_MAPS("admin.maps"),
     EXTERNAL_RECORD_MANAGER("external.recordManager"),
     EXTERNAL_BETTING("external.betting");
 
