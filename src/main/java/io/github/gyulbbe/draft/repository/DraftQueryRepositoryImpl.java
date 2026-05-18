@@ -16,6 +16,7 @@ import io.github.gyulbbe.draft.entity.QDraftOrderEntity;
 import io.github.gyulbbe.draft.entity.QDraftPickEntity;
 import io.github.gyulbbe.draft.entity.QDraftSessionEntity;
 import io.github.gyulbbe.draft.entity.QDraftTeamEntity;
+import io.github.gyulbbe.league.entity.QLeagueEntity;
 import io.github.gyulbbe.user.entity.QUserEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -33,6 +34,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public Optional<DraftSessionSummaryResponseDto> findSessionSummary(Long sessionId) {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
         QUserEntity owner = new QUserEntity("draftSessionOwner");
+        QLeagueEntity proleague = new QLeagueEntity("draftSessionProleague");
 
         DraftSessionSummaryResponseDto summary = queryFactory
                 .select(Projections.bean(
@@ -42,6 +44,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.ownerUserId,
                         owner.userId.as("ownerUserLoginId"),
                         owner.userId.as("ownerName"),
+                        draftSession.proleagueId,
+                        proleague.leagueName.as("proleagueName"),
                         draftSession.status,
                         draftSession.orderMode,
                         draftSession.teamCount,
@@ -55,6 +59,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 ))
                 .from(draftSession)
                 .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
+                .leftJoin(proleague).on(proleague.id.eq(draftSession.proleagueId))
                 .where(draftSession.id.eq(sessionId))
                 .fetchOne();
         return Optional.ofNullable(summary);
@@ -64,6 +69,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public List<DraftSessionSummaryResponseDto> findSessionSummaries() {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
         QUserEntity owner = new QUserEntity("draftSessionOwner");
+        QLeagueEntity proleague = new QLeagueEntity("draftSessionProleague");
 
         return queryFactory
                 .select(Projections.bean(
@@ -73,6 +79,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.ownerUserId,
                         owner.userId.as("ownerUserLoginId"),
                         owner.userId.as("ownerName"),
+                        draftSession.proleagueId,
+                        proleague.leagueName.as("proleagueName"),
                         draftSession.status,
                         draftSession.orderMode,
                         draftSession.teamCount,
@@ -86,6 +94,42 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 ))
                 .from(draftSession)
                 .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
+                .leftJoin(proleague).on(proleague.id.eq(draftSession.proleagueId))
+                .orderBy(draftSession.id.desc())
+                .fetch();
+    }
+
+    @Override
+    public List<DraftSessionSummaryResponseDto> findSessionSummariesByProleagueId(Long proleagueId) {
+        QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
+        QUserEntity owner = new QUserEntity("draftSessionOwner");
+        QLeagueEntity proleague = new QLeagueEntity("draftSessionProleague");
+
+        return queryFactory
+                .select(Projections.bean(
+                        DraftSessionSummaryResponseDto.class,
+                        draftSession.id,
+                        draftSession.title,
+                        draftSession.ownerUserId,
+                        owner.userId.as("ownerUserLoginId"),
+                        owner.userId.as("ownerName"),
+                        draftSession.proleagueId,
+                        proleague.leagueName.as("proleagueName"),
+                        draftSession.status,
+                        draftSession.orderMode,
+                        draftSession.teamCount,
+                        draftSession.pickTimeSeconds,
+                        pickedCountProjection(draftSession),
+                        draftSession.currentPickNo,
+                        draftSession.currentDraftTeamId,
+                        draftSession.deadlineAt,
+                        draftSession.startedAt,
+                        draftSession.endedAt
+                ))
+                .from(draftSession)
+                .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
+                .leftJoin(proleague).on(proleague.id.eq(draftSession.proleagueId))
+                .where(draftSession.proleagueId.eq(proleagueId))
                 .orderBy(draftSession.id.desc())
                 .fetch();
     }
@@ -94,6 +138,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
     public DraftHistoryPageResponseDto findFinishedSessionHistory(String keyword, int page, int size) {
         QDraftSessionEntity draftSession = QDraftSessionEntity.draftSessionEntity;
         QUserEntity owner = new QUserEntity("draftSessionHistoryOwner");
+        QLeagueEntity proleague = new QLeagueEntity("draftSessionHistoryProleague");
 
         BooleanExpression condition = historyCondition(draftSession, keyword);
         Long totalElementsResult = queryFactory
@@ -111,6 +156,8 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         draftSession.ownerUserId,
                         owner.userId.as("ownerUserLoginId"),
                         owner.userId.as("ownerName"),
+                        draftSession.proleagueId,
+                        proleague.leagueName.as("proleagueName"),
                         draftSession.status,
                         draftSession.orderMode,
                         draftSession.teamCount,
@@ -124,6 +171,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                 ))
                 .from(draftSession)
                 .leftJoin(owner).on(owner.id.eq(draftSession.ownerUserId))
+                .leftJoin(proleague).on(proleague.id.eq(draftSession.proleagueId))
                 .where(condition)
                 .orderBy(draftSession.endedAt.desc().nullsLast(), draftSession.id.desc())
                 .offset((long) page * size)
@@ -152,6 +200,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                                 DraftTeamResponseDto.class,
                                 draftTeam.id,
                                 draftTeam.draftSessionId,
+                                draftTeam.proleagueTeamId,
                                 draftTeam.teamName,
                                 draftTeam.displayOrder,
                                 draftTeam.pickerUserId,
@@ -175,6 +224,7 @@ public class DraftQueryRepositoryImpl implements DraftQueryRepository {
                         DraftTeamResponseDto.class,
                         draftTeam.id,
                         draftTeam.draftSessionId,
+                        draftTeam.proleagueTeamId,
                         draftTeam.teamName,
                         draftTeam.displayOrder,
                         draftTeam.pickerUserId,

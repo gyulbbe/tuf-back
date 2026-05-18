@@ -5,6 +5,8 @@ import io.github.gyulbbe.common.error.ApiErrorCode;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDeleteRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentMatchMapRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentMatchParticipantsRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentPageResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
@@ -23,6 +25,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -201,6 +204,77 @@ public class TournamentController {
         } catch (Exception e) {
             log.warn("Failed to list tournament match score submissions. tournamentId={}, matchId={}", tournamentId, matchId, e);
             return respond(ResponseDto.fail("Failed to list tournament match score submissions."));
+        }
+    }
+
+    @PutMapping("/{tournamentId}/matches/{matchId}/map")
+    public ResponseEntity<ResponseDto<TournamentDetailResponseDto>> updateMatchMap(
+            @PathVariable Long tournamentId,
+            @PathVariable Long matchId,
+            @RequestBody TournamentMatchMapRequestDto request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            TournamentDetailResponseDto response = tournamentService.assignMatchMap(
+                    tournamentId,
+                    matchId,
+                    request == null ? null : request.getMapId()
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to update tournament match map. tournamentId={}, matchId={}", tournamentId, matchId, e);
+            return respond(ResponseDto.fail("경기 맵을 저장하지 못했습니다."));
+        }
+    }
+
+    @PutMapping("/{tournamentId}/matches/{matchId}/participants")
+    public ResponseEntity<ResponseDto<TournamentDetailResponseDto>> updateMatchParticipants(
+            @PathVariable Long tournamentId,
+            @PathVariable Long matchId,
+            @RequestBody TournamentMatchParticipantsRequestDto request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            TournamentDetailResponseDto response = tournamentService.assignRaceSurvivalMatchParticipants(
+                    tournamentId,
+                    matchId,
+                    request == null ? null : request.getSlot1ParticipantId(),
+                    request == null ? null : request.getSlot2ParticipantId()
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to update tournament match participants. tournamentId={}, matchId={}", tournamentId, matchId, e);
+            return respond(ResponseDto.fail("경기 선수를 저장하지 못했습니다."));
         }
     }
 

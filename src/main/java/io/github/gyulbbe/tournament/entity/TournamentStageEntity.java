@@ -32,6 +32,8 @@ public class TournamentStageEntity {
 
     public static final String TYPE_DUAL_GROUP = "DUAL_GROUP";
     public static final String TYPE_SINGLE_ELIMINATION = "SINGLE_ELIMINATION";
+    public static final String TYPE_ULTIMATE_BATTLE = "ULTIMATE_BATTLE";
+    public static final String TYPE_RACE_SURVIVAL = "RACE_SURVIVAL";
     public static final String STATUS_DRAFT = "DRAFT";
     public static final String STATUS_READY = "READY";
     public static final String STATUS_FINISHED = "FINISHED";

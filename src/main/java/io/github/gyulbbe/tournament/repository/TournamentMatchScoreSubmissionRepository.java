@@ -14,6 +14,19 @@ public interface TournamentMatchScoreSubmissionRepository extends JpaRepository<
 
     List<TournamentMatchScoreSubmissionEntity> findAllByTournamentIdAndMatchIdAndStatus(Long tournamentId, Long matchId, String status);
 
+    @Query("""
+            select case when count(s) > 0 then true else false end
+            from TournamentMatchScoreSubmissionEntity s
+            where s.tournamentId = :tournamentId
+              and s.matchId = :matchId
+              and s.status <> :excludedStatus
+            """)
+    boolean existsByTournamentIdAndMatchIdAndStatusNot(
+            @Param("tournamentId") Long tournamentId,
+            @Param("matchId") Long matchId,
+            @Param("excludedStatus") String excludedStatus
+    );
+
     List<TournamentMatchScoreSubmissionEntity> findAllByTournamentIdAndMatchIdAndSubmittedByUserIdOrderByRegDateDescIdDesc(
             Long tournamentId,
             Long matchId,
@@ -21,6 +34,8 @@ public interface TournamentMatchScoreSubmissionRepository extends JpaRepository<
     );
 
     Optional<TournamentMatchScoreSubmissionEntity> findByIdAndTournamentIdAndMatchId(Long id, Long tournamentId, Long matchId);
+
+    long countByTournamentId(Long tournamentId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from TournamentMatchScoreSubmissionEntity s where s.tournamentId = :tournamentId")

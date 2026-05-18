@@ -16,6 +16,7 @@ import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -34,8 +35,10 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -47,6 +50,12 @@ public class TournamentCreationService {
     private static final String BYE_LABEL = "BYE";
     private static final String MAIN_GROUP_CODE = "MAIN";
     private static final String MAIN_GROUP_NAME = "Main Bracket";
+    private static final String RACE_TERRAN = "TERRAN";
+    private static final String RACE_ZERG = "ZERG";
+    private static final String RACE_PROTOSS = "PROTOSS";
+    private static final String MATCHES_GROUP_CODE = "MATCHES";
+    private static final String RACE_SURVIVAL_EMPTY_SLOT_LABEL = "선수 지정";
+    private static final List<String> RACE_SURVIVAL_GROUP_CODES = List.of(RACE_TERRAN, RACE_ZERG, RACE_PROTOSS);
 
     private final TournamentRepository tournamentRepository;
     private final TournamentParticipantRepository participantRepository;
@@ -54,6 +63,7 @@ public class TournamentCreationService {
     private final TournamentGroupRepository groupRepository;
     private final TournamentGroupEntryRepository groupEntryRepository;
     private final TournamentMatchRepository matchRepository;
+    private final TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
     private final TournamentMatchSlotRepository matchSlotRepository;
     private final TournamentRouteRepository routeRepository;
     private final TournamentResultSlotRepository resultSlotRepository;
@@ -71,9 +81,27 @@ public class TournamentCreationService {
                 .status(TournamentEntity.STATUS_LIVE)
                 .build());
 
-        Map<SlotKey, TournamentParticipantEntity> participantsBySlot = createParticipants(tournament.getId(), normalized);
+        createTournamentGraph(tournament.getId(), normalized);
+        return tournamentService.buildDetail(tournament);
+    }
+
+    @Transactional
+    public TournamentDetailResponseDto replaceTournament(Long tournamentId, TournamentCreateRequestDto request, Long ownerUserId) {
+        NormalizedTournament normalized = normalize(request, ownerUserId);
+        TournamentEntity tournament = tournamentRepository.findByIdForUpdate(tournamentId)
+                .orElseThrow(() -> new NoSuchElementException("Tournament not found. tournamentId=" + tournamentId));
+
+        tournament.updateTitle(normalized.title());
+        tournamentRepository.saveAndFlush(tournament);
+        deleteTournamentGraph(tournament.getId());
+        createTournamentGraph(tournament.getId(), normalized);
+        return tournamentService.buildDetail(tournament);
+    }
+
+    private void createTournamentGraph(Long tournamentId, NormalizedTournament normalized) {
+        Map<SlotKey, TournamentParticipantEntity> participantsBySlot = createParticipants(tournamentId, normalized);
         TournamentStageEntity stage = stageRepository.save(TournamentStageEntity.builder()
-                .tournamentId(tournament.getId())
+                .tournamentId(tournamentId)
                 .stageNo(1)
                 .stageName(defaultStageName(normalized.bracketType()))
                 .stageType(normalized.bracketType())
@@ -83,12 +111,59 @@ public class TournamentCreationService {
 
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(normalized.bracketType())) {
             createSingleElimination(stage, normalized, participantsBySlot);
-        } else {
+        } else if (TournamentStageEntity.TYPE_DUAL_GROUP.equals(normalized.bracketType())) {
             createDualGroups(stage, normalized, participantsBySlot);
+        } else if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(normalized.bracketType())) {
+            createUltimateBattle(stage, normalized, participantsBySlot);
+        } else if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(normalized.bracketType())) {
+            createRaceSurvival(stage, normalized, participantsBySlot);
         }
 
         bracketProgressionService.applyByeWinsForStage(stage.getId());
-        return tournamentService.buildDetail(tournament);
+    }
+
+    private void deleteTournamentGraph(Long tournamentId) {
+        List<TournamentStageEntity> stages = stageRepository.findAllByTournamentIdOrderByDisplayOrderAsc(tournamentId);
+        List<Long> stageIds = stages.stream()
+                .map(TournamentStageEntity::getId)
+                .toList();
+        List<TournamentGroupEntity> groups = stageIds.isEmpty()
+                ? List.of()
+                : groupRepository.findAllByStageIdInOrderByDisplayOrderAsc(stageIds);
+        List<Long> groupIds = groups.stream()
+                .map(TournamentGroupEntity::getId)
+                .toList();
+        Map<Long, TournamentMatchEntity> matchesById = new HashMap<>();
+        if (!groupIds.isEmpty()) {
+            matchRepository.findAllByGroupIdInOrderByDisplayOrderAsc(groupIds)
+                    .forEach(match -> matchesById.putIfAbsent(match.getId(), match));
+        }
+        if (!stageIds.isEmpty()) {
+            matchRepository.findAllByStageIdInOrderByDisplayOrderAsc(stageIds)
+                    .forEach(match -> matchesById.putIfAbsent(match.getId(), match));
+        }
+        List<Long> matchIds = matchesById.keySet().stream()
+                .sorted()
+                .toList();
+
+        scoreSubmissionRepository.deleteByTournamentId(tournamentId);
+        if (!matchIds.isEmpty()) {
+            routeRepository.deleteByFromMatchIdIn(matchIds);
+            routeRepository.deleteByToMatchIdIn(matchIds);
+            matchSlotRepository.deleteByMatchIdIn(matchIds);
+        }
+        if (!groupIds.isEmpty()) {
+            resultSlotRepository.deleteByGroupIdIn(groupIds);
+            groupEntryRepository.deleteByGroupIdIn(groupIds);
+            matchRepository.deleteByGroupIdIn(groupIds);
+        }
+        if (!stageIds.isEmpty()) {
+            resultSlotRepository.deleteByStageIdIn(stageIds);
+            matchRepository.deleteByStageIdIn(stageIds);
+            groupRepository.deleteByStageIdIn(stageIds);
+        }
+        stageRepository.deleteByTournamentId(tournamentId);
+        participantRepository.deleteByTournamentId(tournamentId);
     }
 
     private NormalizedTournament normalize(TournamentCreateRequestDto request, Long ownerUserId) {
@@ -109,6 +184,12 @@ public class TournamentCreationService {
 
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType) && requestedGroups.size() != 1) {
             throw new IllegalArgumentException("SINGLE_ELIMINATION allows exactly one group.");
+        }
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType) && requestedGroups.size() != 1) {
+            throw new IllegalArgumentException("ULTIMATE_BATTLE allows exactly one group.");
+        }
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType) && requestedGroups.size() != RACE_SURVIVAL_GROUP_CODES.size()) {
+            throw new IllegalArgumentException("RACE_SURVIVAL requires TERRAN, ZERG, and PROTOSS groups.");
         }
 
         List<NormalizedGroup> groups = new ArrayList<>();
@@ -132,6 +213,7 @@ public class TournamentCreationService {
         if (participantCount < 2) {
             throw new IllegalArgumentException("At least two participants are required.");
         }
+        validateSpecialBracket(bracketType, groups, participantCount);
         verifyUsers(userIds);
 
         return new NormalizedTournament(
@@ -175,6 +257,30 @@ public class TournamentCreationService {
         return new NormalizedGroup(groupIndex, groupCode, groupName, slots);
     }
 
+    private void validateSpecialBracket(String bracketType, List<NormalizedGroup> groups, int participantCount) {
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType)) {
+            if (participantCount != 2 || groups.get(0).slots().size() != 2) {
+                throw new IllegalArgumentException("ULTIMATE_BATTLE requires exactly two participants.");
+            }
+            return;
+        }
+        if (!TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType)) {
+            return;
+        }
+
+        Set<String> groupCodes = groups.stream()
+                .map(NormalizedGroup::groupCode)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!groupCodes.equals(new LinkedHashSet<>(RACE_SURVIVAL_GROUP_CODES))) {
+            throw new IllegalArgumentException("RACE_SURVIVAL groups must be TERRAN, ZERG, and PROTOSS.");
+        }
+        for (NormalizedGroup group : groups) {
+            if (group.slots().isEmpty()) {
+                throw new IllegalArgumentException("Each RACE_SURVIVAL group requires at least one participant.");
+            }
+        }
+    }
+
     private NormalizedSlot normalizeSlot(TournamentCreateSlotRequestDto request, int groupIndex, String bracketType) {
         if (request == null) {
             throw new IllegalArgumentException("slot must not be null.");
@@ -186,7 +292,9 @@ public class TournamentCreationService {
         if (TournamentStageEntity.TYPE_DUAL_GROUP.equals(bracketType) && slotNo > MAX_DUAL_GROUP_SIZE) {
             throw new IllegalArgumentException("DUAL_GROUP slotNo must be between 1 and 4.");
         }
-
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType) && slotNo > 2) {
+            throw new IllegalArgumentException("ULTIMATE_BATTLE slotNo must be between 1 and 2.");
+        }
         Long userId = request.getUserId();
         String participantName = trimToNull(request.getParticipantName());
         if (userId == null) {
@@ -461,6 +569,109 @@ public class TournamentCreationService {
         return displayOrder;
     }
 
+    private void createUltimateBattle(
+            TournamentStageEntity stage,
+            NormalizedTournament normalized,
+            Map<SlotKey, TournamentParticipantEntity> participantsBySlot
+    ) {
+        NormalizedGroup normalizedGroup = normalized.groups().get(0);
+        TournamentGroupEntity group = groupRepository.save(TournamentGroupEntity.builder()
+                .stageId(stage.getId())
+                .groupCode(normalizedGroup.groupCode())
+                .groupName(normalizedGroup.groupName())
+                .displayOrder(1)
+                .build());
+        createGroupEntries(group, normalizedGroup, participantsBySlot);
+
+        List<TournamentParticipantEntity> participants = normalizedGroup.slots().stream()
+                .map(slot -> participantsBySlot.get(slot.key()))
+                .filter(Objects::nonNull)
+                .toList();
+        TournamentMatchEntity match = saveMatch(
+                stage,
+                group,
+                "ULTIMATE",
+                TournamentMatchEntity.ROLE_FINAL,
+                1,
+                1,
+                "Ultimate Battle",
+                normalized.bestOf(),
+                TournamentMatchEntity.STATUS_READY,
+                1,
+                1,
+                1
+        );
+        saveParticipantOrByeSlot(match.getId(), 1, participants.get(0));
+        saveParticipantOrByeSlot(match.getId(), 2, participants.get(1));
+
+        TournamentResultSlotEntity champion = resultSlotRepository.save(TournamentResultSlotEntity.builder()
+                .stageId(stage.getId())
+                .groupId(group.getId())
+                .resultKey("CHAMPION")
+                .resultType(TournamentResultSlotEntity.TYPE_CHAMPION)
+                .rankNo(1)
+                .label("Champion")
+                .build());
+        TournamentResultSlotEntity runnerUp = resultSlotRepository.save(TournamentResultSlotEntity.builder()
+                .stageId(stage.getId())
+                .groupId(group.getId())
+                .resultKey("RUNNER_UP")
+                .resultType(TournamentResultSlotEntity.TYPE_RUNNER_UP)
+                .rankNo(2)
+                .label("Runner-up")
+                .build());
+        saveResultSlotRoute(match.getId(), TournamentRouteEntity.OUTCOME_WINNER, champion.getId());
+        saveResultSlotRoute(match.getId(), TournamentRouteEntity.OUTCOME_LOSER, runnerUp.getId());
+    }
+
+    private void createRaceSurvival(
+            TournamentStageEntity stage,
+            NormalizedTournament normalized,
+            Map<SlotKey, TournamentParticipantEntity> participantsBySlot
+    ) {
+        for (NormalizedGroup normalizedGroup : normalized.groups()) {
+            TournamentGroupEntity group = groupRepository.save(TournamentGroupEntity.builder()
+                    .stageId(stage.getId())
+                    .groupCode(normalizedGroup.groupCode())
+                    .groupName(normalizedGroup.groupName())
+                    .displayOrder(normalizedGroup.groupIndex() + 1)
+                    .build());
+            createGroupEntries(group, normalizedGroup, participantsBySlot);
+        }
+
+        TournamentGroupEntity matchesGroup = groupRepository.save(TournamentGroupEntity.builder()
+                .stageId(stage.getId())
+                .groupCode(MATCHES_GROUP_CODE)
+                .groupName("Matches")
+                .displayOrder(RACE_SURVIVAL_GROUP_CODES.size() + 1)
+                .build());
+        TournamentMatchEntity firstMatch = saveMatch(
+                stage,
+                matchesGroup,
+                "M1",
+                TournamentMatchEntity.ROLE_ROUND,
+                1,
+                1,
+                "Match 1",
+                1,
+                TournamentMatchEntity.STATUS_PENDING,
+                1,
+                1,
+                1
+        );
+        saveEmptyRaceSurvivalSlot(firstMatch.getId(), 1);
+        saveEmptyRaceSurvivalSlot(firstMatch.getId(), 2);
+
+        resultSlotRepository.save(TournamentResultSlotEntity.builder()
+                .stageId(stage.getId())
+                .groupId(matchesGroup.getId())
+                .resultKey("CHAMPION")
+                .resultType(TournamentResultSlotEntity.TYPE_CHAMPION)
+                .rankNo(1)
+                .label("Champion")
+                .build());
+    }
+
     private void createGroupEntries(
             TournamentGroupEntity group,
             NormalizedGroup normalizedGroup,
@@ -561,6 +772,16 @@ public class TournamentCreationService {
                 .build());
     }
 
+    private void saveEmptyRaceSurvivalSlot(Long matchId, int slotNo) {
+        matchSlotRepository.save(TournamentMatchSlotEntity.builder()
+                .matchId(matchId)
+                .slotNo(slotNo)
+                .placeholderLabel(RACE_SURVIVAL_EMPTY_SLOT_LABEL)
+                .isWinner(0)
+                .isBye(0)
+                .build());
+    }
+
     private void saveSourceSlot(Long matchId, int slotNo, Long sourceMatchId, String sourceOutcome, String placeholderLabel) {
         matchSlotRepository.save(TournamentMatchSlotEntity.builder()
                 .matchId(matchId)
@@ -636,10 +857,12 @@ public class TournamentCreationService {
     private String normalizeBracketType(String bracketType) {
         String normalized = requireText(bracketType, "bracketType is required.").toUpperCase();
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(normalized)
-                || TournamentStageEntity.TYPE_DUAL_GROUP.equals(normalized)) {
+                || TournamentStageEntity.TYPE_DUAL_GROUP.equals(normalized)
+                || TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(normalized)
+                || TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(normalized)) {
             return normalized;
         }
-        throw new IllegalArgumentException("bracketType must be SINGLE_ELIMINATION or DUAL_GROUP.");
+        throw new IllegalArgumentException("bracketType must be SINGLE_ELIMINATION, DUAL_GROUP, ULTIMATE_BATTLE, or RACE_SURVIVAL.");
     }
 
     private int normalizeBestOf(Integer bestOf) {
@@ -662,6 +885,15 @@ public class TournamentCreationService {
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType)) {
             return MAIN_GROUP_CODE;
         }
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType)) {
+            return MAIN_GROUP_CODE;
+        }
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType)) {
+            if (groupIndex >= 0 && groupIndex < RACE_SURVIVAL_GROUP_CODES.size()) {
+                return RACE_SURVIVAL_GROUP_CODES.get(groupIndex);
+            }
+            return "RACE" + (groupIndex + 1);
+        }
         return defaultDualGroupCode(groupIndex);
     }
 
@@ -677,6 +909,12 @@ public class TournamentCreationService {
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType)) {
             return MAIN_GROUP_NAME;
         }
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType)) {
+            return "Ultimate Battle";
+        }
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType)) {
+            return groupCode;
+        }
         return groupCode + " Group";
     }
 
@@ -690,6 +928,12 @@ public class TournamentCreationService {
     private String defaultStageName(String bracketType) {
         if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType)) {
             return MAIN_GROUP_NAME;
+        }
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType)) {
+            return "Ultimate Battle";
+        }
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType)) {
+            return "Race Survival";
         }
         return "Dual Group";
     }

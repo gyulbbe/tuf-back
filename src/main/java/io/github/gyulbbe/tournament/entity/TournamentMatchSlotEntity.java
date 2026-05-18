@@ -74,10 +74,26 @@ public class TournamentMatchSlotEntity {
 
     public void assignParticipant(Long participantId) {
         this.participantId = participantId;
+        this.sourceMatchId = null;
+        this.sourceOutcome = null;
+        this.placeholderLabel = null;
+        this.score = null;
+        this.isWinner = 0;
+        this.isBye = 0;
+    }
+
+    public void clearParticipant(String placeholderLabel) {
+        this.participantId = null;
+        this.sourceMatchId = null;
+        this.sourceOutcome = null;
+        this.placeholderLabel = placeholderLabel;
+        this.score = null;
+        this.isWinner = 0;
+        this.isBye = 0;
     }
 
     public void clearParticipant() {
-        this.participantId = null;
+        clearParticipant(null);
     }
 
     public void updateScore(Integer score) {

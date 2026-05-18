@@ -46,6 +46,7 @@ public class DraftLiveCommandService {
     private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftLivePreviewRelayService draftLivePreviewRelayService;
     private final DraftAiAdviceService draftAiAdviceService;
+    private final ProleagueDraftRosterSyncService proleagueDraftRosterSyncService;
 
     public DraftLiveSnapshotResponseDto startSession(Long sessionId, AuthActor actor) {
         DraftSessionEntity session = loadSessionForUpdate(sessionId);
@@ -162,6 +163,7 @@ public class DraftLiveCommandService {
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
+            proleagueDraftRosterSyncService.syncIfLinked(session);
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_FINAL_PICK_FINISHED);
@@ -185,6 +187,7 @@ public class DraftLiveCommandService {
 
         DraftLiveSnapshotResponseDto snapshot = draftSnapshotService.getSnapshot(sessionId, actor);
         if ("FINISHED".equals(snapshot.getSession().getStatus())) {
+            proleagueDraftRosterSyncService.syncIfLinked(session);
             draftLiveSessionTracker.refreshAfterCommit();
             draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
             publishAfterCommit(sessionId, DraftLiveEventType.SESSION_FINISHED, actor, MESSAGE_SESSION_FINISHED);
@@ -205,6 +208,7 @@ public class DraftLiveCommandService {
         }
 
         session.finish(LocalDateTime.now());
+        proleagueDraftRosterSyncService.syncIfLinked(session);
         draftLiveSessionTracker.refreshAfterCommit();
         draftLivePreviewRelayService.clearPreviewAfterCommit(sessionId, DraftLivePreviewEndReason.SESSION_FINISHED);
 

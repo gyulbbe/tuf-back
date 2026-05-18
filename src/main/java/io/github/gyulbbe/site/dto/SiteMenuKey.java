@@ -15,8 +15,11 @@ public enum SiteMenuKey {
     DRAFT_CONTENT("draft.content"),
     GAME("game"),
     GALLERY("gallery"),
+    ADMIN_LEAGUE("admin.league"),
+    ADMIN_PROLEAGUE_HISTORY("admin.proleagueHistory"),
     ADMIN_DRAFT_HISTORY("admin.draftHistory"),
     ADMIN_USERS("admin.users"),
+    ADMIN_HOME_SCHEDULES("admin.homeSchedules"),
     ADMIN_MAPS("admin.maps"),
     EXTERNAL_RECORD_MANAGER("external.recordManager"),
     EXTERNAL_BETTING("external.betting");

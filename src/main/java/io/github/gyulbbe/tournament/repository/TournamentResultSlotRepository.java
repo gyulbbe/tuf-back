@@ -18,6 +18,14 @@ public interface TournamentResultSlotRepository extends JpaRepository<Tournament
 
     List<TournamentResultSlotEntity> findAllByGroupIdInOrderByRankNoAscIdAsc(List<Long> groupIds);
 
+    @Query("""
+            select count(r)
+            from TournamentResultSlotEntity r
+            where r.stageId in :stageIds
+              and r.participantId is not null
+            """)
+    long countDecidedByStageIdIn(@Param("stageIds") List<Long> stageIds);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from TournamentResultSlotEntity r where r.groupId in :groupIds")
     int deleteByGroupIdIn(@Param("groupIds") List<Long> groupIds);

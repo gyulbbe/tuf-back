@@ -1,5 +1,7 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.entity.MapEntity;
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentSummaryResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
@@ -66,6 +68,9 @@ class TournamentServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private MapRepository mapRepository;
 
     @InjectMocks
     private TournamentService tournamentService;
@@ -260,6 +265,45 @@ class TournamentServiceTest {
                 .getParticipant();
         assertThat(resultSlotParticipant.getDisplayName()).isEqualTo("member01");
         assertThat(resultSlotParticipant.getParticipantName()).isEqualTo("Stored Alias");
+    }
+
+    @Test
+    void getPublicTournament_includesMatchMapName() {
+        TournamentStageEntity stage = stage(100L);
+        TournamentGroupEntity group = group(200L, stage.getId());
+        TournamentMatchEntity match = TournamentMatchEntity.builder()
+                .id(300L)
+                .stageId(stage.getId())
+                .groupId(group.getId())
+                .matchKey("M1")
+                .matchRole(TournamentMatchEntity.ROLE_ROUND)
+                .displayName("Match 1")
+                .bestOf(1)
+                .status(TournamentMatchEntity.STATUS_READY)
+                .mapId(700L)
+                .displayOrder(1)
+                .build();
+        MapEntity map = MapEntity.builder()
+                .id(700L)
+                .mapName("Polypoid")
+                .build();
+
+        givenPublicTournament(1L);
+        given(participantRepository.findAllByTournamentIdOrderBySeedNoAscIdAsc(1L)).willReturn(List.of());
+        given(stageRepository.findAllByTournamentIdOrderByDisplayOrderAsc(1L)).willReturn(List.of(stage));
+        given(groupRepository.findAllByStageIdInOrderByDisplayOrderAsc(List.of(stage.getId()))).willReturn(List.of(group));
+        given(groupEntryRepository.findAllByGroupIdInOrderByGroupSeedNoAsc(List.of(group.getId()))).willReturn(List.of());
+        given(matchRepository.findAllByGroupIdInOrderByDisplayOrderAsc(List.of(group.getId()))).willReturn(List.of(match));
+        given(matchSlotRepository.findAllByMatchIdInOrderBySlotNoAsc(List.of(match.getId()))).willReturn(List.of());
+        given(resultSlotRepository.findAllByGroupIdInOrderByRankNoAscIdAsc(List.of(group.getId()))).willReturn(List.of());
+        given(mapRepository.findAllById(List.of(map.getId()))).willReturn(List.of(map));
+
+        var response = tournamentService.getPublicTournament(1L);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        var responseMatch = response.getData().getGroups().get(0).getMatches().get(0);
+        assertThat(responseMatch.getMapId()).isEqualTo(700L);
+        assertThat(responseMatch.getMapName()).isEqualTo("Polypoid");
     }
 
     private void givenPublicTournament(Long tournamentId) {

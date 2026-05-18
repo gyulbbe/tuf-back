@@ -27,9 +27,8 @@ public class LeagueQueryRepositoryImpl implements LeagueQueryRepository {
     public Page<Long> findAdminProleagueIds(String keyword, String status, int page, int size) {
         QLeagueEntity league = QLeagueEntity.leagueEntity;
         BooleanExpression condition = adminListCondition(league, keyword, status);
-        if (condition == null) {
-            condition = league.id.isNotNull();
-        }
+        BooleanExpression proleagueCondition = league.leagueType.eq(LeagueEntity.TYPE_PROLEAGUE);
+        condition = condition == null ? proleagueCondition : condition.and(proleagueCondition);
 
         Long totalResult = queryFactory
                 .select(league.count())
@@ -100,7 +99,8 @@ public class LeagueQueryRepositoryImpl implements LeagueQueryRepository {
     }
 
     private BooleanExpression historyCondition(QLeagueEntity league, String keyword, LocalDate fromDate, LocalDate toDate) {
-        BooleanExpression condition = league.status.eq(LeagueEntity.STATUS_FINISHED);
+        BooleanExpression condition = league.status.eq(LeagueEntity.STATUS_FINISHED)
+                .and(league.leagueType.eq(LeagueEntity.TYPE_PROLEAGUE));
 
         if (fromDate != null) {
             condition = condition.and(league.endDate.goe(fromDate));

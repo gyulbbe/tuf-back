@@ -10,6 +10,10 @@ import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueLinkExcludedUserResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueLinkSourceResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueLinkTeamResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueTeamPickerRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
@@ -29,6 +33,12 @@ import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftQueryRepository;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
+import io.github.gyulbbe.league.entity.LeagueEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamMemberEntity;
+import io.github.gyulbbe.league.repository.LeagueRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamMemberRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -40,12 +50,16 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -65,21 +79,30 @@ public class DraftService {
     private final DraftPickRepository draftPickRepository;
     private final DraftQueryRepository draftQueryRepository;
     private final UserRepository userRepository;
+    private final LeagueRepository leagueRepository;
+    private final ProleagueTeamRepository proleagueTeamRepository;
+    private final ProleagueTeamMemberRepository proleagueTeamMemberRepository;
     private final DraftLiveSessionTracker draftLiveSessionTracker;
     private final DraftPermissionService draftPermissionService;
     private final DraftOrderPatternService draftOrderPatternService;
+    private final ProleagueDraftRosterSyncService proleagueDraftRosterSyncService;
 
     public ResponseDto<DraftSessionDetailResponseDto> createSession(DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
             draftPermissionService.assertAuthenticated(actor);
             validateSessionRequest(requestDto, false);
+            ResolvedProleagueDraftLink proleagueLink = resolveProleagueDraftLink(requestDto);
+            Integer teamCount = proleagueLink == null
+                    ? requestDto.getTeamCount()
+                    : proleagueLink.teams().size();
 
             DraftSessionEntity entity = DraftSessionEntity.builder()
                     .title(requestDto.getTitle())
                     .ownerUserId(actor.userPk())
+                    .proleagueId(proleagueLink == null ? null : proleagueLink.league().getId())
                     .status(defaultIfBlank(requestDto.getStatus(), "READY"))
                     .orderMode(resolveOrderMode(requestDto.getOrderMode(), "BASIC"))
-                    .teamCount(requestDto.getTeamCount())
+                    .teamCount(teamCount)
                     .pickTimeSeconds(requestDto.getPickTimeSeconds())
                     .currentPickNo(requestDto.getCurrentPickNo() != null ? requestDto.getCurrentPickNo() : 1)
                     .currentDraftTeamId(null)
@@ -89,7 +112,11 @@ public class DraftService {
                     .build();
 
             DraftSessionEntity saved = draftSessionRepository.save(entity);
-            createDefaultTeams(saved.getId(), saved.getTeamCount());
+            if (proleagueLink == null) {
+                createDefaultTeams(saved.getId(), saved.getTeamCount());
+            } else {
+                createLinkedProleagueTeams(saved.getId(), proleagueLink);
+            }
             if ("LIVE".equals(saved.getStatus())) {
                 draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
             }
@@ -143,17 +170,36 @@ public class DraftService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public ResponseDto<DraftProleagueLinkSourceResponseDto> getProleagueLinkSource(Long leagueId) {
+        try {
+            return ResponseDto.success(buildProleagueLinkSource(leagueId));
+        } catch (Exception e) {
+            log.error("Failed to get proleague draft link source. leagueId={}", leagueId, e);
+            return ResponseDto.fail(e.getMessage());
+        }
+    }
+
     public ResponseDto<DraftSessionDetailResponseDto> updateSession(Long sessionId, DraftSessionRequestDto requestDto, AuthActor actor) {
         try {
             DraftSessionEntity entity = getSessionEntityForUpdate(sessionId);
             draftPermissionService.assertOwnerOrAdmin(entity, actor);
             validateSessionRequest(requestDto, true);
+            if (requestDto.getProleagueId() != null && !Objects.equals(requestDto.getProleagueId(), entity.getProleagueId())) {
+                throw new IllegalArgumentException("Proleague link cannot be changed after draft session creation.");
+            }
+            if (entity.getProleagueId() != null
+                    && requestDto.getTeamCount() != null
+                    && !Objects.equals(requestDto.getTeamCount(), entity.getTeamCount())) {
+                throw new IllegalArgumentException("Linked proleague draft team count cannot be changed.");
+            }
 
             Long currentDraftTeamId = requestDto.getCurrentDraftTeamId();
             if (currentDraftTeamId != null && !draftTeamRepository.existsByIdAndDraftSessionId(currentDraftTeamId, sessionId)) {
                 throw new IllegalArgumentException("Current draft team does not belong to this session.");
             }
 
+            String previousStatus = entity.getStatus();
             entity.update(
                     defaultIfBlank(requestDto.getTitle(), entity.getTitle()),
                     defaultIfBlank(requestDto.getStatus(), entity.getStatus()),
@@ -166,6 +212,9 @@ public class DraftService {
                     requestDto.getStartedAt() != null ? requestDto.getStartedAt() : entity.getStartedAt(),
                     requestDto.getEndedAt() != null ? requestDto.getEndedAt() : entity.getEndedAt()
             );
+            if (!"FINISHED".equals(previousStatus) && "FINISHED".equals(entity.getStatus())) {
+                proleagueDraftRosterSyncService.syncIfLinked(entity);
+            }
 
             if ("LIVE".equals(entity.getStatus())) {
                 draftLiveSessionTracker.markLiveSessionPresentAfterCommit();
@@ -175,6 +224,7 @@ public class DraftService {
 
             return ResponseDto.success(buildSessionDetail(sessionId));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             log.error("Failed to update draft session. sessionId={}", sessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
@@ -350,6 +400,7 @@ public class DraftService {
             DraftSessionEntity session = getSessionEntity(requestDto.getDraftSessionId());
             draftPermissionService.assertOwnerOrAdmin(session, actor);
             getUserEntity(requestDto.getCandidateUserId());
+            assertCandidateAllowedForLinkedProleague(session, requestDto.getCandidateUserId());
             validatePickedTeamBelongsToSession(requestDto.getDraftSessionId(), requestDto.getPickedDraftTeamId());
 
             DraftCandidateEntity entity = DraftCandidateEntity.builder()
@@ -591,9 +642,13 @@ public class DraftService {
             draftPickRepository.save(entity);
             candidate.markPicked(requestDto.getDraftTeamId(), pickedAt);
             advanceSessionAfterPick(session, requestDto.getPickNo(), pickedAt);
+            if ("FINISHED".equals(session.getStatus())) {
+                proleagueDraftRosterSyncService.syncIfLinked(session);
+            }
 
             return ResponseDto.success(requirePick(requestDto.getDraftSessionId(), requestDto.getPickNo()));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             log.error("Failed to create draft pick.", e);
             return ResponseDto.fail(e.getMessage());
         }
@@ -681,6 +736,8 @@ public class DraftService {
         detail.setOwnerUserId(summary.getOwnerUserId());
         detail.setOwnerUserLoginId(summary.getOwnerUserLoginId());
         detail.setOwnerName(summary.getOwnerName());
+        detail.setProleagueId(summary.getProleagueId());
+        detail.setProleagueName(summary.getProleagueName());
         detail.setStatus(summary.getStatus());
         detail.setOrderMode(summary.getOrderMode());
         detail.setTeamCount(summary.getTeamCount());
@@ -714,6 +771,51 @@ public class DraftService {
         order.setRoundNo(((order.getPickNo() - 1) / teamCount) + 1);
     }
 
+    private ResolvedProleagueDraftLink resolveProleagueDraftLink(DraftSessionRequestDto requestDto) {
+        if (requestDto == null || requestDto.getProleagueId() == null) {
+            return null;
+        }
+
+        LeagueEntity league = requireProleague(requestDto.getProleagueId());
+        List<ProleagueTeamEntity> teams = proleagueTeamRepository.findAllByLeagueIdOrderByDisplayOrderAscIdAsc(league.getId());
+        if (teams.isEmpty()) {
+            throw new IllegalArgumentException("Linked proleague must have at least one team.");
+        }
+        if (requestDto.getTeamCount() != null && !Objects.equals(requestDto.getTeamCount(), teams.size())) {
+            throw new IllegalArgumentException("Team count must match linked proleague teams.");
+        }
+
+        Map<Long, Long> pickersByTeamId = normalizeProleagueTeamPickers(requestDto.getProleagueTeamPickers());
+        for (ProleagueTeamEntity team : teams) {
+            Long pickerUserId = pickersByTeamId.get(team.getId());
+            if (pickerUserId == null) {
+                throw new IllegalArgumentException("Picker is required for every linked proleague team.");
+            }
+            if (!Objects.equals(pickerUserId, team.getLeaderId()) && !Objects.equals(pickerUserId, team.getViceLeaderId())) {
+                throw new IllegalArgumentException("Picker must be the team leader or vice leader.");
+            }
+        }
+
+        return new ResolvedProleagueDraftLink(league, teams, pickersByTeamId);
+    }
+
+    private Map<Long, Long> normalizeProleagueTeamPickers(List<DraftProleagueTeamPickerRequestDto> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Long> pickers = new LinkedHashMap<>();
+        for (DraftProleagueTeamPickerRequestDto request : requests) {
+            if (request == null || request.getProleagueTeamId() == null || request.getPickerUserId() == null) {
+                throw new IllegalArgumentException("Proleague team picker entries require proleagueTeamId and pickerUserId.");
+            }
+            if (pickers.put(request.getProleagueTeamId(), request.getPickerUserId()) != null) {
+                throw new IllegalArgumentException("Duplicate proleague team picker entry is not allowed.");
+            }
+        }
+        return pickers;
+    }
+
     private Optional<DraftTeamEntity> findReplaceableDefaultTeam(Long sessionId, Integer displayOrder) {
         return draftTeamRepository.findByDraftSessionIdAndDisplayOrder(sessionId, displayOrder)
                 .filter(team -> team.getPickerUserId() == null)
@@ -737,8 +839,122 @@ public class DraftService {
         draftTeamRepository.saveAll(defaultTeams);
     }
 
+    private void createLinkedProleagueTeams(Long sessionId, ResolvedProleagueDraftLink link) {
+        List<DraftTeamEntity> draftTeams = link.teams().stream()
+                .map(team -> DraftTeamEntity.builder()
+                        .draftSessionId(sessionId)
+                        .proleagueTeamId(team.getId())
+                        .teamName(team.getTeamName())
+                        .displayOrder(team.getDisplayOrder())
+                        .pickerUserId(link.pickersByTeamId().get(team.getId()))
+                        .build())
+                .toList();
+        draftTeamRepository.saveAll(draftTeams);
+    }
+
     private String buildDefaultTeamName(int displayOrder) {
         return displayOrder + "팀";
+    }
+
+    private DraftProleagueLinkSourceResponseDto buildProleagueLinkSource(Long leagueId) {
+        LeagueEntity league = requireProleague(leagueId);
+        List<ProleagueTeamEntity> teams = proleagueTeamRepository.findAllByLeagueIdOrderByDisplayOrderAscIdAsc(league.getId());
+        Map<Long, UserEntity> usersById = loadUsersById(collectLinkSourceUserIds(teams, league.getId()));
+
+        DraftProleagueLinkSourceResponseDto response = new DraftProleagueLinkSourceResponseDto();
+        response.setLeagueId(league.getId());
+        response.setLeagueName(league.getLeagueName());
+        response.setSeasonName(league.getSeasonName());
+        response.setStatus(league.getStatus());
+        response.setTeams(teams.stream()
+                .map(team -> toLinkTeamResponse(team, usersById))
+                .toList());
+        response.setExcludedUsers(toExcludedUserResponses(teams, league.getId(), usersById));
+        return response;
+    }
+
+    private DraftProleagueLinkTeamResponseDto toLinkTeamResponse(
+            ProleagueTeamEntity team,
+            Map<Long, UserEntity> usersById
+    ) {
+        DraftProleagueLinkTeamResponseDto response = new DraftProleagueLinkTeamResponseDto();
+        response.setProleagueTeamId(team.getId());
+        response.setTeamName(team.getTeamName());
+        response.setDisplayOrder(team.getDisplayOrder());
+        response.setLeaderUserId(team.getLeaderId());
+        response.setLeaderUserLoginId(loginId(usersById.get(team.getLeaderId())));
+        response.setViceLeaderUserId(team.getViceLeaderId());
+        response.setViceLeaderUserLoginId(loginId(usersById.get(team.getViceLeaderId())));
+        return response;
+    }
+
+    private List<DraftProleagueLinkExcludedUserResponseDto> toExcludedUserResponses(
+            List<ProleagueTeamEntity> teams,
+            Long leagueId,
+            Map<Long, UserEntity> usersById
+    ) {
+        Map<Long, String> reasonsByUserId = new LinkedHashMap<>();
+        for (ProleagueTeamEntity team : teams) {
+            if (team.getLeaderId() != null) {
+                reasonsByUserId.putIfAbsent(team.getLeaderId(), "TEAM_LEADER");
+            }
+            if (team.getViceLeaderId() != null) {
+                reasonsByUserId.putIfAbsent(team.getViceLeaderId(), "VICE_LEADER");
+            }
+        }
+        proleagueTeamMemberRepository.findAllByLeagueIdAndStatusOrderByDisplayOrderAscIdAsc(
+                        leagueId,
+                        ProleagueTeamMemberEntity.STATUS_ACTIVE
+                )
+                .forEach(member -> reasonsByUserId.putIfAbsent(member.getUserId(), "TEAM_MEMBER"));
+
+        return reasonsByUserId.entrySet().stream()
+                .map(entry -> {
+                    DraftProleagueLinkExcludedUserResponseDto response = new DraftProleagueLinkExcludedUserResponseDto();
+                    response.setUserId(entry.getKey());
+                    response.setUserLoginId(loginId(usersById.get(entry.getKey())));
+                    response.setReason(entry.getValue());
+                    return response;
+                })
+                .toList();
+    }
+
+    private Collection<Long> collectLinkSourceUserIds(List<ProleagueTeamEntity> teams, Long leagueId) {
+        Set<Long> userIds = new HashSet<>();
+        for (ProleagueTeamEntity team : teams) {
+            if (team.getLeaderId() != null) {
+                userIds.add(team.getLeaderId());
+            }
+            if (team.getViceLeaderId() != null) {
+                userIds.add(team.getViceLeaderId());
+            }
+        }
+        proleagueTeamMemberRepository.findAllByLeagueIdAndStatusOrderByDisplayOrderAscIdAsc(
+                        leagueId,
+                        ProleagueTeamMemberEntity.STATUS_ACTIVE
+                )
+                .forEach(member -> userIds.add(member.getUserId()));
+        return userIds;
+    }
+
+    private Map<Long, UserEntity> loadUsersById(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(UserEntity::getId, user -> user));
+    }
+
+    private LeagueEntity requireProleague(Long leagueId) {
+        if (leagueId == null) {
+            throw new IllegalArgumentException("Proleague id is required.");
+        }
+        return leagueRepository.findByIdAndLeagueType(leagueId, LeagueEntity.TYPE_PROLEAGUE)
+                .orElseThrow(() -> new IllegalArgumentException("Linked proleague could not be found."));
+    }
+
+    private String loginId(UserEntity user) {
+        return user == null ? null : user.getUserId();
     }
 
     private DraftSessionSummaryResponseDto requireSessionSummary(Long sessionId) {
@@ -814,11 +1030,28 @@ public class DraftService {
                 .orElseThrow(() -> new IllegalArgumentException("User could not be found."));
     }
 
+    private void assertCandidateAllowedForLinkedProleague(DraftSessionEntity session, Long candidateUserId) {
+        if (session.getProleagueId() == null || candidateUserId == null) {
+            return;
+        }
+        if (proleagueTeamRepository.existsLeaderOrViceLeaderByLeagueIdAndUserId(session.getProleagueId(), candidateUserId)) {
+            throw new IllegalArgumentException("Proleague team leaders and vice leaders cannot be draft candidates.");
+        }
+        if (proleagueTeamMemberRepository.existsByLeagueIdAndUserIdAndStatus(
+                session.getProleagueId(),
+                candidateUserId,
+                ProleagueTeamMemberEntity.STATUS_ACTIVE
+        )) {
+            throw new IllegalArgumentException("Existing proleague team members cannot be draft candidates.");
+        }
+    }
+
     private void validateSessionRequest(DraftSessionRequestDto requestDto, boolean allowPartial) {
+        boolean linkedProleagueCreate = !allowPartial && requestDto != null && requestDto.getProleagueId() != null;
         if (!allowPartial || requestDto.getTitle() != null) {
             validateText(requestDto.getTitle(), "Session title");
         }
-        if (!allowPartial || requestDto.getTeamCount() != null) {
+        if ((!allowPartial && !linkedProleagueCreate) || requestDto.getTeamCount() != null) {
             validatePositive(requestDto.getTeamCount(), "Team count");
             if (requestDto.getTeamCount() != null && requestDto.getTeamCount() <= 1) {
                 throw new IllegalArgumentException("Team count must be at least 2.");
@@ -1022,6 +1255,13 @@ public class DraftService {
             long candidateCount,
             long orderCount,
             long pickCount
+    ) {
+    }
+
+    private record ResolvedProleagueDraftLink(
+            LeagueEntity league,
+            List<ProleagueTeamEntity> teams,
+            Map<Long, Long> pickersByTeamId
     ) {
     }
 }

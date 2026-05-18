@@ -8,6 +8,7 @@ import io.github.gyulbbe.map.dto.AdminMapRequest;
 import io.github.gyulbbe.map.dto.AdminMapResponse;
 import io.github.gyulbbe.map.entity.MapEntity;
 import io.github.gyulbbe.map.repository.MapRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,9 +32,11 @@ public class AdminMapService {
     private static final int DEFAULT_SIZE = 20;
     private static final int MAX_SIZE = 50;
     private static final String MAP_IN_USE_MESSAGE = "일정 대진에서 사용 중인 맵은 삭제할 수 없습니다.";
+    private static final String TOURNAMENT_MAP_IN_USE_MESSAGE = "토너먼트 경기에서 사용 중인 맵은 삭제할 수 없습니다.";
 
     private final MapRepository mapRepository;
     private final HomeScheduleMatchRepository homeScheduleMatchRepository;
+    private final TournamentMatchRepository tournamentMatchRepository;
 
     @Transactional(readOnly = true)
     public ResponseDto<AdminMapPageResponse> listMaps(String keyword, Integer page, Integer size) {
@@ -113,6 +116,9 @@ public class AdminMapService {
             }
             if (homeScheduleMatchRepository.existsByMapId(mapId)) {
                 return conflict(MAP_IN_USE_MESSAGE);
+            }
+            if (tournamentMatchRepository.existsByMapId(mapId)) {
+                return conflict(TOURNAMENT_MAP_IN_USE_MESSAGE);
             }
 
             mapRepository.deleteById(mapId);

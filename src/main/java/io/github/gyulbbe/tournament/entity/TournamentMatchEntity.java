@@ -78,6 +78,9 @@ public class TournamentMatchEntity {
     @Column(name = "WINNER_PARTICIPANT_ID")
     private Long winnerParticipantId;
 
+    @Column(name = "MAP_ID")
+    private Long mapId;
+
     @Column(name = "SCHEDULED_AT")
     private LocalDateTime scheduledAt;
 
@@ -100,6 +103,10 @@ public class TournamentMatchEntity {
         this.status = STATUS_READY;
     }
 
+    public void markPending() {
+        this.status = STATUS_PENDING;
+    }
+
     public void finish(Long winnerParticipantId) {
         this.status = STATUS_FINISHED;
         this.winnerParticipantId = winnerParticipantId;
@@ -107,6 +114,10 @@ public class TournamentMatchEntity {
 
     public void cancel() {
         this.status = STATUS_CANCELLED;
+    }
+
+    public void assignMap(Long mapId) {
+        this.mapId = mapId;
     }
 
     public void reschedule(LocalDateTime scheduledAt) {

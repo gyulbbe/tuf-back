@@ -53,6 +53,10 @@ public class TournamentEntity {
     @Column(name = "UPDATE_DATE")
     private LocalDateTime updateDate;
 
+    public void updateTitle(String title) {
+        this.title = title;
+    }
+
     public void finish() {
         this.status = STATUS_FINISHED;
     }

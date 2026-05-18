@@ -23,4 +23,16 @@ public interface DraftTeamRepository extends JpaRepository<DraftTeamEntity, Long
     @Modifying
     @Query("delete from DraftTeamEntity t where t.draftSessionId = :draftSessionId")
     int deleteByDraftSessionId(@Param("draftSessionId") Long draftSessionId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update DraftTeamEntity t
+            set t.proleagueTeamId = null
+            where t.proleagueTeamId in (
+                select pt.id
+                from ProleagueTeamEntity pt
+                where pt.leagueId = :leagueId
+            )
+            """)
+    int unlinkProleagueTeamsByLeagueId(@Param("leagueId") Long leagueId);
 }

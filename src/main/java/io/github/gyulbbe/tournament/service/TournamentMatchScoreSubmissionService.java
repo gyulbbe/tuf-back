@@ -6,15 +6,21 @@ import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDt
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentEntity;
+import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
+import io.github.gyulbbe.tournament.entity.TournamentGroupEntryEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
+import io.github.gyulbbe.tournament.entity.TournamentResultSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
+import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
+import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
+import io.github.gyulbbe.tournament.repository.TournamentResultSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
 import io.github.gyulbbe.tournament.repository.TournamentStageRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
@@ -25,8 +31,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -42,12 +50,21 @@ public class TournamentMatchScoreSubmissionService {
 
     private static final Set<String> ADMIN_ROLES = Set.of("ROLE_MANAGER", "ROLE_MASTER", "ROLE_ADMIN");
     private static final String AUTO_REJECT_NOTE = "Another score submission was approved.";
+    private static final String RACE_TERRAN = "TERRAN";
+    private static final String RACE_ZERG = "ZERG";
+    private static final String RACE_PROTOSS = "PROTOSS";
+    private static final String MATCHES_GROUP_CODE = "MATCHES";
+    private static final String RACE_SURVIVAL_EMPTY_SLOT_LABEL = "선수 지정";
+    private static final List<String> RACE_ORDER = List.of(RACE_TERRAN, RACE_ZERG, RACE_PROTOSS);
 
     private final TournamentRepository tournamentRepository;
+    private final TournamentGroupRepository groupRepository;
+    private final TournamentGroupEntryRepository groupEntryRepository;
     private final TournamentMatchRepository matchRepository;
     private final TournamentStageRepository stageRepository;
     private final TournamentMatchSlotRepository matchSlotRepository;
     private final TournamentParticipantRepository participantRepository;
+    private final TournamentResultSlotRepository resultSlotRepository;
     private final TournamentMatchScoreSubmissionRepository submissionRepository;
     private final UserRepository userRepository;
     private final TournamentBracketProgressionService progressionService;
@@ -65,7 +82,7 @@ public class TournamentMatchScoreSubmissionService {
         validateScoreSubmittableMatch(context);
 
         Long submittedByParticipantId = resolveSubmitterParticipantId(context, actorUserId, actorRole);
-        ScoreDecision decision = decideScore(context.match(), request, context.slotsByNo());
+        ScoreDecision decision = decideScore(context, request);
         String submitterRole = isAdmin(actorRole)
                 ? TournamentMatchScoreSubmissionEntity.ROLE_ADMIN
                 : TournamentMatchScoreSubmissionEntity.ROLE_PLAYER;
@@ -123,7 +140,7 @@ public class TournamentMatchScoreSubmissionService {
             throw invalid("Only PENDING score submissions can be approved.");
         }
 
-        ScoreDecision decision = decideStoredScore(context.match(), submission);
+        ScoreDecision decision = decideStoredScore(context, submission);
         if (!Objects.equals(submission.getWinnerSlotNo(), decision.winnerSlotNo())) {
             throw invalid("Stored winner slot does not match submission scores.");
         }
@@ -140,12 +157,16 @@ public class TournamentMatchScoreSubmissionService {
         submission.approve(adminUserId, reviewedAt, null);
         rejectOtherPendingSubmissions(tournamentId, matchId, submissionId, adminUserId, reviewedAt);
 
-        progressionService.propagateManualResult(
-                context.match().getId(),
-                context.stage().getId(),
-                winnerSlot.getParticipantId(),
-                loserSlot.getParticipantId()
-        );
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(context.stage().getStageType())) {
+            progressRaceSurvival(context, winnerSlot.getParticipantId(), loserSlot.getParticipantId());
+        } else {
+            progressionService.propagateManualResult(
+                    context.match().getId(),
+                    context.stage().getId(),
+                    winnerSlot.getParticipantId(),
+                    loserSlot.getParticipantId()
+            );
+        }
 
         return tournamentService.buildDetail(context.tournament());
     }
@@ -276,17 +297,23 @@ public class TournamentMatchScoreSubmissionService {
                 .findFirst();
     }
 
-    private ScoreDecision decideScore(
-            TournamentMatchEntity match,
-            TournamentScoreSubmissionRequestDto request,
-            Map<Integer, TournamentMatchSlotEntity> slotsByNo
-    ) {
-        Map<Integer, Integer> scoresBySlotNo = normalizeScores(request, slotsByNo);
-        return decideScores(match.getBestOf(), scoresBySlotNo.get(1), scoresBySlotNo.get(2));
+    private ScoreDecision decideScore(MatchContext context, TournamentScoreSubmissionRequestDto request) {
+        Map<Integer, Integer> scoresBySlotNo = normalizeScores(request, context.slotsByNo());
+        return decideScores(
+                context.stage().getStageType(),
+                context.match().getBestOf(),
+                scoresBySlotNo.get(1),
+                scoresBySlotNo.get(2)
+        );
     }
 
-    private ScoreDecision decideStoredScore(TournamentMatchEntity match, TournamentMatchScoreSubmissionEntity submission) {
-        return decideScores(match.getBestOf(), submission.getSlot1Score(), submission.getSlot2Score());
+    private ScoreDecision decideStoredScore(MatchContext context, TournamentMatchScoreSubmissionEntity submission) {
+        return decideScores(
+                context.stage().getStageType(),
+                context.match().getBestOf(),
+                submission.getSlot1Score(),
+                submission.getSlot2Score()
+        );
     }
 
     private Map<Integer, Integer> normalizeScores(
@@ -319,7 +346,10 @@ public class TournamentMatchScoreSubmissionService {
         return scoresBySlotNo;
     }
 
-    private ScoreDecision decideScores(Integer bestOf, Integer slot1Score, Integer slot2Score) {
+    private ScoreDecision decideScores(String stageType, Integer bestOf, Integer slot1Score, Integer slot2Score) {
+        if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(stageType)) {
+            return decideUltimateBattleScores(bestOf, slot1Score, slot2Score);
+        }
         int requiredWins = validateBestOf(bestOf) / 2 + 1;
 
         boolean slot1Wins = slot1Score == requiredWins && slot2Score < requiredWins;
@@ -333,11 +363,136 @@ public class TournamentMatchScoreSubmissionService {
         return new ScoreDecision(slot1Score, slot2Score, 2, 1, slot2Score, slot1Score);
     }
 
+    private ScoreDecision decideUltimateBattleScores(Integer bestOf, Integer slot1Score, Integer slot2Score) {
+        int totalGames = validateBestOf(bestOf);
+        if (slot1Score + slot2Score != totalGames) {
+            throw invalid("ULTIMATE_BATTLE scores must add up to bestOf.");
+        }
+        if (Objects.equals(slot1Score, slot2Score)) {
+            throw invalid("ULTIMATE_BATTLE scores cannot be tied.");
+        }
+        if (slot1Score > slot2Score) {
+            return new ScoreDecision(slot1Score, slot2Score, 1, 2, slot1Score, slot2Score);
+        }
+        return new ScoreDecision(slot1Score, slot2Score, 2, 1, slot2Score, slot1Score);
+    }
+
     private int validateBestOf(Integer bestOf) {
         if (bestOf == null || bestOf <= 0 || bestOf % 2 == 0) {
             throw invalid("bestOf must be a positive odd number.");
         }
         return bestOf;
+    }
+
+    private void progressRaceSurvival(MatchContext context, Long winnerParticipantId, Long loserParticipantId) {
+        TournamentParticipantEntity loser = participantRepository.findById(loserParticipantId)
+                .orElseThrow(() -> notFound("Loser participant not found."));
+        loser.updateStatus(TournamentParticipantEntity.STATUS_DROPPED);
+
+        RaceSurvivalState state = loadRaceSurvivalState(context.stage().getId());
+        String winnerRace = state.raceByParticipantId().get(winnerParticipantId);
+        String loserRace = state.raceByParticipantId().get(loserParticipantId);
+        if (winnerRace == null || loserRace == null) {
+            throw invalid("RACE_SURVIVAL participant group is invalid.");
+        }
+
+        Set<String> aliveRaces = state.aliveRaces();
+        if (aliveRaces.size() <= 1) {
+            finishRaceSurvival(context, winnerParticipantId);
+            return;
+        }
+
+        List<TournamentParticipantEntity> eligibleOpponents = state.aliveOpponents(winnerRace, winnerParticipantId);
+        if (eligibleOpponents.isEmpty()) {
+            finishRaceSurvival(context, winnerParticipantId);
+            return;
+        }
+
+        Long opponentParticipantId = eligibleOpponents.size() == 1 ? eligibleOpponents.get(0).getId() : null;
+        createNextRaceSurvivalMatch(context, winnerParticipantId, opponentParticipantId);
+    }
+
+    private RaceSurvivalState loadRaceSurvivalState(Long stageId) {
+        List<TournamentGroupEntity> raceGroups = groupRepository.findAllByStageIdOrderByDisplayOrderAsc(stageId)
+                .stream()
+                .filter(group -> RACE_ORDER.contains(group.getGroupCode()))
+                .toList();
+        if (raceGroups.size() != RACE_ORDER.size()) {
+            throw invalid("RACE_SURVIVAL requires TERRAN, ZERG, and PROTOSS groups.");
+        }
+
+        Map<Long, String> raceByParticipantId = new HashMap<>();
+        Map<String, List<TournamentParticipantEntity>> participantsByRace = new HashMap<>();
+        for (TournamentGroupEntity group : raceGroups) {
+            List<TournamentGroupEntryEntity> entries = groupEntryRepository.findAllByGroupIdOrderByGroupSeedNoAsc(group.getId());
+            Map<Long, TournamentParticipantEntity> participantsById = participantRepository
+                    .findAllById(entries.stream().map(TournamentGroupEntryEntity::getParticipantId).toList())
+                    .stream()
+                    .collect(Collectors.toMap(TournamentParticipantEntity::getId, Function.identity()));
+            List<TournamentParticipantEntity> participants = new ArrayList<>();
+            for (TournamentGroupEntryEntity entry : entries) {
+                TournamentParticipantEntity participant = participantsById.get(entry.getParticipantId());
+                if (participant != null) {
+                    participants.add(participant);
+                    raceByParticipantId.put(participant.getId(), group.getGroupCode());
+                }
+            }
+            participantsByRace.put(group.getGroupCode(), participants);
+        }
+        return new RaceSurvivalState(raceByParticipantId, participantsByRace);
+    }
+
+    private void createNextRaceSurvivalMatch(MatchContext context, Long winnerParticipantId, Long opponentParticipantId) {
+        TournamentGroupEntity matchesGroup = groupRepository.findByStageIdAndGroupCode(
+                        context.stage().getId(),
+                        MATCHES_GROUP_CODE
+                )
+                .orElseThrow(() -> notFound("RACE_SURVIVAL matches group not found."));
+        int matchNo = matchRepository.findAllByStageIdOrderByDisplayOrderAsc(context.stage().getId()).size() + 1;
+        TournamentMatchEntity nextMatch = matchRepository.save(TournamentMatchEntity.builder()
+                .stageId(context.stage().getId())
+                .groupId(matchesGroup.getId())
+                .matchKey("M" + matchNo)
+                .matchRole(TournamentMatchEntity.ROLE_ROUND)
+                .roundNo(matchNo)
+                .matchNo(matchNo)
+                .displayName("Match " + matchNo)
+                .bestOf(1)
+                .status(opponentParticipantId == null ? TournamentMatchEntity.STATUS_PENDING : TournamentMatchEntity.STATUS_READY)
+                .layoutCol(1)
+                .layoutRow(matchNo)
+                .displayOrder(matchNo)
+                .build());
+        matchSlotRepository.save(TournamentMatchSlotEntity.builder()
+                .matchId(nextMatch.getId())
+                .slotNo(1)
+                .participantId(winnerParticipantId)
+                .isWinner(0)
+                .isBye(0)
+                .build());
+        if (opponentParticipantId == null) {
+            matchSlotRepository.save(TournamentMatchSlotEntity.builder()
+                    .matchId(nextMatch.getId())
+                    .slotNo(2)
+                    .placeholderLabel(RACE_SURVIVAL_EMPTY_SLOT_LABEL)
+                    .isWinner(0)
+                    .isBye(0)
+                    .build());
+        } else {
+            matchSlotRepository.save(TournamentMatchSlotEntity.builder()
+                    .matchId(nextMatch.getId())
+                    .slotNo(2)
+                    .participantId(opponentParticipantId)
+                    .isWinner(0)
+                    .isBye(0)
+                    .build());
+        }
+    }
+
+    private void finishRaceSurvival(MatchContext context, Long winnerParticipantId) {
+        resultSlotRepository.findByStageIdAndResultKey(context.stage().getId(), "CHAMPION")
+                .ifPresent(resultSlot -> resultSlot.decide(winnerParticipantId, LocalDateTime.now()));
+        context.tournament().finish();
     }
 
     private void rejectOtherPendingSubmissions(
@@ -441,6 +596,31 @@ public class TournamentMatchScoreSubmissionService {
             Map<Integer, TournamentMatchSlotEntity> slotsByNo,
             Map<Integer, TournamentParticipantEntity> participantsBySlotNo
     ) {
+    }
+
+    private record RaceSurvivalState(
+            Map<Long, String> raceByParticipantId,
+            Map<String, List<TournamentParticipantEntity>> participantsByRace
+    ) {
+        Set<String> aliveRaces() {
+            return participantsByRace.entrySet().stream()
+                    .filter(entry -> entry.getValue().stream().anyMatch(RaceSurvivalState::isAlive))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        }
+
+        List<TournamentParticipantEntity> aliveOpponents(String winnerRace, Long winnerParticipantId) {
+            return participantsByRace.entrySet().stream()
+                    .filter(entry -> !Objects.equals(entry.getKey(), winnerRace))
+                    .flatMap(entry -> entry.getValue().stream())
+                    .filter(RaceSurvivalState::isAlive)
+                    .filter(participant -> !Objects.equals(participant.getId(), winnerParticipantId))
+                    .toList();
+        }
+
+        private static boolean isAlive(TournamentParticipantEntity participant) {
+            return !TournamentParticipantEntity.STATUS_DROPPED.equals(participant.getStatus());
+        }
     }
 
     private record ScoreDecision(

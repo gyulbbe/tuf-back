@@ -22,6 +22,25 @@ public interface TournamentMatchRepository extends JpaRepository<TournamentMatch
 
     List<TournamentMatchEntity> findAllByStageIdInOrderByDisplayOrderAsc(List<Long> stageIds);
 
+    boolean existsByMapId(Long mapId);
+
+    @Query("""
+            select count(m)
+            from TournamentMatchEntity m
+            where m.stageId in :stageIds
+              and (m.winnerParticipantId is not null or m.status = :finishedStatus)
+              and not exists (
+                  select s.id
+                  from TournamentMatchSlotEntity s
+                  where s.matchId = m.id
+                    and s.isBye = 1
+              )
+            """)
+    long countNonByeDecidedByStageIdIn(
+            @Param("stageIds") List<Long> stageIds,
+            @Param("finishedStatus") String finishedStatus
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from TournamentMatchEntity m where m.groupId in :groupIds")
     int deleteByGroupIdIn(@Param("groupIds") List<Long> groupIds);

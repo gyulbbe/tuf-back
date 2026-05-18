@@ -32,7 +32,8 @@ import java.time.LocalDateTime;
         name = "DRAFT_SESSIONS",
         indexes = {
                 @Index(name = "idx_draft_sessions_status", columnList = "STATUS"),
-                @Index(name = "idx_draft_sessions_owner_user", columnList = "OWNER_USER_ID")
+                @Index(name = "idx_draft_sessions_owner_user", columnList = "OWNER_USER_ID"),
+                @Index(name = "idx_draft_sessions_proleague", columnList = "PROLEAGUE_ID")
         }
 )
 public class DraftSessionEntity {
@@ -46,6 +47,9 @@ public class DraftSessionEntity {
 
     @Column(name = "OWNER_USER_ID")
     private Long ownerUserId;
+
+    @Column(name = "PROLEAGUE_ID")
+    private Long proleagueId;
 
     @Column(name = "STATUS", nullable = false)
     private String status;
@@ -156,6 +160,10 @@ public class DraftSessionEntity {
 
     public void clearCurrentDraftTeam() {
         this.currentDraftTeamId = null;
+    }
+
+    public void linkProleague(Long proleagueId) {
+        this.proleagueId = proleagueId;
     }
 
     public void finish(LocalDateTime endedAt) {

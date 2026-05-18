@@ -24,6 +24,13 @@ import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
 import io.github.gyulbbe.draft.ws.DraftEventPublisher;
+import io.github.gyulbbe.league.entity.LeagueEntity;
+import io.github.gyulbbe.league.entity.LeagueParticipationEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamMemberEntity;
+import io.github.gyulbbe.league.repository.LeagueRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamMemberRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -56,6 +63,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
         DraftQueryRepositoryImpl.class,
         DraftLiveSessionTracker.class,
         DraftOrderPatternService.class,
+        ProleagueDraftRosterSyncService.class,
         DraftService.class,
         DraftPermissionService.class,
         DraftAdminService.class,
@@ -70,6 +78,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
+        LeagueEntity.class,
+        LeagueParticipationEntity.class,
+        ProleagueTeamEntity.class,
+        ProleagueTeamMemberEntity.class,
         UserEntity.class
 })
 @EnableJpaRepositories(basePackageClasses = {
@@ -78,6 +90,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,
+        LeagueRepository.class,
+        ProleagueTeamRepository.class,
+        ProleagueTeamMemberRepository.class,
         UserRepository.class
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)

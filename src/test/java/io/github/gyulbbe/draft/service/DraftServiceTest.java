@@ -12,6 +12,7 @@ import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickerResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueTeamPickerRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
@@ -28,6 +29,13 @@ import io.github.gyulbbe.draft.repository.DraftPickRepository;
 import io.github.gyulbbe.draft.repository.DraftQueryRepositoryImpl;
 import io.github.gyulbbe.draft.repository.DraftSessionRepository;
 import io.github.gyulbbe.draft.repository.DraftTeamRepository;
+import io.github.gyulbbe.league.entity.LeagueEntity;
+import io.github.gyulbbe.league.entity.LeagueParticipationEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamEntity;
+import io.github.gyulbbe.league.entity.ProleagueTeamMemberEntity;
+import io.github.gyulbbe.league.repository.LeagueRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamMemberRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -41,6 +49,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +58,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         DraftService.class,
         DraftLiveSessionTracker.class,
         DraftOrderPatternService.class,
+        ProleagueDraftRosterSyncService.class,
         DraftQueryRepositoryImpl.class,
         QueryDslConfig.class,
         DraftPermissionService.class,
@@ -60,6 +70,10 @@ import static org.assertj.core.api.Assertions.assertThat;
         DraftCandidateEntity.class,
         DraftOrderEntity.class,
         DraftPickEntity.class,
+        LeagueEntity.class,
+        LeagueParticipationEntity.class,
+        ProleagueTeamEntity.class,
+        ProleagueTeamMemberEntity.class,
         UserEntity.class
 })
 @EnableJpaRepositories(basePackageClasses = {
@@ -68,6 +82,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         DraftCandidateRepository.class,
         DraftOrderRepository.class,
         DraftPickRepository.class,
+        LeagueRepository.class,
+        ProleagueTeamRepository.class,
+        ProleagueTeamMemberRepository.class,
         UserRepository.class
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
@@ -103,6 +120,15 @@ class DraftServiceTest {
     @Autowired
     private DraftPickRepository draftPickRepository;
 
+    @Autowired
+    private LeagueRepository leagueRepository;
+
+    @Autowired
+    private ProleagueTeamRepository proleagueTeamRepository;
+
+    @Autowired
+    private ProleagueTeamMemberRepository proleagueTeamMemberRepository;
+
     @Test
     void authenticated_owner_can_create_session_and_owner_fields_are_exposed() {
         AuthActor owner = createActor("owner01", "Owner One", "ROLE_USER");
@@ -130,6 +156,125 @@ class DraftServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(500);
         assertThat(response.getMessage()).contains("Authentication is required.");
+    }
+
+    @Test
+    void create_session_with_proleague_link_loads_proleague_teams() {
+        AuthActor owner = createActor("owner-proleague-link", "Owner Proleague Link", "ROLE_USER");
+        Long leader1Id = createUser("pl-leader-1", "PL Leader One", "ROLE_USER");
+        Long vice1Id = createUser("pl-vice-1", "PL Vice One", "ROLE_USER");
+        Long leader2Id = createUser("pl-leader-2", "PL Leader Two", "ROLE_USER");
+        Long vice2Id = createUser("pl-vice-2", "PL Vice Two", "ROLE_USER");
+        Long leagueId = createProleague("Linked Proleague");
+        Long team1Id = createProleagueTeam(leagueId, "Alpha", leader1Id, vice1Id, 1);
+        Long team2Id = createProleagueTeam(leagueId, "Bravo", leader2Id, vice2Id, 2);
+
+        DraftSessionRequestDto request = sessionRequest("Linked Draft", 2, 60);
+        request.setProleagueId(leagueId);
+        request.setProleagueTeamPickers(List.of(
+                proleagueTeamPicker(team1Id, vice1Id),
+                proleagueTeamPicker(team2Id, leader2Id)
+        ));
+
+        ResponseDto<DraftSessionDetailResponseDto> response = draftService.createSession(request, owner);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData().getProleagueId()).isEqualTo(leagueId);
+        assertThat(response.getData().getProleagueName()).isEqualTo("Linked Proleague");
+        assertThat(response.getData().getTeams())
+                .extracting("teamName", "proleagueTeamId", "pickerUserId")
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("Alpha", team1Id, vice1Id),
+                        org.assertj.core.groups.Tuple.tuple("Bravo", team2Id, leader2Id)
+                );
+    }
+
+    @Test
+    void create_session_with_proleague_link_requires_picker_for_every_team() {
+        AuthActor owner = createActor("owner-proleague-picker", "Owner Proleague Picker", "ROLE_USER");
+        Long leader1Id = createUser("picker-leader-1", "Picker Leader One", "ROLE_USER");
+        Long vice1Id = createUser("picker-vice-1", "Picker Vice One", "ROLE_USER");
+        Long leader2Id = createUser("picker-leader-2", "Picker Leader Two", "ROLE_USER");
+        Long vice2Id = createUser("picker-vice-2", "Picker Vice Two", "ROLE_USER");
+        Long leagueId = createProleague("Picker Required Proleague");
+        Long team1Id = createProleagueTeam(leagueId, "Alpha", leader1Id, vice1Id, 1);
+        createProleagueTeam(leagueId, "Bravo", leader2Id, vice2Id, 2);
+
+        DraftSessionRequestDto request = sessionRequest("Picker Required Draft", 2, 60);
+        request.setProleagueId(leagueId);
+        request.setProleagueTeamPickers(List.of(proleagueTeamPicker(team1Id, leader1Id)));
+
+        ResponseDto<DraftSessionDetailResponseDto> response = draftService.createSession(request, owner);
+
+        assertThat(response.getStatus()).isEqualTo(500);
+        assertThat(response.getMessage()).contains("Picker is required");
+    }
+
+    @Test
+    void linked_proleague_candidate_pool_rejects_leader_and_existing_member() {
+        AuthActor owner = createActor("owner-proleague-candidate", "Owner Proleague Candidate", "ROLE_USER");
+        Long leaderId = createUser("candidate-leader", "Candidate Leader", "ROLE_USER");
+        Long viceId = createUser("candidate-vice", "Candidate Vice", "ROLE_USER");
+        Long otherLeaderId = createUser("candidate-other-leader", "Candidate Other Leader", "ROLE_USER");
+        Long otherViceId = createUser("candidate-other-vice", "Candidate Other Vice", "ROLE_USER");
+        Long memberId = createUser("candidate-member", "Candidate Member", "ROLE_USER");
+        Long leagueId = createProleague("Candidate Block Proleague");
+        Long teamId = createProleagueTeam(leagueId, "Alpha", leaderId, viceId, 1);
+        createProleagueTeam(leagueId, "Bravo", otherLeaderId, otherViceId, 2);
+        proleagueTeamMemberRepository.save(ProleagueTeamMemberEntity.builder()
+                .leagueId(leagueId)
+                .proleagueTeamId(teamId)
+                .userId(memberId)
+                .source(ProleagueTeamMemberEntity.SOURCE_MANUAL)
+                .status(ProleagueTeamMemberEntity.STATUS_ACTIVE)
+                .build());
+        Long sessionId = createLinkedSession(owner, leagueId, teamId, leaderId);
+
+        ResponseDto<DraftSessionDetailResponseDto> leaderResponse =
+                draftService.createCandidate(candidateRequest(sessionId, leaderId, "Candidate Leader", "ZERG"), owner);
+        ResponseDto<DraftSessionDetailResponseDto> memberResponse =
+                draftService.createCandidate(candidateRequest(sessionId, memberId, "Candidate Member", "TERRAN"), owner);
+
+        assertThat(leaderResponse.getStatus()).isEqualTo(500);
+        assertThat(leaderResponse.getMessage()).contains("leaders and vice leaders");
+        assertThat(memberResponse.getStatus()).isEqualTo(500);
+        assertThat(memberResponse.getMessage()).contains("Existing proleague team members");
+    }
+
+    @Test
+    void finishing_linked_proleague_draft_syncs_picked_members() {
+        AuthActor owner = createActor("owner-proleague-sync", "Owner Proleague Sync", "ROLE_USER");
+        Long leaderId = createUser("sync-leader", "Sync Leader", "ROLE_USER");
+        Long viceId = createUser("sync-vice", "Sync Vice", "ROLE_USER");
+        Long otherLeaderId = createUser("sync-other-leader", "Sync Other Leader", "ROLE_USER");
+        Long otherViceId = createUser("sync-other-vice", "Sync Other Vice", "ROLE_USER");
+        Long candidateId = createUser("sync-candidate", "Sync Candidate", "ROLE_USER");
+        Long leagueId = createProleague("Sync Proleague");
+        Long teamId = createProleagueTeam(leagueId, "Alpha", leaderId, viceId, 1);
+        createProleagueTeam(leagueId, "Bravo", otherLeaderId, otherViceId, 2);
+        Long sessionId = createLinkedSession(owner, leagueId, teamId, leaderId);
+        Long draftTeamId = draftTeamRepository.findAllByDraftSessionIdOrderByDisplayOrderAsc(sessionId).get(0).getId();
+        draftService.createCandidate(candidateRequest(sessionId, candidateId, "Sync Candidate", "ZERG"), owner);
+
+        ResponseDto<DraftPickResponseDto> response = draftService.createPick(
+                pickRequest(sessionId, 1L, draftTeamId, candidateId, leaderId),
+                owner
+        );
+
+        DraftSessionEntity session = draftSessionRepository.findById(sessionId).orElseThrow();
+        List<ProleagueTeamMemberEntity> members =
+                proleagueTeamMemberRepository.findAllByLeagueIdAndStatusOrderByDisplayOrderAscIdAsc(
+                        leagueId,
+                        ProleagueTeamMemberEntity.STATUS_ACTIVE
+                );
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(session.getStatus()).isEqualTo("FINISHED");
+        assertThat(members)
+                .extracting(ProleagueTeamMemberEntity::getProleagueTeamId,
+                        ProleagueTeamMemberEntity::getUserId,
+                        ProleagueTeamMemberEntity::getSourceDraftSessionId,
+                        ProleagueTeamMemberEntity::getDraftPickNo)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(teamId, candidateId, sessionId, 1L));
     }
 
     @Test
@@ -576,6 +721,44 @@ class DraftServiceTest {
         requestDto.setCandidateUserId(candidateUserId);
         requestDto.setPickedByUserId(pickedByUserId);
         return requestDto;
+    }
+
+    private Long createLinkedSession(AuthActor owner, Long leagueId, Long teamId, Long pickerUserId) {
+        DraftSessionRequestDto request = sessionRequest("Linked Session " + leagueId, 2, 60);
+        request.setProleagueId(leagueId);
+        request.setTeamCount(null);
+        request.setProleagueTeamPickers(proleagueTeamRepository.findAllByLeagueIdOrderByDisplayOrderAscIdAsc(leagueId).stream()
+                .map(team -> proleagueTeamPicker(
+                        team.getId(),
+                        Objects.equals(team.getId(), teamId) ? pickerUserId : team.getLeaderId()
+                ))
+                .toList());
+        return draftService.createSession(request, owner).getData().getId();
+    }
+
+    private DraftProleagueTeamPickerRequestDto proleagueTeamPicker(Long proleagueTeamId, Long pickerUserId) {
+        DraftProleagueTeamPickerRequestDto request = new DraftProleagueTeamPickerRequestDto();
+        request.setProleagueTeamId(proleagueTeamId);
+        request.setPickerUserId(pickerUserId);
+        return request;
+    }
+
+    private Long createProleague(String leagueName) {
+        return leagueRepository.save(LeagueEntity.builder()
+                .leagueName(leagueName)
+                .status(LeagueEntity.STATUS_READY)
+                .leagueType(LeagueEntity.TYPE_PROLEAGUE)
+                .build()).getId();
+    }
+
+    private Long createProleagueTeam(Long leagueId, String teamName, Long leaderId, Long viceLeaderId, int displayOrder) {
+        return proleagueTeamRepository.save(ProleagueTeamEntity.builder()
+                .leagueId(leagueId)
+                .teamName(teamName)
+                .leaderId(leaderId)
+                .viceLeaderId(viceLeaderId)
+                .displayOrder(displayOrder)
+                .build()).getId();
     }
 
     private AuthActor createActor(String userId, String name, String role) {

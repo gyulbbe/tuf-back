@@ -10,6 +10,7 @@ import io.github.gyulbbe.draft.dto.DraftOrderRequestDto;
 import io.github.gyulbbe.draft.dto.DraftOrderResponseDto;
 import io.github.gyulbbe.draft.dto.DraftPickRequestDto;
 import io.github.gyulbbe.draft.dto.DraftPickResponseDto;
+import io.github.gyulbbe.draft.dto.DraftProleagueLinkSourceResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDetailResponseDto;
 import io.github.gyulbbe.draft.dto.DraftSessionDeleteRequestDto;
 import io.github.gyulbbe.draft.dto.DraftSessionRequestDto;
@@ -62,6 +63,13 @@ public class DraftController {
             @RequestParam(required = false) String keyword
     ) {
         return respond(draftService.listHistory(page, size, keyword));
+    }
+
+    @GetMapping("/proleague-link-sources/{leagueId}")
+    public ResponseEntity<ResponseDto<DraftProleagueLinkSourceResponseDto>> getProleagueLinkSource(
+            @PathVariable Long leagueId
+    ) {
+        return respond(draftService.getProleagueLinkSource(leagueId));
     }
 
     @GetMapping("/sessions/{sessionId}")

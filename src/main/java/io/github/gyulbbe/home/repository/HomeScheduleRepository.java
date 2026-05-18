@@ -31,7 +31,7 @@ public interface HomeScheduleRepository extends JpaRepository<HomeScheduleEntity
                 WHERE hs.scheduled_at >= :now
             )
             WHERE row_no = 1
-            ORDER BY scheduled_at ASC, display_priority DESC, id ASC
+            ORDER BY display_priority DESC, scheduled_at ASC, id ASC
             """, nativeQuery = true)
     List<HomeScheduleEntity> findPublicRepresentativeSchedules(@Param("now") LocalDateTime now);
 }

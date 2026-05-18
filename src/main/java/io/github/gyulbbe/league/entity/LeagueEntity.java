@@ -22,6 +22,10 @@ public class LeagueEntity {
     public static final String STATUS_READY = "READY";
     public static final String STATUS_LIVE = "LIVE";
     public static final String STATUS_FINISHED = "FINISHED";
+    public static final String TYPE_PROLEAGUE = "PROLEAGUE";
+    public static final String TYPE_PERSONAL = "PERSONAL";
+    public static final String TYPE_ULTIMATE_BATTLE = "ULTIMATE_BATTLE";
+    public static final String TYPE_RACE_SURVIVAL = "RACE_SURVIVAL";
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "leagues_seq_gen")
@@ -40,6 +44,9 @@ public class LeagueEntity {
     @Column(name = "STATUS", nullable = false)
     private String status = STATUS_READY;
 
+    @Column(name = "LEAGUE_TYPE", nullable = false)
+    private String leagueType;
+
     @Column(name = "START_DATE")
     private LocalDate startDate;
 
@@ -48,6 +55,9 @@ public class LeagueEntity {
 
     @Column(name = "DRAFT_SESSION_ID")
     private Long draftSessionId;
+
+    @Column(name = "TOURNAMENT_ID")
+    private Long tournamentId;
 
     @Column(name = "CHAMPION_TEAM_ID")
     private Long championTeamId;
@@ -97,6 +107,10 @@ public class LeagueEntity {
 
     public void linkDraftSession(Long draftSessionId) {
         this.draftSessionId = draftSessionId;
+    }
+
+    public void linkTournament(Long tournamentId) {
+        this.tournamentId = tournamentId;
     }
 
     public void unlinkDraftSession() {

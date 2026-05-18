@@ -20,6 +20,8 @@ public class TournamentMatchResponseDto {
     private Integer bestOf;
     private String status;
     private Long winnerParticipantId;
+    private Long mapId;
+    private String mapName;
     private LocalDateTime scheduledAt;
     private Integer layoutCol;
     private Integer layoutRow;

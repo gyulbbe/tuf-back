@@ -150,7 +150,11 @@ public class HomeScheduleService {
             Pageable pageable = PageRequest.of(
                     normalizedPage,
                     normalizedSize,
-                    Sort.by(Sort.Order.desc("scheduledAt"), Sort.Order.desc("id"))
+                    Sort.by(
+                            Sort.Order.desc("displayPriority"),
+                            Sort.Order.asc("scheduledAt"),
+                            Sort.Order.asc("id")
+                    )
             );
             LocalDateTime now = LocalDateTime.now();
             Page<HomeScheduleEntity> result = homeScheduleRepository.findAll(

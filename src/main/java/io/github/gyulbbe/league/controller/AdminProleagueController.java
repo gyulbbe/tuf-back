@@ -2,6 +2,7 @@ package io.github.gyulbbe.league.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.draft.dto.DraftSessionSummaryResponseDto;
 import io.github.gyulbbe.league.dto.AdminProleagueCreateRequestDto;
 import io.github.gyulbbe.league.dto.AdminProleagueDeleteRequestDto;
 import io.github.gyulbbe.league.dto.AdminProleagueDeleteResponseDto;
@@ -71,6 +72,18 @@ public class AdminProleagueController {
         } catch (Exception e) {
             log.warn("Failed to get admin proleague. leagueId={}", leagueId, e);
             return respond(ResponseDto.fail("프로리그 조회에 실패했습니다."));
+        }
+    }
+
+    @GetMapping("/{leagueId}/drafts")
+    public ResponseEntity<ResponseDto<List<DraftSessionSummaryResponseDto>>> listLinkedDrafts(@PathVariable Long leagueId) {
+        try {
+            return respond(ResponseDto.success(adminProleagueService.listLinkedDrafts(leagueId)));
+        } catch (NoSuchElementException e) {
+            return notFound(e);
+        } catch (Exception e) {
+            log.warn("Failed to list linked proleague drafts. leagueId={}", leagueId, e);
+            return respond(ResponseDto.fail("Linked draft list lookup failed."));
         }
     }
 

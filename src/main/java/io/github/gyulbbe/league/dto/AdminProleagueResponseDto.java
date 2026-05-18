@@ -14,10 +14,14 @@ public class AdminProleagueResponseDto {
     private String seasonName;
     private String description;
     private String status;
+    private String leagueType;
     private LocalDate startDate;
     private LocalDate endDate;
     private Long draftSessionId;
     private String draftStatus;
+    private String draftOrderMode;
+    private Integer draftTeamCount;
+    private Integer draftPickTimeSeconds;
     private Boolean canEditDraft;
     private Long championTeamId;
     private Long runnerUpTeamId;

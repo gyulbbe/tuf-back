@@ -17,10 +17,12 @@ import lombok.*;
         name = "DRAFT_TEAMS",
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_draft_teams_session_name", columnNames = {"DRAFT_SESSION_ID", "TEAM_NAME"}),
-                @UniqueConstraint(name = "uk_draft_teams_session_order", columnNames = {"DRAFT_SESSION_ID", "DISPLAY_ORDER"})
+                @UniqueConstraint(name = "uk_draft_teams_session_order", columnNames = {"DRAFT_SESSION_ID", "DISPLAY_ORDER"}),
+                @UniqueConstraint(name = "uk_draft_teams_session_proleague_team", columnNames = {"DRAFT_SESSION_ID", "PROLEAGUE_TEAM_ID"})
         },
         indexes = {
-                @Index(name = "idx_draft_teams_session", columnList = "DRAFT_SESSION_ID")
+                @Index(name = "idx_draft_teams_session", columnList = "DRAFT_SESSION_ID"),
+                @Index(name = "idx_draft_teams_proleague_team", columnList = "PROLEAGUE_TEAM_ID")
         }
 )
 public class DraftTeamEntity {
@@ -31,6 +33,9 @@ public class DraftTeamEntity {
 
     @Column(name = "DRAFT_SESSION_ID", nullable = false)
     private Long draftSessionId;
+
+    @Column(name = "PROLEAGUE_TEAM_ID")
+    private Long proleagueTeamId;
 
     @Column(name = "TEAM_NAME", nullable = false)
     private String teamName;

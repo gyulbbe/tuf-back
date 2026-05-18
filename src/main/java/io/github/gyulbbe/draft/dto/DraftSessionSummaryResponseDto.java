@@ -11,6 +11,8 @@ public class DraftSessionSummaryResponseDto {
     private Long ownerUserId;
     private String ownerUserLoginId;
     private String ownerName;
+    private Long proleagueId;
+    private String proleagueName;
     private String status;
     private String orderMode;
     private Integer teamCount;

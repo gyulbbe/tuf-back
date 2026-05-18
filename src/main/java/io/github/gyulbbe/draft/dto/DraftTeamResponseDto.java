@@ -6,6 +6,7 @@ import lombok.Data;
 public class DraftTeamResponseDto {
     private Long id;
     private Long draftSessionId;
+    private Long proleagueTeamId;
     private String teamName;
     private Integer displayOrder;
     private Long pickerUserId;
