@@ -1,9 +1,18 @@
 package io.github.gyulbbe.league.service;
 
+import io.github.gyulbbe.draft.entity.DraftSessionEntity;
+import io.github.gyulbbe.draft.repository.DraftCandidateRepository;
+import io.github.gyulbbe.draft.repository.DraftOrderRepository;
+import io.github.gyulbbe.draft.repository.DraftPickRepository;
+import io.github.gyulbbe.draft.repository.DraftSessionRepository;
+import io.github.gyulbbe.draft.repository.DraftTeamRepository;
+import io.github.gyulbbe.league.dto.AdminLeagueDeleteResponseDto;
+import io.github.gyulbbe.league.dto.AdminLeaguePageResponseDto;
 import io.github.gyulbbe.league.dto.AdminLeagueRaceSurvivalTeamRequestDto;
 import io.github.gyulbbe.league.dto.AdminLeagueRaceSurvivalTeamResponseDto;
 import io.github.gyulbbe.league.dto.AdminLeagueRequestDto;
 import io.github.gyulbbe.league.dto.AdminLeagueResponseDto;
+import io.github.gyulbbe.league.dto.AdminLeagueSummaryResponseDto;
 import io.github.gyulbbe.league.dto.AdminPersonalLeagueCreateRequestDto;
 import io.github.gyulbbe.league.dto.AdminPersonalLeaguePlayerRequestDto;
 import io.github.gyulbbe.league.dto.AdminPersonalLeaguePlayerResponseDto;
@@ -14,7 +23,10 @@ import io.github.gyulbbe.league.dto.AdminProleagueResponseDto;
 import io.github.gyulbbe.league.entity.LeagueEntity;
 import io.github.gyulbbe.league.entity.LeagueParticipationEntity;
 import io.github.gyulbbe.league.repository.LeagueParticipationRepository;
+import io.github.gyulbbe.league.repository.LeagueQueryRepository;
 import io.github.gyulbbe.league.repository.LeagueRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamMemberRepository;
+import io.github.gyulbbe.league.repository.ProleagueTeamRepository;
 import io.github.gyulbbe.tournament.dto.TournamentCreateGroupRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateSlotRequestDto;
@@ -26,9 +38,11 @@ import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRep
 import io.github.gyulbbe.tournament.repository.TournamentResultSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentStageRepository;
 import io.github.gyulbbe.tournament.service.TournamentCreationService;
+import io.github.gyulbbe.tournament.service.TournamentService;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,16 +64,30 @@ import java.util.stream.Collectors;
 @Transactional
 public class AdminLeagueService {
 
+    private static final int DEFAULT_PAGE = 0;
+    private static final int DEFAULT_SIZE = 20;
+    private static final int MAX_SIZE = 50;
     private static final String ACTIVE_USER_STATUS = "ACTIVE";
     private static final String PARTICIPATION_STATUS_ACTIVE = "ACTIVE";
+    private static final String LINKED_FILTER_LINKED = "LINKED";
+    private static final String LINKED_FILTER_UNLINKED = "UNLINKED";
     private static final List<String> RACE_ORDER = List.of("TERRAN", "ZERG", "PROTOSS");
 
     private final LeagueRepository leagueRepository;
+    private final LeagueQueryRepository leagueQueryRepository;
     private final LeagueParticipationRepository participationRepository;
+    private final ProleagueTeamRepository proleagueTeamRepository;
+    private final ProleagueTeamMemberRepository proleagueTeamMemberRepository;
+    private final DraftSessionRepository draftSessionRepository;
+    private final DraftTeamRepository draftTeamRepository;
+    private final DraftCandidateRepository draftCandidateRepository;
+    private final DraftOrderRepository draftOrderRepository;
+    private final DraftPickRepository draftPickRepository;
     private final UserRepository userRepository;
     private final AdminProleagueService adminProleagueService;
     private final AdminPersonalLeagueService adminPersonalLeagueService;
     private final TournamentCreationService tournamentCreationService;
+    private final TournamentService tournamentService;
     private final TournamentStageRepository tournamentStageRepository;
     private final TournamentMatchRepository tournamentMatchRepository;
     private final TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
@@ -96,6 +124,76 @@ public class AdminLeagueService {
             return fromPersonalLeague(adminPersonalLeagueService.getPersonalLeague(leagueId));
         }
         return fromSpecialLeague(league);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminLeaguePageResponseDto listLeagues(
+            String leagueType,
+            int page,
+            int size,
+            String keyword,
+            String status,
+            String linked
+    ) {
+        int normalizedPage = normalizePage(page);
+        int normalizedSize = normalizeSize(size);
+        String normalizedType = normalizeOptionalLeagueType(leagueType);
+        String normalizedStatus = normalizeOptionalListStatus(status);
+        String normalizedLinked = normalizeLinkedFilter(linked);
+        Page<Long> ids = leagueQueryRepository.findAdminLeagueIds(
+                normalizedType,
+                trimToNull(keyword),
+                normalizedStatus,
+                normalizedLinked,
+                normalizedPage,
+                normalizedSize
+        );
+
+        AdminLeaguePageResponseDto response = new AdminLeaguePageResponseDto();
+        response.setItems(ids.getContent().stream()
+                .map(this::toSummaryResponse)
+                .toList());
+        response.setPage(normalizedPage);
+        response.setSize(normalizedSize);
+        response.setTotalElements(ids.getTotalElements());
+        response.setTotalPages(ids.getTotalPages());
+        response.setHasNext(ids.hasNext());
+        response.setHasPrevious(ids.hasPrevious());
+        return response;
+    }
+
+    public AdminLeagueSummaryResponseDto finishLeague(Long leagueId) {
+        LeagueEntity league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new NoSuchElementException("League not found."));
+        if (!LeagueEntity.STATUS_FINISHED.equals(league.getStatus())) {
+            league.finish(
+                    league.getChampionTeamId(),
+                    league.getRunnerUpTeamId(),
+                    league.getEndDate() == null ? LocalDate.now() : league.getEndDate()
+            );
+        }
+        return toSummaryResponse(leagueId);
+    }
+
+    public AdminLeagueDeleteResponseDto deleteLeague(Long leagueId) {
+        LeagueEntity league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new NoSuchElementException("League not found."));
+        DeleteGuard deleteGuard = resolveDeleteGuard(league);
+        if (!deleteGuard.canDelete()) {
+            throw new IllegalStateException(deleteGuard.reason());
+        }
+
+        league.clearResultTeams();
+        leagueRepository.saveAndFlush(league);
+        deleteLinkedDrafts(league);
+        deleteLinkedTournament(league);
+        participationRepository.deleteByLeagueId(leagueId);
+        proleagueTeamMemberRepository.deleteByLeagueId(leagueId);
+        draftTeamRepository.unlinkProleagueTeamsByLeagueId(leagueId);
+        draftSessionRepository.unlinkProleagueByProleagueId(leagueId);
+        proleagueTeamRepository.deleteByLeagueId(leagueId);
+        leagueRepository.delete(league);
+        return new AdminLeagueDeleteResponseDto(1);
     }
 
     public AdminLeagueResponseDto updateLeague(Long leagueId, AdminLeagueRequestDto request, Long ownerUserId) {
@@ -426,6 +524,63 @@ public class AdminLeagueService {
         dto.setUpdateDate(updateDate);
     }
 
+    private AdminLeagueSummaryResponseDto toSummaryResponse(Long leagueId) {
+        LeagueEntity league = leagueRepository.findById(leagueId)
+                .orElseThrow(() -> new NoSuchElementException("League not found."));
+        DeleteGuard deleteGuard = resolveDeleteGuard(league);
+
+        AdminLeagueSummaryResponseDto dto = new AdminLeagueSummaryResponseDto();
+        dto.setId(league.getId());
+        dto.setLeagueName(league.getLeagueName());
+        dto.setSeasonName(league.getSeasonName());
+        dto.setStatus(LeagueEntity.STATUS_READY.equals(league.getStatus()) ? LeagueEntity.STATUS_LIVE : league.getStatus());
+        dto.setLeagueType(league.getLeagueType());
+        dto.setStartDate(league.getStartDate());
+        dto.setEndDate(league.getEndDate());
+        dto.setDraftSessionId(league.getDraftSessionId());
+        dto.setTournamentId(league.getTournamentId());
+        dto.setTeamCount(resolveTeamCount(league));
+        dto.setParticipantCount(participationRepository.countByLeagueId(league.getId()));
+        dto.setLinkedType(resolveLinkedType(league));
+        dto.setLinkedLabel(resolveLinkedLabel(league));
+        dto.setCanDelete(deleteGuard.canDelete());
+        dto.setDeleteBlockedReason(deleteGuard.reason());
+        dto.setUpdateDate(league.getUpdateDate());
+        return dto;
+    }
+
+    private Long resolveTeamCount(LeagueEntity league) {
+        if (LeagueEntity.TYPE_PROLEAGUE.equals(league.getLeagueType())) {
+            return proleagueTeamRepository.countByLeagueId(league.getId());
+        }
+        if (LeagueEntity.TYPE_RACE_SURVIVAL.equals(league.getLeagueType())) {
+            return (long) RACE_ORDER.size();
+        }
+        return null;
+    }
+
+    private String resolveLinkedType(LeagueEntity league) {
+        if (LeagueEntity.TYPE_PROLEAGUE.equals(league.getLeagueType()) && hasLinkedDraft(league)) {
+            return "DRAFT";
+        }
+        if (league.getTournamentId() != null) {
+            return "TOURNAMENT";
+        }
+        return null;
+    }
+
+    private String resolveLinkedLabel(LeagueEntity league) {
+        if (LeagueEntity.TYPE_PROLEAGUE.equals(league.getLeagueType()) && hasLinkedDraft(league)) {
+            long linkedDraftCount = countLinkedDrafts(league);
+            return linkedDraftCount > 1 ? "드래프트 " + linkedDraftCount + "개" : "드래프트";
+        }
+        if (league.getTournamentId() != null) {
+            String bracketType = resolveTournamentBracketType(league.getTournamentId());
+            return bracketType == null ? "토너먼트" : bracketType;
+        }
+        return null;
+    }
+
     private List<AdminPersonalLeaguePlayerResponseDto> toPlayerResponses(Long leagueId) {
         List<LeagueParticipationEntity> participations = participationRepository.findAllByLeagueIdOrderByIdAsc(leagueId);
         Map<Long, UserEntity> usersById = userRepository.findAllById(participations.stream()
@@ -462,6 +617,78 @@ public class AdminLeagueService {
             teams.add(team);
         }
         return teams;
+    }
+
+    private DeleteGuard resolveDeleteGuard(LeagueEntity league) {
+        if (league.getTournamentId() != null && hasTournamentProgress(league.getTournamentId())) {
+            return new DeleteGuard(false, "진행 데이터가 있는 토너먼트 연동 리그입니다.");
+        }
+        if (hasDraftProgress(league)) {
+            return new DeleteGuard(false, "픽 기록이 있는 드래프트 연동 리그입니다.");
+        }
+        return new DeleteGuard(true, null);
+    }
+
+    private boolean hasLinkedDraft(LeagueEntity league) {
+        return league.getDraftSessionId() != null || draftSessionRepository.countByProleagueId(league.getId()) > 0;
+    }
+
+    private long countLinkedDrafts(LeagueEntity league) {
+        return linkedDraftSessionIds(league).size();
+    }
+
+    private boolean hasDraftProgress(LeagueEntity league) {
+        return linkedDraftSessionIds(league).stream()
+                .anyMatch(draftSessionId -> draftPickRepository.countByDraftSessionId(draftSessionId) > 0);
+    }
+
+    private List<Long> linkedDraftSessionIds(LeagueEntity league) {
+        LinkedHashSet<Long> sessionIds = new LinkedHashSet<>();
+        if (league.getDraftSessionId() != null) {
+            sessionIds.add(league.getDraftSessionId());
+        }
+        draftSessionRepository.findAllByProleagueId(league.getId())
+                .stream()
+                .map(DraftSessionEntity::getId)
+                .filter(Objects::nonNull)
+                .forEach(sessionIds::add);
+        return new ArrayList<>(sessionIds);
+    }
+
+    private void deleteLinkedDrafts(LeagueEntity league) {
+        List<Long> draftSessionIds = linkedDraftSessionIds(league);
+        if (draftSessionIds.isEmpty()) {
+            return;
+        }
+        league.unlinkDraftSession();
+        leagueRepository.saveAndFlush(league);
+        proleagueTeamRepository.unlinkDraftTeamsByLeagueId(league.getId());
+        draftTeamRepository.unlinkProleagueTeamsByLeagueId(league.getId());
+        draftSessionRepository.unlinkProleagueByProleagueId(league.getId());
+
+        for (Long draftSessionId : draftSessionIds) {
+            draftSessionRepository.findById(draftSessionId)
+                    .ifPresent(draftSession -> {
+                        draftSession.clearCurrentDraftTeam();
+                        draftSession.linkProleague(null);
+                        draftSessionRepository.saveAndFlush(draftSession);
+                    });
+            draftPickRepository.deleteByDraftSessionId(draftSessionId);
+            draftOrderRepository.deleteByDraftSessionId(draftSessionId);
+            draftCandidateRepository.deleteByDraftSessionId(draftSessionId);
+            draftTeamRepository.deleteByDraftSessionId(draftSessionId);
+            draftSessionRepository.deleteById(draftSessionId);
+        }
+    }
+
+    private void deleteLinkedTournament(LeagueEntity league) {
+        Long tournamentId = league.getTournamentId();
+        if (tournamentId == null) {
+            return;
+        }
+        league.unlinkTournament();
+        leagueRepository.saveAndFlush(league);
+        tournamentService.deleteTournaments(List.of(tournamentId));
     }
 
     private boolean hasTournamentProgress(Long tournamentId) {
@@ -524,6 +751,13 @@ public class AdminLeagueService {
         throw new IllegalArgumentException("Unsupported leagueType.");
     }
 
+    private String normalizeOptionalLeagueType(String leagueType) {
+        if (leagueType == null || leagueType.isBlank()) {
+            return null;
+        }
+        return normalizeLeagueType(leagueType);
+    }
+
     private String normalizeUnifiedStatus(String status) {
         String normalized = status == null || status.isBlank()
                 ? LeagueEntity.STATUS_LIVE
@@ -532,6 +766,35 @@ public class AdminLeagueService {
             throw new IllegalArgumentException("status must be LIVE or FINISHED.");
         }
         return normalized;
+    }
+
+    private String normalizeOptionalListStatus(String status) {
+        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status.trim())) {
+            return null;
+        }
+        return normalizeUnifiedStatus(status);
+    }
+
+    private String normalizeLinkedFilter(String linked) {
+        if (linked == null || linked.isBlank() || "ALL".equalsIgnoreCase(linked.trim())) {
+            return null;
+        }
+        String normalized = linked.trim().toUpperCase(Locale.ROOT);
+        if (Set.of(LINKED_FILTER_LINKED, LINKED_FILTER_UNLINKED).contains(normalized)) {
+            return normalized;
+        }
+        throw new IllegalArgumentException("linked must be ALL, LINKED, or UNLINKED.");
+    }
+
+    private int normalizePage(int page) {
+        return Math.max(page, DEFAULT_PAGE);
+    }
+
+    private int normalizeSize(int size) {
+        if (size <= 0) {
+            return DEFAULT_SIZE;
+        }
+        return Math.min(size, MAX_SIZE);
     }
 
     private int normalizeTotalGames(Integer totalGames) {
@@ -578,5 +841,8 @@ public class AdminLeagueService {
     }
 
     private record ResolvedRaceTeam(String race, List<ResolvedPlayer> players) {
+    }
+
+    private record DeleteGuard(boolean canDelete, String reason) {
     }
 }

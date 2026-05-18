@@ -8,4 +8,6 @@ public class UserAdminUpdateRequestDto {
     private String name;
     private String race;
     private String tier;
+    private String userType;
+    private String role;
 }

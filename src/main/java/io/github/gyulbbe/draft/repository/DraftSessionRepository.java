@@ -21,6 +21,10 @@ public interface DraftSessionRepository extends JpaRepository<DraftSessionEntity
 
     boolean existsByStatus(String status);
 
+    List<DraftSessionEntity> findAllByProleagueId(Long proleagueId);
+
+    long countByProleagueId(Long proleagueId);
+
     List<DraftSessionEntity> findAllByStatusAndDeadlineAtLessThanEqual(String status, LocalDateTime deadlineAt);
 
     @Query("""

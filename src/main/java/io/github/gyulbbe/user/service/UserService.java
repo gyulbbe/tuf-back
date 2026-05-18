@@ -250,7 +250,23 @@ public class UserService {
                 return ResponseDto.fail(HttpServletResponse.SC_CONFLICT, "이미 사용 중인 userId입니다.", ApiErrorCode.CONFLICT);
             }
 
+            String requestedUserType = resolveRequestedUserType(requestDto);
+            String normalizedUserType = null;
+            if (requestedUserType != null) {
+                normalizedUserType = normalizeManagedUserType(requestedUserType);
+                if (normalizedUserType == null) {
+                    return ResponseDto.fail(
+                            HttpServletResponse.SC_BAD_REQUEST,
+                            "userType must be one of ROLE_USER, ROLE_MANAGER, ROLE_MASTER, ROLE_ADMIN.",
+                            ApiErrorCode.VALIDATION_FAILED
+                    );
+                }
+            }
+
             user.updateAdminProfile(userId, name, race, tier);
+            if (normalizedUserType != null) {
+                user.updateUserType(normalizedUserType);
+            }
             return ResponseDto.success(toUserAdminResponseDto(user));
         } catch (IllegalArgumentException e) {
             return ResponseDto.fail(HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), ApiErrorCode.VALIDATION_FAILED);
@@ -356,6 +372,16 @@ public class UserService {
             return requestDto.getUserType();
         }
         return requestDto.getRole();
+    }
+
+    private String resolveRequestedUserType(UserAdminUpdateRequestDto requestDto) {
+        if (requestDto.getUserType() != null && !requestDto.getUserType().isBlank()) {
+            return requestDto.getUserType();
+        }
+        if (requestDto.getRole() != null && !requestDto.getRole().isBlank()) {
+            return requestDto.getRole();
+        }
+        return null;
     }
 
     private String normalizeManagedUserType(String userType) {

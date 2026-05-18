@@ -123,6 +123,47 @@ class UserAdminServiceTest {
     }
 
     @Test
+    void updateAdminUser_updatesProfileAndUserTypeTogether() {
+        Long userId = saveUser("blackmagic", "Black", "ACTIVE").getId();
+
+        UserAdminUpdateRequestDto requestDto = new UserAdminUpdateRequestDto();
+        requestDto.setUserId("updated");
+        requestDto.setName("Updated");
+        requestDto.setRace("Z");
+        requestDto.setTier("S");
+        requestDto.setRole("ROLE_MANAGER");
+
+        ResponseDto<UserAdminResponseDto> response = userService.updateAdminUser(userId, requestDto);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData().getUserId()).isEqualTo("updated");
+        assertThat(response.getData().getUserType()).isEqualTo("ROLE_MANAGER");
+        UserEntity savedUser = userRepository.findById(userId).orElseThrow();
+        assertThat(savedUser.getUserId()).isEqualTo("updated");
+        assertThat(savedUser.getUserType()).isEqualTo("ROLE_MANAGER");
+    }
+
+    @Test
+    void updateAdminUser_rejectsUnsupportedUserTypeWithoutChangingProfile() {
+        Long userId = saveUser("blackmagic", "Black", "ACTIVE").getId();
+
+        UserAdminUpdateRequestDto requestDto = new UserAdminUpdateRequestDto();
+        requestDto.setUserId("updated");
+        requestDto.setName("Updated");
+        requestDto.setRace("Z");
+        requestDto.setTier("S");
+        requestDto.setRole("ROLE_ROOT");
+
+        ResponseDto<UserAdminResponseDto> response = userService.updateAdminUser(userId, requestDto);
+
+        assertThat(response.getStatus()).isEqualTo(400);
+        assertThat(response.getMessage()).contains("userType must be one of");
+        UserEntity savedUser = userRepository.findById(userId).orElseThrow();
+        assertThat(savedUser.getUserId()).isEqualTo("blackmagic");
+        assertThat(savedUser.getUserType()).isEqualTo("ROLE_USER");
+    }
+
+    @Test
     void updateAdminUserStatus_updatesInactiveStatus() {
         Long userId = saveUser("blackmagic", "Black", "ACTIVE").getId();
         UserAdminStatusUpdateRequestDto requestDto = new UserAdminStatusUpdateRequestDto();

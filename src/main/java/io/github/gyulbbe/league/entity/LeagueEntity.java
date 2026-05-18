@@ -113,6 +113,10 @@ public class LeagueEntity {
         this.tournamentId = tournamentId;
     }
 
+    public void unlinkTournament() {
+        this.tournamentId = null;
+    }
+
     public void unlinkDraftSession() {
         this.draftSessionId = null;
     }
