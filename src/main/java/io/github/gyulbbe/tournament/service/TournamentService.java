@@ -31,6 +31,8 @@ import io.github.gyulbbe.tournament.repository.TournamentRepository;
 import io.github.gyulbbe.tournament.repository.TournamentResultSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRouteRepository;
 import io.github.gyulbbe.tournament.repository.TournamentStageRepository;
+import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionMatchRepository;
+import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -38,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +62,8 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class TournamentService {
 
+    private static final Set<String> ADMIN_ROLES = Set.of("ROLE_MANAGER", "ROLE_MASTER", "ROLE_ADMIN");
+
     private static final List<String> PUBLIC_STATUSES = List.of(
             TournamentEntity.STATUS_LIVE,
             TournamentEntity.STATUS_FINISHED
@@ -76,6 +81,8 @@ public class TournamentService {
     private final TournamentMatchSlotRepository matchSlotRepository;
     private final TournamentResultSlotRepository resultSlotRepository;
     private final TournamentRouteRepository routeRepository;
+    private final RaceSurvivalProgressSubmissionRepository raceSurvivalProgressSubmissionRepository;
+    private final RaceSurvivalProgressSubmissionMatchRepository raceSurvivalProgressSubmissionMatchRepository;
     private final UserRepository userRepository;
     private final MapRepository mapRepository;
 
@@ -176,7 +183,9 @@ public class TournamentService {
             Long tournamentId,
             Long matchId,
             Long slot1ParticipantId,
-            Long slot2ParticipantId
+            Long slot2ParticipantId,
+            Long actorUserId,
+            String actorRole
     ) {
         TournamentEntity tournament = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new NoSuchElementException("토너먼트를 찾을 수 없습니다."));
@@ -191,6 +200,7 @@ public class TournamentService {
         if (!TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(stage.getStageType())) {
             throw new IllegalArgumentException("종족 최강전 경기만 선수 지정을 변경할 수 있습니다.");
         }
+        requireRaceSurvivalParticipantManager(tournament.getId(), actorUserId, actorRole);
         if (TournamentEntity.STATUS_FINISHED.equals(tournament.getStatus())) {
             throw new IllegalArgumentException("종료된 토너먼트는 선수 지정을 변경할 수 없습니다.");
         }
@@ -242,6 +252,19 @@ public class TournamentService {
         }
 
         return buildDetail(tournament);
+    }
+
+    private void requireRaceSurvivalParticipantManager(Long tournamentId, Long actorUserId, String actorRole) {
+        if (ADMIN_ROLES.contains(actorRole)) {
+            return;
+        }
+        if (actorUserId == null) {
+            throw new AccessDeniedException("Authentication is required.");
+        }
+        if (participantRepository.findFirstByTournamentIdAndUserIdOrderBySeedNoAscIdAsc(tournamentId, actorUserId).isPresent()) {
+            return;
+        }
+        throw new AccessDeniedException("Only tournament participants or administrators can assign match players.");
     }
 
     private RaceSurvivalState loadRaceSurvivalState(Long stageId) {
@@ -393,6 +416,15 @@ public class TournamentService {
                 .toList();
         List<Long> matchIds = collectTournamentMatchIds(stageIds, groupIds);
 
+        List<Long> raceProgressSubmissionIds = raceSurvivalProgressSubmissionRepository
+                .findAllByTournamentIdOrderByRegDateDescIdDesc(tournamentId)
+                .stream()
+                .map(submission -> submission.getId())
+                .toList();
+        if (!raceProgressSubmissionIds.isEmpty()) {
+            raceSurvivalProgressSubmissionMatchRepository.deleteBySubmissionIdIn(raceProgressSubmissionIds);
+        }
+        raceSurvivalProgressSubmissionRepository.deleteByTournamentId(tournamentId);
         scoreSubmissionRepository.deleteByTournamentId(tournamentId);
         if (!matchIds.isEmpty()) {
             routeRepository.deleteByFromMatchIdIn(matchIds);

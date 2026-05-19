@@ -2,6 +2,9 @@ package io.github.gyulbbe.tournament.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.common.error.ApiErrorCode;
+import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionRejectRequestDto;
+import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionRequestDto;
+import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDeleteRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
@@ -11,6 +14,7 @@ import io.github.gyulbbe.tournament.dto.TournamentPageResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
+import io.github.gyulbbe.tournament.service.RaceSurvivalProgressSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentCreationService;
 import io.github.gyulbbe.tournament.service.TournamentMatchScoreSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentService;
@@ -45,6 +49,7 @@ public class TournamentController {
     private final TournamentService tournamentService;
     private final TournamentCreationService tournamentCreationService;
     private final TournamentMatchScoreSubmissionService scoreSubmissionService;
+    private final RaceSurvivalProgressSubmissionService raceSurvivalProgressSubmissionService;
 
     @GetMapping
     public ResponseEntity<ResponseDto<TournamentPageResponseDto>> listTournaments(
@@ -166,6 +171,170 @@ public class TournamentController {
         }
     }
 
+    @PostMapping("/{tournamentId}/race-survival-progress-submissions")
+    public ResponseEntity<ResponseDto<RaceSurvivalProgressSubmissionResponseDto>> submitRaceSurvivalProgress(
+            @PathVariable Long tournamentId,
+            @RequestBody RaceSurvivalProgressSubmissionRequestDto request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            RaceSurvivalProgressSubmissionResponseDto response = raceSurvivalProgressSubmissionService.submitProgress(
+                    tournamentId,
+                    request,
+                    userDetails.getUserPk(),
+                    resolveRole(userDetails)
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (AccessDeniedException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    e.getMessage(),
+                    ApiErrorCode.AUTH_FORBIDDEN
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to submit RACE_SURVIVAL progress. tournamentId={}", tournamentId, e);
+            return respond(ResponseDto.fail("Failed to submit RACE_SURVIVAL progress."));
+        }
+    }
+
+    @GetMapping("/{tournamentId}/race-survival-progress-submissions")
+    public ResponseEntity<ResponseDto<List<RaceSurvivalProgressSubmissionResponseDto>>> listRaceSurvivalProgressSubmissions(
+            @PathVariable Long tournamentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            List<RaceSurvivalProgressSubmissionResponseDto> response = raceSurvivalProgressSubmissionService.listSubmissions(
+                    tournamentId,
+                    userDetails.getUserPk(),
+                    resolveRole(userDetails)
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (AccessDeniedException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    e.getMessage(),
+                    ApiErrorCode.AUTH_FORBIDDEN
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to list RACE_SURVIVAL progress submissions. tournamentId={}", tournamentId, e);
+            return respond(ResponseDto.fail("Failed to list RACE_SURVIVAL progress submissions."));
+        }
+    }
+
+    @PostMapping("/{tournamentId}/race-survival-progress-submissions/{submissionId}/approve")
+    public ResponseEntity<ResponseDto<TournamentDetailResponseDto>> approveRaceSurvivalProgressSubmission(
+            @PathVariable Long tournamentId,
+            @PathVariable Long submissionId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            TournamentDetailResponseDto response = raceSurvivalProgressSubmissionService.approveSubmission(
+                    tournamentId,
+                    submissionId,
+                    userDetails.getUserPk(),
+                    resolveRole(userDetails)
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (AccessDeniedException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    e.getMessage(),
+                    ApiErrorCode.AUTH_FORBIDDEN
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to approve RACE_SURVIVAL progress submission. tournamentId={}, submissionId={}", tournamentId, submissionId, e);
+            return respond(ResponseDto.fail("Failed to approve RACE_SURVIVAL progress submission."));
+        }
+    }
+
+    @PostMapping("/{tournamentId}/race-survival-progress-submissions/{submissionId}/reject")
+    public ResponseEntity<ResponseDto<RaceSurvivalProgressSubmissionResponseDto>> rejectRaceSurvivalProgressSubmission(
+            @PathVariable Long tournamentId,
+            @PathVariable Long submissionId,
+            @RequestBody RaceSurvivalProgressSubmissionRejectRequestDto request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            RaceSurvivalProgressSubmissionResponseDto response = raceSurvivalProgressSubmissionService.rejectSubmission(
+                    tournamentId,
+                    submissionId,
+                    request,
+                    userDetails.getUserPk(),
+                    resolveRole(userDetails)
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (AccessDeniedException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    e.getMessage(),
+                    ApiErrorCode.AUTH_FORBIDDEN
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to reject RACE_SURVIVAL progress submission. tournamentId={}, submissionId={}", tournamentId, submissionId, e);
+            return respond(ResponseDto.fail("Failed to reject RACE_SURVIVAL progress submission."));
+        }
+    }
+
     @GetMapping("/{tournamentId}/matches/{matchId}/score-submissions")
     public ResponseEntity<ResponseDto<List<TournamentScoreSubmissionResponseDto>>> listScoreSubmissions(
             @PathVariable Long tournamentId,
@@ -257,7 +426,9 @@ public class TournamentController {
                     tournamentId,
                     matchId,
                     request == null ? null : request.getSlot1ParticipantId(),
-                    request == null ? null : request.getSlot2ParticipantId()
+                    request == null ? null : request.getSlot2ParticipantId(),
+                    userDetails.getUserPk(),
+                    resolveRole(userDetails)
             );
             return respond(ResponseDto.success(response));
         } catch (NoSuchElementException e) {
@@ -265,6 +436,12 @@ public class TournamentController {
                     HttpServletResponse.SC_NOT_FOUND,
                     e.getMessage(),
                     ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (AccessDeniedException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    e.getMessage(),
+                    ApiErrorCode.AUTH_FORBIDDEN
             ));
         } catch (IllegalArgumentException e) {
             return respond(ResponseDto.fail(

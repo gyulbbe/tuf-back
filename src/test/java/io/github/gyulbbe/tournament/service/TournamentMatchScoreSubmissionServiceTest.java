@@ -46,8 +46,10 @@ class TournamentMatchScoreSubmissionServiceTest {
     private static final Long MATCH_ID = 100L;
     private static final Long PLAYER_A_USER_ID = 101L;
     private static final Long PLAYER_B_USER_ID = 102L;
+    private static final Long PLAYER_C_USER_ID = 103L;
     private static final Long PLAYER_A_PARTICIPANT_ID = 1001L;
     private static final Long PLAYER_B_PARTICIPANT_ID = 1002L;
+    private static final Long PLAYER_C_PARTICIPANT_ID = 1003L;
 
     @Mock
     private TournamentRepository tournamentRepository;
@@ -143,6 +145,35 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThat(response.getSubmitterRole()).isEqualTo(TournamentMatchScoreSubmissionEntity.ROLE_ADMIN);
         assertThat(response.getSubmitterLoginId()).isEqualTo("admin01");
         assertThat(response.getSubmittedByParticipantId()).isNull();
+        assertThat(response.getWinnerSlotNo()).isEqualTo(1);
+    }
+
+    @Test
+    void submitScore_allowsRaceSurvivalTournamentParticipantOutsideCurrentMatch() {
+        givenContext(
+                tournament(),
+                raceSurvivalStage(),
+                match(TournamentMatchEntity.STATUS_READY, 3),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+        given(participantRepository.findFirstByTournamentIdAndUserIdOrderBySeedNoAscIdAsc(TOURNAMENT_ID, PLAYER_C_USER_ID))
+                .willReturn(Optional.of(internalParticipantC()));
+        given(submissionRepository.save(any(TournamentMatchScoreSubmissionEntity.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        givenSubmitterUsers(user(PLAYER_C_USER_ID, "playerC"));
+
+        TournamentScoreSubmissionResponseDto response = service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                request(score(1, 2), score(2, 0)),
+                PLAYER_C_USER_ID,
+                "ROLE_USER"
+        );
+
+        assertThat(response.getSubmitterRole()).isEqualTo(TournamentMatchScoreSubmissionEntity.ROLE_PLAYER);
+        assertThat(response.getSubmitterLoginId()).isEqualTo("playerC");
+        assertThat(response.getSubmittedByParticipantId()).isEqualTo(PLAYER_C_PARTICIPANT_ID);
         assertThat(response.getWinnerSlotNo()).isEqualTo(1);
     }
 
@@ -339,6 +370,11 @@ class TournamentMatchScoreSubmissionServiceTest {
     void listSubmissions_allowsParticipantOrAdminButRejectsUnrelatedUser() {
         TournamentMatchScoreSubmissionEntity submission = submission(900L, TournamentMatchScoreSubmissionEntity.STATUS_PENDING, 2, 0, 1);
         givenReadyMatchContext(match(TournamentMatchEntity.STATUS_READY, 3), internalParticipantA(), internalParticipantB());
+        given(submissionRepository.findAllByTournamentIdAndMatchIdAndSubmittedByUserIdOrderByRegDateDescIdDesc(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                PLAYER_A_USER_ID
+        )).willReturn(List.of(submission));
         given(submissionRepository.findAllByTournamentIdAndMatchIdOrderByRegDateDescIdDesc(TOURNAMENT_ID, MATCH_ID))
                 .willReturn(List.of(submission));
         givenSubmitterUsers(user(PLAYER_A_USER_ID, "playerA"));
@@ -365,6 +401,47 @@ class TournamentMatchScoreSubmissionServiceTest {
 
         assertThatThrownBy(() -> service.listSubmissions(TOURNAMENT_ID, MATCH_ID, 333L, "ROLE_USER"))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void listSubmissions_allowsRaceSurvivalTournamentParticipantOutsideCurrentMatchButReturnsOwnOnly() {
+        TournamentMatchScoreSubmissionEntity playerCSubmission = submission(
+                902L,
+                TournamentMatchScoreSubmissionEntity.STATUS_PENDING,
+                2,
+                0,
+                1,
+                PLAYER_C_USER_ID,
+                PLAYER_C_PARTICIPANT_ID
+        );
+        givenContext(
+                tournament(),
+                raceSurvivalStage(),
+                match(TournamentMatchEntity.STATUS_READY, 3),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+        given(participantRepository.findFirstByTournamentIdAndUserIdOrderBySeedNoAscIdAsc(TOURNAMENT_ID, PLAYER_C_USER_ID))
+                .willReturn(Optional.of(internalParticipantC()));
+        given(submissionRepository.findAllByTournamentIdAndMatchIdAndSubmittedByUserIdOrderByRegDateDescIdDesc(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                PLAYER_C_USER_ID
+        )).willReturn(List.of(playerCSubmission));
+        givenSubmitterUsers(user(PLAYER_C_USER_ID, "playerC"));
+
+        List<TournamentScoreSubmissionResponseDto> response = service.listSubmissions(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                PLAYER_C_USER_ID,
+                "ROLE_USER"
+        );
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).getSubmittedByUserId()).isEqualTo(PLAYER_C_USER_ID);
+        assertThat(response.get(0).getSubmitterLoginId()).isEqualTo("playerC");
+        verify(submissionRepository, never())
+                .findAllByTournamentIdAndMatchIdOrderByRegDateDescIdDesc(TOURNAMENT_ID, MATCH_ID);
     }
 
     private void givenReadyMatchContext(
@@ -395,9 +472,19 @@ class TournamentMatchScoreSubmissionServiceTest {
             List<TournamentMatchSlotEntity> slots,
             List<TournamentParticipantEntity> participants
     ) {
+        givenContext(tournament, stage(), match, slots, participants);
+    }
+
+    private void givenContext(
+            TournamentEntity tournament,
+            TournamentStageEntity stage,
+            TournamentMatchEntity match,
+            List<TournamentMatchSlotEntity> slots,
+            List<TournamentParticipantEntity> participants
+    ) {
         given(tournamentRepository.findById(TOURNAMENT_ID)).willReturn(Optional.of(tournament));
         given(matchRepository.findById(MATCH_ID)).willReturn(Optional.of(match));
-        given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage()));
+        given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
         given(matchSlotRepository.findAllByMatchIdOrderBySlotNoAsc(MATCH_ID)).willReturn(slots);
         given(participantRepository.findAllById(any())).willReturn(participants);
     }
@@ -411,12 +498,20 @@ class TournamentMatchScoreSubmissionServiceTest {
     }
 
     private TournamentStageEntity stage() {
+        return stage(TournamentStageEntity.TYPE_SINGLE_ELIMINATION);
+    }
+
+    private TournamentStageEntity raceSurvivalStage() {
+        return stage(TournamentStageEntity.TYPE_RACE_SURVIVAL);
+    }
+
+    private TournamentStageEntity stage(String stageType) {
         return TournamentStageEntity.builder()
                 .id(STAGE_ID)
                 .tournamentId(TOURNAMENT_ID)
                 .stageNo(1)
                 .stageName("Stage")
-                .stageType(TournamentStageEntity.TYPE_SINGLE_ELIMINATION)
+                .stageType(stageType)
                 .status(TournamentStageEntity.STATUS_READY)
                 .displayOrder(1)
                 .build();
@@ -466,6 +561,10 @@ class TournamentMatchScoreSubmissionServiceTest {
         return participant(PLAYER_B_PARTICIPANT_ID, PLAYER_B_USER_ID, "Player B");
     }
 
+    private TournamentParticipantEntity internalParticipantC() {
+        return participant(PLAYER_C_PARTICIPANT_ID, PLAYER_C_USER_ID, "Player C");
+    }
+
     private TournamentParticipantEntity externalParticipantA() {
         return participant(PLAYER_A_PARTICIPANT_ID, null, "External A");
     }
@@ -498,12 +597,24 @@ class TournamentMatchScoreSubmissionServiceTest {
             Integer slot2Score,
             Integer winnerSlotNo
     ) {
+        return submission(id, status, slot1Score, slot2Score, winnerSlotNo, PLAYER_A_USER_ID, PLAYER_A_PARTICIPANT_ID);
+    }
+
+    private TournamentMatchScoreSubmissionEntity submission(
+            Long id,
+            String status,
+            Integer slot1Score,
+            Integer slot2Score,
+            Integer winnerSlotNo,
+            Long submittedByUserId,
+            Long submittedByParticipantId
+    ) {
         return TournamentMatchScoreSubmissionEntity.builder()
                 .id(id)
                 .tournamentId(TOURNAMENT_ID)
                 .matchId(MATCH_ID)
-                .submittedByUserId(PLAYER_A_USER_ID)
-                .submittedByParticipantId(PLAYER_A_PARTICIPANT_ID)
+                .submittedByUserId(submittedByUserId)
+                .submittedByParticipantId(submittedByParticipantId)
                 .submitterRole(TournamentMatchScoreSubmissionEntity.ROLE_PLAYER)
                 .slot1Score(slot1Score)
                 .slot2Score(slot2Score)

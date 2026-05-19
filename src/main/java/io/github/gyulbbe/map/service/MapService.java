@@ -6,11 +6,11 @@ import io.github.gyulbbe.map.entity.MapEntity;
 import io.github.gyulbbe.map.repository.MapRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -18,17 +18,26 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MapService {
 
+    private static final String DUPLICATE_MAP_NAME_MESSAGE = "이미 존재하는 맵입니다.";
+
     private final MapRepository mapRepository;
 
     public ResponseDto<Void> insertMap(MapDto mapDto) {
         try {
+            if (mapRepository.existsByMapName(mapDto.getMapName())) {
+                return ResponseDto.fail(DUPLICATE_MAP_NAME_MESSAGE);
+            }
+
             MapEntity entity = MapEntity.builder()
                     .mapName(mapDto.getMapName())
                     .image(mapDto.getMapName())
                     .build();
 
-            mapRepository.save(entity);
+            mapRepository.saveAndFlush(entity);
             return ResponseDto.success(null);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Duplicate map name while inserting legacy map. mapName={}", mapDto == null ? null : mapDto.getMapName(), e);
+            return ResponseDto.fail(DUPLICATE_MAP_NAME_MESSAGE);
         } catch (Exception e) {
             log.error("맵 등록 실패", e);
             return ResponseDto.fail("맵 등록에 실패했습니다.");
@@ -65,14 +74,21 @@ public class MapService {
                 return ResponseDto.fail("맵을 찾을 수 없습니다.");
             }
 
+            if (mapRepository.existsByMapNameAndIdNot(mapDto.getMapName(), id)) {
+                return ResponseDto.fail(DUPLICATE_MAP_NAME_MESSAGE);
+            }
+
             MapEntity updated = MapEntity.builder()
                     .id(entity.getId())
                     .mapName(mapDto.getMapName())
                     .image(mapDto.getMapName())
                     .build();
 
-            mapRepository.save(updated);
+            mapRepository.saveAndFlush(updated);
             return ResponseDto.success(null);
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Duplicate map name while updating legacy map. mapId={}, mapName={}", id, mapDto == null ? null : mapDto.getMapName(), e);
+            return ResponseDto.fail(DUPLICATE_MAP_NAME_MESSAGE);
         } catch (Exception e) {
             log.error("맵 수정 실패", e);
             return ResponseDto.fail("맵 수정에 실패했습니다.");

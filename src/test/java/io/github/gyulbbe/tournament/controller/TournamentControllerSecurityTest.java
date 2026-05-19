@@ -2,9 +2,12 @@ package io.github.gyulbbe.tournament.controller;
 
 import io.github.gyulbbe.config.SecurityConfig;
 import io.github.gyulbbe.jwt.JWTUtil;
+import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
+import io.github.gyulbbe.tournament.entity.RaceSurvivalProgressSubmissionEntity;
+import io.github.gyulbbe.tournament.service.RaceSurvivalProgressSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentCreationService;
 import io.github.gyulbbe.tournament.service.TournamentMatchScoreSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentService;
@@ -31,6 +34,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -53,6 +57,9 @@ class TournamentControllerSecurityTest {
 
     @MockBean
     private TournamentMatchScoreSubmissionService scoreSubmissionService;
+
+    @MockBean
+    private RaceSurvivalProgressSubmissionService raceSurvivalProgressSubmissionService;
 
     @MockBean
     private AuthenticationConfiguration authenticationConfiguration;
@@ -124,6 +131,126 @@ class TournamentControllerSecurityTest {
     }
 
     @Test
+    void updateMatchParticipants_returnsUnauthorized_whenAuthenticationMissing() throws Exception {
+        mockMvc.perform(put("/tournaments/1/matches/100/participants")
+                        .contentType("application/json")
+                        .content(participantsBody()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void updateMatchParticipants_returnsOk_forAuthenticatedUser() throws Exception {
+        given(tournamentService.assignRaceSurvivalMatchParticipants(
+                eq(1L),
+                eq(100L),
+                eq(1001L),
+                eq(1002L),
+                eq(101L),
+                eq("ROLE_USER")
+        )).willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        mockMvc.perform(put("/tournaments/1/matches/100/participants")
+                        .with(auth(101L, "ROLE_USER"))
+                        .contentType("application/json")
+                        .content(participantsBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.id").value(1));
+    }
+
+    @Test
+    void raceSurvivalProgressSubmissionSubmitAndList_requireAuthentication() throws Exception {
+        mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions")
+                        .contentType("application/json")
+                        .content(raceProgressBody()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_REQUIRED"));
+
+        mockMvc.perform(get("/tournaments/1/race-survival-progress-submissions"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_REQUIRED"));
+    }
+
+    @Test
+    void raceSurvivalProgressSubmissionSubmitAndList_returnOk_forAuthenticatedUser() throws Exception {
+        given(raceSurvivalProgressSubmissionService.submitProgress(eq(1L), any(), eq(101L), eq("ROLE_USER")))
+                .willReturn(RaceSurvivalProgressSubmissionResponseDto.builder()
+                        .id(900L)
+                        .tournamentId(1L)
+                        .status(RaceSurvivalProgressSubmissionEntity.STATUS_PENDING)
+                        .build());
+        given(raceSurvivalProgressSubmissionService.listSubmissions(eq(1L), eq(101L), eq("ROLE_USER")))
+                .willReturn(List.of(RaceSurvivalProgressSubmissionResponseDto.builder()
+                        .id(900L)
+                        .status(RaceSurvivalProgressSubmissionEntity.STATUS_PENDING)
+                        .build()));
+
+        mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions")
+                        .with(auth(101L, "ROLE_USER"))
+                        .contentType("application/json")
+                        .content(raceProgressBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.id").value(900))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+
+        mockMvc.perform(get("/tournaments/1/race-survival-progress-submissions")
+                        .with(auth(101L, "ROLE_USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data[0].id").value(900));
+    }
+
+    @Test
+    void raceSurvivalProgressSubmissionApproveAndReject_areAdminOnly() throws Exception {
+        mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions/900/approve")
+                        .with(auth(101L, "ROLE_USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+
+        mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions/900/reject")
+                        .with(auth(101L, "ROLE_USER"))
+                        .contentType("application/json")
+                        .content(rejectBody()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void raceSurvivalProgressSubmissionApproveAndReject_returnOk_forManagerMasterAndAdminRoles() throws Exception {
+        given(raceSurvivalProgressSubmissionService.approveSubmission(eq(1L), eq(900L), anyLong(), anyString()))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+        given(raceSurvivalProgressSubmissionService.rejectSubmission(eq(1L), eq(900L), any(), anyLong(), anyString()))
+                .willReturn(RaceSurvivalProgressSubmissionResponseDto.builder()
+                        .id(900L)
+                        .status(RaceSurvivalProgressSubmissionEntity.STATUS_REJECTED)
+                        .build());
+
+        for (String role : List.of("ROLE_MANAGER", "ROLE_MASTER", "ROLE_ADMIN")) {
+            mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions/900/approve")
+                            .with(auth(999L, role)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.id").value(1));
+
+            mockMvc.perform(post("/tournaments/1/race-survival-progress-submissions/900/reject")
+                            .with(auth(999L, role))
+                            .contentType("application/json")
+                            .content(rejectBody()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.id").value(900))
+                    .andExpect(jsonPath("$.data.status").value("REJECTED"));
+        }
+    }
+
+    @Test
     void approveScoreSubmission_returnsOk_forManagerMasterAndAdminRoles() throws Exception {
         given(scoreSubmissionService.approveSubmission(eq(1L), eq(100L), eq(900L), anyLong(), anyString()))
                 .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
@@ -187,6 +314,31 @@ class TournamentControllerSecurityTest {
         return """
                 {
                   "adminNote": "score mismatch"
+                }
+                """;
+    }
+
+    private String participantsBody() {
+        return """
+                {
+                  "slot1ParticipantId": 1001,
+                  "slot2ParticipantId": 1002
+                }
+                """;
+    }
+
+    private String raceProgressBody() {
+        return """
+                {
+                  "matches": [
+                    {
+                      "matchOrder": 1,
+                      "slot1ParticipantId": 1001,
+                      "slot2ParticipantId": 2001,
+                      "slot1Score": 1,
+                      "slot2Score": 0
+                    }
+                  ]
                 }
                 """;
     }

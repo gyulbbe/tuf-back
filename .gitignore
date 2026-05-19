@@ -177,7 +177,6 @@ gradle-app.setting
 .gradle-user-home/
 
 # 에이전트 작업 폴더 (로컬 전용)
-.agent/
 
 # 임시 디버그 폴더
 .tmp-jwtprobe/

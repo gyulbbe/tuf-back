@@ -12,6 +12,7 @@ import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,7 @@ public class AdminMapService {
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_SIZE = 20;
     private static final int MAX_SIZE = 50;
+    private static final String DUPLICATE_MAP_NAME_MESSAGE = "이미 존재하는 맵입니다.";
     private static final String MAP_IN_USE_MESSAGE = "일정 대진에서 사용 중인 맵은 삭제할 수 없습니다.";
     private static final String TOURNAMENT_MAP_IN_USE_MESSAGE = "토너먼트 경기에서 사용 중인 맵은 삭제할 수 없습니다.";
 
@@ -68,13 +70,21 @@ public class AdminMapService {
     public ResponseDto<AdminMapResponse> createMap(AdminMapRequest request) {
         try {
             NormalizedMap normalized = normalizeAndValidate(request);
-            MapEntity saved = mapRepository.save(MapEntity.builder()
+            if (isDuplicateMapName(normalized.mapName(), null)) {
+                return conflict(DUPLICATE_MAP_NAME_MESSAGE);
+            }
+
+            MapEntity saved = mapRepository.saveAndFlush(MapEntity.builder()
                     .mapName(normalized.mapName())
                     .image(normalized.image())
                     .build());
             return ResponseDto.success(toResponse(saved));
         } catch (IllegalArgumentException e) {
             return validationFailed(e.getMessage());
+        } catch (DataIntegrityViolationException e) {
+            markRollbackOnly();
+            log.warn("Duplicate map name while creating map. mapName={}", request == null ? null : request.getMapName(), e);
+            return conflict(DUPLICATE_MAP_NAME_MESSAGE);
         } catch (Exception e) {
             markRollbackOnly();
             log.warn("Failed to create map.", e);
@@ -92,12 +102,21 @@ public class AdminMapService {
             NormalizedMap normalized = normalizeAndValidate(request);
             MapEntity map = mapRepository.findById(mapId)
                     .orElseThrow(() -> new NoSuchElementException("Map not found."));
+            if (isDuplicateMapName(normalized.mapName(), mapId)) {
+                return conflict(DUPLICATE_MAP_NAME_MESSAGE);
+            }
+
             map.update(normalized.mapName(), normalized.image());
+            mapRepository.flush();
             return ResponseDto.success(toResponse(map));
         } catch (NoSuchElementException e) {
             return notFound(e.getMessage());
         } catch (IllegalArgumentException e) {
             return validationFailed(e.getMessage());
+        } catch (DataIntegrityViolationException e) {
+            markRollbackOnly();
+            log.warn("Duplicate map name while updating map. mapId={}, mapName={}", mapId, request == null ? null : request.getMapName(), e);
+            return conflict(DUPLICATE_MAP_NAME_MESSAGE);
         } catch (Exception e) {
             markRollbackOnly();
             log.warn("Failed to update map. mapId={}", mapId, e);
@@ -156,6 +175,13 @@ public class AdminMapService {
             throw new IllegalArgumentException("image must be 255 characters or less.");
         }
         return new NormalizedMap(mapName, image);
+    }
+
+    private boolean isDuplicateMapName(String mapName, Long currentMapId) {
+        if (currentMapId == null) {
+            return mapRepository.existsByMapName(mapName);
+        }
+        return mapRepository.existsByMapNameAndIdNot(mapName, currentMapId);
     }
 
     private String normalizeKeyword(String keyword) {

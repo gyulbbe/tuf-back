@@ -7,9 +7,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface TournamentParticipantRepository extends JpaRepository<TournamentParticipantEntity, Long> {
     List<TournamentParticipantEntity> findAllByTournamentIdOrderBySeedNoAscIdAsc(Long tournamentId);
+
+    Optional<TournamentParticipantEntity> findFirstByTournamentIdAndUserIdOrderBySeedNoAscIdAsc(Long tournamentId, Long userId);
 
     boolean existsByTournamentIdAndSeedNo(Long tournamentId, Integer seedNo);
 

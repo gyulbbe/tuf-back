@@ -113,8 +113,13 @@ public class TournamentMatchScoreSubmissionService {
         MatchContext context = loadContext(tournamentId, matchId);
         requireSubmissionViewer(context, actorUserId, actorRole);
 
-        List<TournamentMatchScoreSubmissionEntity> submissions = submissionRepository
-                .findAllByTournamentIdAndMatchIdOrderByRegDateDescIdDesc(tournamentId, matchId);
+        List<TournamentMatchScoreSubmissionEntity> submissions = isAdmin(actorRole)
+                ? submissionRepository.findAllByTournamentIdAndMatchIdOrderByRegDateDescIdDesc(tournamentId, matchId)
+                : submissionRepository.findAllByTournamentIdAndMatchIdAndSubmittedByUserIdOrderByRegDateDescIdDesc(
+                        tournamentId,
+                        matchId,
+                        actorUserId
+                );
         Map<Long, String> submitterLoginIds = loadSubmitterLoginIds(submissions);
 
         return submissions
@@ -276,7 +281,11 @@ public class TournamentMatchScoreSubmissionService {
         if (isAdmin(actorRole)) {
             return null;
         }
-        return findParticipantIdForUser(context, actorUserId)
+        if (isRaceSurvival(context)) {
+            return findTournamentParticipantIdForUser(context.tournament().getId(), actorUserId)
+                    .orElseThrow(() -> forbidden("Only tournament participants or administrators can submit scores."));
+        }
+        return findMatchParticipantIdForUser(context, actorUserId)
                 .orElseThrow(() -> forbidden("Only match participants or administrators can submit scores."));
     }
 
@@ -285,16 +294,34 @@ public class TournamentMatchScoreSubmissionService {
         if (isAdmin(actorRole)) {
             return;
         }
-        if (findParticipantIdForUser(context, actorUserId).isEmpty()) {
+        if (isRaceSurvival(context)) {
+            if (findTournamentParticipantIdForUser(context.tournament().getId(), actorUserId).isPresent()) {
+                return;
+            }
+            throw forbidden("Only tournament participants or administrators can view score submissions.");
+        }
+        if (findMatchParticipantIdForUser(context, actorUserId).isEmpty()) {
             throw forbidden("Only match participants or administrators can view score submissions.");
         }
     }
 
-    private Optional<Long> findParticipantIdForUser(MatchContext context, Long actorUserId) {
+    private Optional<Long> findMatchParticipantIdForUser(MatchContext context, Long actorUserId) {
         return context.participantsBySlotNo().values().stream()
                 .filter(participant -> Objects.equals(participant.getUserId(), actorUserId))
                 .map(TournamentParticipantEntity::getId)
                 .findFirst();
+    }
+
+    private Optional<Long> findTournamentParticipantIdForUser(Long tournamentId, Long actorUserId) {
+        if (actorUserId == null) {
+            return Optional.empty();
+        }
+        return participantRepository.findFirstByTournamentIdAndUserIdOrderBySeedNoAscIdAsc(tournamentId, actorUserId)
+                .map(TournamentParticipantEntity::getId);
+    }
+
+    private boolean isRaceSurvival(MatchContext context) {
+        return TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(context.stage().getStageType());
     }
 
     private ScoreDecision decideScore(MatchContext context, TournamentScoreSubmissionRequestDto request) {

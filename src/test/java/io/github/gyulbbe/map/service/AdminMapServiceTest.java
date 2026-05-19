@@ -7,6 +7,7 @@ import io.github.gyulbbe.map.dto.AdminMapRequest;
 import io.github.gyulbbe.map.dto.AdminMapResponse;
 import io.github.gyulbbe.map.entity.MapEntity;
 import io.github.gyulbbe.map.repository.MapRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -34,6 +35,9 @@ class AdminMapServiceTest {
     @Mock
     private HomeScheduleMatchRepository homeScheduleMatchRepository;
 
+    @Mock
+    private TournamentMatchRepository tournamentMatchRepository;
+
     @InjectMocks
     private AdminMapService adminMapService;
 
@@ -53,7 +57,8 @@ class AdminMapServiceTest {
     @Test
     void createMap_savesMapAndReturnsDates() {
         AdminMapRequest request = request("Fighting Spirit", "/maps/fighting-spirit.png");
-        when(mapRepository.save(any(MapEntity.class))).thenReturn(map(1L, "Fighting Spirit", "/maps/fighting-spirit.png"));
+        when(mapRepository.existsByMapName("Fighting Spirit")).thenReturn(false);
+        when(mapRepository.saveAndFlush(any(MapEntity.class))).thenReturn(map(1L, "Fighting Spirit", "/maps/fighting-spirit.png"));
 
         ResponseDto<AdminMapResponse> response = adminMapService.createMap(request);
 
@@ -64,15 +69,39 @@ class AdminMapServiceTest {
     }
 
     @Test
+    void createMap_returnsConflictWhenMapNameAlreadyExists() {
+        AdminMapRequest request = request("Fighting Spirit", "/maps/fighting-spirit.png");
+        when(mapRepository.existsByMapName("Fighting Spirit")).thenReturn(true);
+
+        ResponseDto<AdminMapResponse> response = adminMapService.createMap(request);
+
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(response.getMessage()).isEqualTo("이미 존재하는 맵입니다.");
+    }
+
+    @Test
     void updateMap_updatesExistingMap() {
         MapEntity map = map(1L, "Old Map");
         when(mapRepository.findById(1L)).thenReturn(Optional.of(map));
+        when(mapRepository.existsByMapNameAndIdNot("New Map", 1L)).thenReturn(false);
 
         ResponseDto<AdminMapResponse> response = adminMapService.updateMap(1L, request("New Map", "/maps/new.png"));
 
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getData().getMapName()).isEqualTo("New Map");
         assertThat(response.getData().getImage()).isEqualTo("/maps/new.png");
+    }
+
+    @Test
+    void updateMap_returnsConflictWhenMapNameAlreadyExists() {
+        MapEntity map = map(1L, "Old Map");
+        when(mapRepository.findById(1L)).thenReturn(Optional.of(map));
+        when(mapRepository.existsByMapNameAndIdNot("Fighting Spirit", 1L)).thenReturn(true);
+
+        ResponseDto<AdminMapResponse> response = adminMapService.updateMap(1L, request("Fighting Spirit", "/maps/fighting-spirit.png"));
+
+        assertThat(response.getStatus()).isEqualTo(409);
+        assertThat(response.getMessage()).isEqualTo("이미 존재하는 맵입니다.");
     }
 
     @Test
@@ -90,6 +119,7 @@ class AdminMapServiceTest {
     void deleteMap_deletesUnusedMap() {
         when(mapRepository.existsById(1L)).thenReturn(true);
         when(homeScheduleMatchRepository.existsByMapId(1L)).thenReturn(false);
+        when(tournamentMatchRepository.existsByMapId(1L)).thenReturn(false);
 
         ResponseDto<Void> response = adminMapService.deleteMap(1L);
 

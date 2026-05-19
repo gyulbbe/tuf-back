@@ -15,7 +15,10 @@ import java.time.LocalDateTime;
         sequenceName = "MAPS_SEQ",
         allocationSize = 1
 )
-@Table(name = "MAPS")
+@Table(
+        name = "MAPS",
+        uniqueConstraints = @UniqueConstraint(name = "UK_MAPS_MAP_NAME", columnNames = "MAP_NAME")
+)
 public class MapEntity {
 
     @Id

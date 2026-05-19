@@ -12,6 +12,10 @@ import java.util.List;
 
 @Repository
 public interface MapRepository extends JpaRepository<MapEntity, Long> {
+    boolean existsByMapName(String mapName);
+
+    boolean existsByMapNameAndIdNot(String mapName, Long id);
+
     @Query("""
             select m
             from MapEntity m
