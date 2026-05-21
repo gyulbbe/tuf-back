@@ -12,6 +12,8 @@ public class EmbeddingVectorDto {
     private String referenceTable;
     @NotNull
     private String text;
+    private Integer chunkIndex = 0;
+    private String metadata;
     private float[] embeddingVector;
     private Double distance;
 }

@@ -21,7 +21,6 @@ public class RpsDraftEventPublisher {
 
     private static final String TOPIC_PREFIX = "/topic/rps-drafts/";
     private static final Set<RpsDraftLiveEventType> SNAPSHOT_REQUIRED_EVENT_TYPES = EnumSet.of(
-            RpsDraftLiveEventType.SESSION_STARTED,
             RpsDraftLiveEventType.RPS_SUBMITTED,
             RpsDraftLiveEventType.RPS_RESOLVED,
             RpsDraftLiveEventType.TURN_CHANGED,

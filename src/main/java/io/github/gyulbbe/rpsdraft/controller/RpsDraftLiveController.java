@@ -38,17 +38,6 @@ public class RpsDraftLiveController {
         }
     }
 
-    @PostMapping("/sessions/{sessionId}/start")
-    public ResponseEntity<ResponseDto<RpsDraftLiveSnapshotResponseDto>> start(@PathVariable Long sessionId) {
-        try {
-            return respond(
-                    ResponseDto.success(rpsDraftLiveCommandService.startSession(sessionId, rpsDraftActorResolver.resolveRequired()))
-            );
-        } catch (Exception e) {
-            return respond(ResponseDto.fail(e.getMessage()));
-        }
-    }
-
     @PostMapping("/sessions/{sessionId}/rps/submit")
     public ResponseEntity<ResponseDto<RpsDraftLiveSnapshotResponseDto>> submitRps(
             @PathVariable Long sessionId,
@@ -79,7 +68,7 @@ public class RpsDraftLiveController {
                     ResponseDto.success(
                             rpsDraftLiveCommandService.pick(
                                     sessionId,
-                                    requestDto.getCandidateUserId(),
+                                    requestDto.getCandidateId(),
                                     rpsDraftActorResolver.resolveRequired()
                             )
                     )

@@ -99,11 +99,8 @@ public class RpsDraftSnapshotService {
             RpsDraftLiveRosterItemResponseDto rosterItem = new RpsDraftLiveRosterItemResponseDto();
             rosterItem.setPickNo(pick.getPickNo());
             rosterItem.setRoundNo(calculateRoundNo(pick.getPickNo(), teamCount));
-            rosterItem.setCandidateUserId(pick.getCandidateUserId());
-            rosterItem.setCandidateUserLoginId(pick.getCandidateUserLoginId());
+            rosterItem.setCandidateId(pick.getCandidateId());
             rosterItem.setCandidateName(pick.getCandidateName());
-            rosterItem.setTier(pick.getTier());
-            rosterItem.setRace(pick.getRace());
             rosterItem.setPickedByUserId(pick.getPickedByUserId());
             rosterItem.setPickedByUserLoginId(pick.getPickedByUserLoginId());
             rosterItem.setPickedByUserName(pick.getPickedByUserName());

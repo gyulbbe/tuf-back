@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.gyulbbe.ai.mapper.AiRecordMapper">
+
+    <resultMap id="userLeagueRecordResultMap" type="UserLeagueRecordDto">
+        <result column="league_id" property="leagueId" />
+        <result column="league_name" property="leagueName" />
+        <result column="league_type" property="leagueType" />
+        <result column="user_id" property="userId" />
+        <result column="login_id" property="loginId" />
+        <result column="wins" property="wins" />
+        <result column="losses" property="losses" />
+        <result column="draws" property="draws" />
+        <result column="score_for" property="scoreFor" />
+        <result column="score_against" property="scoreAgainst" />
+        <result column="source_type" property="sourceType" />
+    </resultMap>
+
+    <resultMap id="userMatchResultResultMap" type="UserMatchResultDto">
+        <result column="league_id" property="leagueId" />
+        <result column="league_name" property="leagueName" />
+        <result column="league_type" property="leagueType" />
+        <result column="tournament_id" property="tournamentId" />
+        <result column="match_id" property="matchId" />
+        <result column="slot_id" property="slotId" />
+        <result column="user_id" property="userId" />
+        <result column="login_id" property="loginId" />
+        <result column="participant_id" property="participantId" />
+        <result column="opponent_user_id" property="opponentUserId" />
+        <result column="opponent_login_id" property="opponentLoginId" />
+        <result column="result" property="result" />
+        <result column="score_for" property="scoreFor" />
+        <result column="score_against" property="scoreAgainst" />
+        <result column="is_bye" property="isBye" />
+        <result column="decided_at" property="decidedAt" />
+        <result column="source_type" property="sourceType" />
+    </resultMap>
+
+    <resultMap id="leagueRecordSummaryResultMap" type="LeagueRecordSummaryDto">
+        <result column="league_id" property="leagueId" />
+        <result column="league_name" property="leagueName" />
+        <result column="league_type" property="leagueType" />
+        <result column="player_count" property="playerCount" />
+        <result column="total_wins" property="totalWins" />
+        <result column="total_losses" property="totalLosses" />
+        <result column="total_draws" property="totalDraws" />
+        <result column="total_score_for" property="totalScoreFor" />
+        <result column="total_score_against" property="totalScoreAgainst" />
+    </resultMap>
+
+    <select id="findAllUserLeagueRecords" resultMap="userLeagueRecordResultMap">
+        SELECT
+            league_id,
+            league_name,
+            league_type,
+            user_id,
+            login_id,
+            wins,
+            losses,
+            draws,
+            score_for,
+            score_against,
+            source_type
+        FROM v_user_league_records
+        ORDER BY league_id DESC, login_id ASC
+    </select>
+
+    <select id="findUserLeagueRecordsByLoginIds" resultMap="userLeagueRecordResultMap">
+        SELECT
+            league_id,
+            league_name,
+            league_type,
+            user_id,
+            login_id,
+            wins,
+            losses,
+            draws,
+            score_for,
+            score_against,
+            source_type
+        FROM v_user_league_records
+        WHERE UPPER(login_id) IN
+        <foreach collection="loginIds" item="loginId" open="(" separator="," close=")">
+            UPPER(#{loginId})
+        </foreach>
+        ORDER BY league_id DESC, login_id ASC
+    </select>
+
+    <select id="findAllUserMatchResults" resultMap="userMatchResultResultMap">
+        SELECT
+            league_id,
+            league_name,
+            league_type,
+            tournament_id,
+            match_id,
+            slot_id,
+            user_id,
+            login_id,
+            participant_id,
+            opponent_user_id,
+            opponent_login_id,
+            result,
+            score_for,
+            score_against,
+            is_bye,
+            decided_at,
+            source_type
+        FROM v_user_match_results
+        ORDER BY league_id DESC, match_id DESC, login_id ASC
+    </select>
+
+    <select id="findLeagueRecordSummaries" resultMap="leagueRecordSummaryResultMap">
+        SELECT
+            league_id,
+            league_name,
+            league_type,
+            COUNT(*) AS player_count,
+            SUM(wins) AS total_wins,
+            SUM(losses) AS total_losses,
+            SUM(draws) AS total_draws,
+            SUM(score_for) AS total_score_for,
+            SUM(score_against) AS total_score_against
+        FROM v_user_league_records
+        GROUP BY league_id, league_name, league_type
+        ORDER BY league_id DESC
+    </select>
+
+</mapper>

@@ -1,5 +1,6 @@
 package io.github.gyulbbe.persistence;
 
+import io.github.gyulbbe.ai.entity.AiKnowledgeDocumentEntity;
 import io.github.gyulbbe.board.entity.BoardEntity;
 import io.github.gyulbbe.board.entity.BoardCommentEntity;
 import io.github.gyulbbe.commentary.entity.CommentaryEntity;
@@ -62,6 +63,7 @@ class SequenceStrategyAnnotationTest {
                 Arguments.of(MapEntity.class, "maps_seq_gen", "MAPS_SEQ"),
                 Arguments.of(MatchInfoEntity.class, "match_infos_seq_gen", "MATCH_INFOS_SEQ"),
                 Arguments.of(SpeechEntity.class, "speeches_seq_gen", "SPEECHES_SEQ"),
+                Arguments.of(AiKnowledgeDocumentEntity.class, "ai_knowledge_documents_seq_gen", "AI_KNOWLEDGE_DOCUMENTS_SEQ"),
                 Arguments.of(UserEntity.class, "users_seq_gen", "USERS_SEQ")
         );
     }

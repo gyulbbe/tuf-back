@@ -9,7 +9,6 @@ import io.github.gyulbbe.rpsdraft.dto.RpsDraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionCreateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftTeamResponseDto;
-import io.github.gyulbbe.rpsdraft.service.RpsDraftAdminService;
 import io.github.gyulbbe.rpsdraft.service.RpsDraftLiveCommandService;
 import io.github.gyulbbe.rpsdraft.service.RpsDraftService;
 import io.github.gyulbbe.rpsdraft.service.RpsDraftSnapshotService;
@@ -41,9 +40,6 @@ class RpsDraftControllerTest {
     private RpsDraftService rpsDraftService;
 
     @Mock
-    private RpsDraftAdminService rpsDraftAdminService;
-
-    @Mock
     private RpsDraftSnapshotService rpsDraftSnapshotService;
 
     @Mock
@@ -73,7 +69,7 @@ class RpsDraftControllerTest {
         RpsDraftSessionDetailResponseDto detail = new RpsDraftSessionDetailResponseDto();
         detail.setId(1L);
         detail.setTitle("session");
-        detail.setStatus("READY");
+        detail.setStatus("RPS_PENDING");
 
         RpsDraftTeamResponseDto team1 = new RpsDraftTeamResponseDto();
         team1.setId(11L);
@@ -106,17 +102,6 @@ class RpsDraftControllerTest {
                 .andExpect(jsonPath("$.data.teams[0].teamName").value("picker-a"))
                 .andExpect(jsonPath("$.data.teams[0].pickerUserId").value(101))
                 .andExpect(jsonPath("$.data.teams[1].pickerUserId").value(102));
-    }
-
-    @Test
-    void start_returns_fail_response_when_actor_resolution_fails() throws Exception {
-        when(rpsDraftActorResolver.resolveRequired()).thenThrow(new IllegalArgumentException("Authentication is required."));
-
-        mockMvc.perform(post("/rps-drafts/live/sessions/1/start"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(500))
-                .andExpect(jsonPath("$.message").value("Authentication is required."))
-                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
@@ -158,7 +143,7 @@ class RpsDraftControllerTest {
         requestDto.setTitle("session");
         requestDto.setTeam1PickerUserId(101L);
         requestDto.setTeam2PickerUserId(102L);
-        requestDto.setCandidateUserIds(List.of(201L, 202L));
+        requestDto.setCandidateNames(List.of("candidate-a", "candidate-b"));
         return requestDto;
     }
 }

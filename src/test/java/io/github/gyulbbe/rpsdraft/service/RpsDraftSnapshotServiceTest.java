@@ -39,7 +39,6 @@ import static org.assertj.core.api.Assertions.assertThat;
         RpsDraftQueryRepositoryImpl.class,
         RpsDraftPermissionService.class,
         RpsDraftService.class,
-        RpsDraftAdminService.class,
         RpsDraftSnapshotService.class,
         RpsDraftEventPublisher.class,
         RpsDraftLiveCommandService.class
@@ -74,13 +73,28 @@ class RpsDraftSnapshotServiceTest {
     private RpsDraftService rpsDraftService;
 
     @Autowired
-    private RpsDraftSnapshotService rpsDraftSnapshotService;
-
-    @Autowired
     private RpsDraftLiveCommandService rpsDraftLiveCommandService;
 
     @Autowired
+    private RpsDraftSnapshotService rpsDraftSnapshotService;
+
+    @Autowired
     private UserRepository userRepository;
+
+    @Test
+    void snapshot_allows_picker_to_submit_immediately_after_creation() {
+        Fixture fixture = createStartedFixture(1);
+
+        RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(
+                fixture.sessionId,
+                actor(fixture.team1PickerId, "picker-snap-a-1")
+        );
+
+        assertThat(snapshot.getSession().getStatus()).isEqualTo(RpsDraftSessionEntity.STATUS_RPS_PENDING);
+        assertThat(snapshot.getSession().getStartedAt()).isNotNull();
+        assertThat(snapshot.getPermissions().isCanSubmitRps()).isTrue();
+        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
+    }
 
     @Test
     void snapshot_masks_choices_while_waiting_for_second_submission() {
@@ -89,12 +103,12 @@ class RpsDraftSnapshotServiceTest {
         rpsDraftLiveCommandService.submitRps(
                 fixture.sessionId,
                 RpsDraftSessionEntity.RPS_ROCK,
-                actor(fixture.team1PickerId, "picker1")
+                actor(fixture.team1PickerId, "picker-snap-a-1")
         );
 
         RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(
                 fixture.sessionId,
-                actor(fixture.team2PickerId, "picker2")
+                actor(fixture.team2PickerId, "picker-snap-b-1")
         );
 
         assertThat(snapshot.getSession().getStatus()).isEqualTo(RpsDraftSessionEntity.STATUS_RPS_PENDING);
@@ -103,22 +117,13 @@ class RpsDraftSnapshotServiceTest {
         assertThat(snapshot.getRps().getTeam1Choice()).isNull();
         assertThat(snapshot.getRps().getTeam2Choice()).isNull();
         assertThat(snapshot.getRps().getResult()).isEqualTo(RpsDraftSessionEntity.RPS_RESULT_PENDING);
+        assertThat(snapshot.getPermissions().isCanSubmitRps()).isTrue();
     }
 
     @Test
     void snapshot_shows_current_and_pending_team_during_picking() {
         Fixture fixture = createStartedFixture(2);
-
-        rpsDraftLiveCommandService.submitRps(
-                fixture.sessionId,
-                RpsDraftSessionEntity.RPS_ROCK,
-                actor(fixture.team1PickerId, "picker1")
-        );
-        rpsDraftLiveCommandService.submitRps(
-                fixture.sessionId,
-                RpsDraftSessionEntity.RPS_SCISSORS,
-                actor(fixture.team2PickerId, "picker2")
-        );
+        resolveTeam1Win(fixture, 2);
 
         RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(fixture.sessionId, null);
 
@@ -128,116 +133,74 @@ class RpsDraftSnapshotServiceTest {
         assertThat(snapshot.getRps().getTeam1Choice()).isEqualTo(RpsDraftSessionEntity.RPS_ROCK);
         assertThat(snapshot.getRps().getTeam2Choice()).isEqualTo(RpsDraftSessionEntity.RPS_SCISSORS);
         assertThat(snapshot.getRps().getResult()).isEqualTo(RpsDraftSessionEntity.RPS_RESULT_TEAM1_WIN);
+        assertThat(snapshot.getPermissions().isCanSubmitRps()).isFalse();
+        assertThat(snapshot.getPermissions().isCanPick()).isFalse();
     }
 
     @Test
-    void snapshot_includes_roster_candidates_and_recent_picks() {
+    void snapshot_includes_name_candidates_roster_recent_picks_and_permissions() {
         Fixture fixture = createStartedFixture(3);
+        resolveTeam1Win(fixture, 3);
 
-        rpsDraftLiveCommandService.submitRps(
-                fixture.sessionId,
-                RpsDraftSessionEntity.RPS_ROCK,
-                actor(fixture.team1PickerId, "picker1")
-        );
-        rpsDraftLiveCommandService.submitRps(
-                fixture.sessionId,
-                RpsDraftSessionEntity.RPS_SCISSORS,
-                actor(fixture.team2PickerId, "picker2")
-        );
         rpsDraftLiveCommandService.pick(
                 fixture.sessionId,
                 fixture.candidateIds[0],
-                actor(fixture.team1PickerId, "picker1")
+                actor(fixture.team1PickerId, "picker-snap-a-3")
         );
 
         RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(
                 fixture.sessionId,
-                actor(fixture.team2PickerId, "picker2")
+                actor(fixture.team2PickerId, "picker-snap-b-3")
         );
 
         assertThat(snapshot.getSession().getOwnerUserLoginId()).isEqualTo("owner-snap-3");
-        assertThat(snapshot.getSession().getOwnerName()).isEqualTo("owner-snap-3");
-        assertThat(snapshot.getSession().getOwnerUserLoginId()).isNotEqualTo("owner");
-        assertThat(snapshot.getSession().getOwnerUserLoginId()).isNotEqualTo(String.valueOf(fixture.ownerId));
-
-        var team = snapshot.getTeams().stream()
-                .filter(candidateTeam -> candidateTeam.getId().equals(fixture.team1Id))
-                .findFirst()
-                .orElseThrow();
-        assertThat(team.getPickerUserLoginId()).isEqualTo("picker-snap-a-3");
-        assertThat(team.getPickerName()).isEqualTo("picker-snap-a-3");
-        assertThat(team.getPickerUserLoginId()).isNotEqualTo("pickerA");
-        assertThat(team.getPickerUserLoginId()).isNotEqualTo(String.valueOf(fixture.team1PickerId));
-
-        var roster = team.getRoster();
-        assertThat(roster).hasSize(1);
-        assertThat(roster.get(0).getPickNo()).isEqualTo(1L);
-        assertThat(roster.get(0).getRoundNo()).isEqualTo(1L);
-        assertThat(roster.get(0).getCandidateUserId()).isEqualTo(fixture.candidateIds[0]);
-        assertThat(roster.get(0).getCandidateUserLoginId()).isEqualTo("candidate-snap-3-0");
-        assertThat(roster.get(0).getCandidateName()).isEqualTo("candidate-snap-3-0");
-        assertThat(roster.get(0).getCandidateUserLoginId()).isNotEqualTo("candidate0");
-        assertThat(roster.get(0).getCandidateUserLoginId()).isNotEqualTo(String.valueOf(fixture.candidateIds[0]));
-        assertThat(roster.get(0).getTier()).isEqualTo("T0");
-        assertThat(roster.get(0).getRace()).isEqualTo("ZERG");
-        assertThat(roster.get(0).getPickedByUserLoginId()).isEqualTo("picker-snap-a-3");
-        assertThat(roster.get(0).getPickedByUserName()).isEqualTo("picker-snap-a-3");
-        assertThat(roster.get(0).getPickedByUserLoginId()).isNotEqualTo("pickerA");
-        assertThat(snapshot.getAvailableCandidates()).hasSize(2);
-        assertThat(snapshot.getAvailableCandidates().get(0).getCandidateUserLoginId()).isEqualTo("candidate-snap-3-1");
-        assertThat(snapshot.getAvailableCandidates().get(0).getCandidateName()).isEqualTo("candidate-snap-3-1");
-        assertThat(snapshot.getAvailableCandidates().get(0).getCandidateUserLoginId()).isNotEqualTo("candidate1");
-        assertThat(snapshot.getPickedCandidates()).hasSize(1);
-        assertThat(snapshot.getPickedCandidates().get(0).getCandidateUserLoginId()).isEqualTo("candidate-snap-3-0");
-        assertThat(snapshot.getPickedCandidates().get(0).getCandidateName()).isEqualTo("candidate-snap-3-0");
-        assertThat(snapshot.getPickedCandidates().get(0).getCandidateUserLoginId()).isNotEqualTo("candidate0");
-        assertThat(snapshot.getPickedCandidates().get(0).getTier()).isEqualTo("T0");
-        assertThat(snapshot.getPickedCandidates().get(0).getRace()).isEqualTo("ZERG");
-        assertThat(snapshot.getRecentPicks()).hasSize(1);
-        assertThat(snapshot.getRecentPicks().get(0).getCandidateUserLoginId()).isEqualTo("candidate-snap-3-0");
-        assertThat(snapshot.getRecentPicks().get(0).getCandidateName()).isEqualTo("candidate-snap-3-0");
-        assertThat(snapshot.getRecentPicks().get(0).getCandidateUserLoginId()).isNotEqualTo("candidate0");
-        assertThat(snapshot.getRecentPicks().get(0).getTier()).isEqualTo("T0");
-        assertThat(snapshot.getRecentPicks().get(0).getRace()).isEqualTo("ZERG");
-        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserLoginId()).isEqualTo("picker-snap-a-3");
-        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserName()).isEqualTo("picker-snap-a-3");
-        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserLoginId()).isNotEqualTo("pickerA");
+        assertThat(snapshot.getTeams()).extracting("pickerUserLoginId")
+                .containsExactly("picker-snap-a-3", "picker-snap-b-3");
+        assertThat(snapshot.getTeams().get(0).getRoster()).hasSize(1);
+        assertThat(snapshot.getTeams().get(0).getRoster().get(0).getCandidateId()).isEqualTo(fixture.candidateIds[0]);
+        assertThat(snapshot.getTeams().get(0).getRoster().get(0).getCandidateName()).isEqualTo("candidate-snap-3-1");
+        assertThat(snapshot.getTeams().get(0).getRoster().get(0).getPickedByUserLoginId()).isEqualTo("picker-snap-a-3");
+        assertThat(snapshot.getAvailableCandidates()).extracting("candidateName")
+                .containsExactly("candidate-snap-3-2", "candidate-snap-3-3");
+        assertThat(snapshot.getPickedCandidates()).extracting("candidateName").containsExactly("candidate-snap-3-1");
+        assertThat(snapshot.getRecentPicks()).extracting("candidateName").containsExactly("candidate-snap-3-1");
+        assertThat(snapshot.getRecentPicks()).extracting("pickedByUserLoginId").containsExactly("picker-snap-a-3");
         assertThat(snapshot.getPermissions().getMyTeamId()).isEqualTo(fixture.team2Id);
         assertThat(snapshot.getPermissions().isCanPick()).isTrue();
 
         RpsDraftLiveSnapshotResponseDto broadcastSnapshot = rpsDraftSnapshotService.getBroadcastSnapshot(fixture.sessionId);
         assertThat(broadcastSnapshot.getPermissions()).isNull();
-        assertThat(broadcastSnapshot.getSession().getOwnerUserLoginId()).isEqualTo("owner-snap-3");
-        var broadcastTeam = broadcastSnapshot.getTeams().stream()
-                .filter(candidateTeam -> candidateTeam.getId().equals(fixture.team1Id))
-                .findFirst()
-                .orElseThrow();
-        assertThat(broadcastTeam.getPickerUserLoginId()).isEqualTo("picker-snap-a-3");
-        assertThat(broadcastTeam.getRoster())
-                .extracting("candidateUserLoginId")
-                .containsExactly("candidate-snap-3-0");
-        assertThat(broadcastSnapshot.getRecentPicks())
-                .extracting("candidateUserLoginId", "pickedByUserLoginId")
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("candidate-snap-3-0", "picker-snap-a-3"));
+        assertThat(broadcastSnapshot.getTeams().get(0).getRoster()).extracting("candidateName")
+                .containsExactly("candidate-snap-3-1");
+        assertThat(broadcastSnapshot.getRecentPicks()).extracting("candidateName")
+                .containsExactly("candidate-snap-3-1");
+    }
+
+    private void resolveTeam1Win(Fixture fixture, int suffix) {
+        rpsDraftLiveCommandService.submitRps(
+                fixture.sessionId,
+                RpsDraftSessionEntity.RPS_ROCK,
+                actor(fixture.team1PickerId, "picker-snap-a-" + suffix)
+        );
+        rpsDraftLiveCommandService.submitRps(
+                fixture.sessionId,
+                RpsDraftSessionEntity.RPS_SCISSORS,
+                actor(fixture.team2PickerId, "picker-snap-b-" + suffix)
+        );
     }
 
     private Fixture createStartedFixture(int candidateCount) {
-        Long ownerId = createUser("owner-snap-" + candidateCount, "owner", "ROLE_USER");
-        Long team1PickerId = createUser("picker-snap-a-" + candidateCount, "pickerA", "ROLE_USER");
-        Long team2PickerId = createUser("picker-snap-b-" + candidateCount, "pickerB", "ROLE_USER");
+        return createFixture(candidateCount);
+    }
 
-        Long[] candidateIds = new Long[candidateCount];
-        List<Long> candidateUserIds = new ArrayList<>();
+    private Fixture createFixture(int candidateCount) {
+        Long ownerId = createUser("owner-snap-" + candidateCount);
+        Long team1PickerId = createUser("picker-snap-a-" + candidateCount);
+        Long team2PickerId = createUser("picker-snap-b-" + candidateCount);
+
+        List<String> candidateNames = new ArrayList<>();
         for (int i = 0; i < candidateCount; i++) {
-            String race = i % 2 == 0 ? "ZERG" : "TERRAN";
-            candidateIds[i] = createUser(
-                    "candidate-snap-" + candidateCount + "-" + i,
-                    "candidate" + i,
-                    "ROLE_USER",
-                    "T" + i,
-                    race
-            );
-            candidateUserIds.add(candidateIds[i]);
+            candidateNames.add("candidate-snap-" + candidateCount + "-" + (i + 1));
         }
 
         RpsDraftSessionDetailResponseDto session = createSession(
@@ -245,10 +208,12 @@ class RpsDraftSnapshotServiceTest {
                 "snapshot session " + candidateCount,
                 team1PickerId,
                 team2PickerId,
-                candidateUserIds
+                candidateNames
         );
 
-        rpsDraftLiveCommandService.startSession(session.getId(), actor(ownerId, "owner"));
+        Long[] candidateIds = session.getCandidates().stream()
+                .map(candidate -> candidate.getId())
+                .toArray(Long[]::new);
 
         return new Fixture(
                 session.getId(),
@@ -266,13 +231,13 @@ class RpsDraftSnapshotServiceTest {
             String title,
             Long team1PickerId,
             Long team2PickerId,
-            List<Long> candidateUserIds
+            List<String> candidateNames
     ) {
         RpsDraftSessionCreateRequestDto requestDto = new RpsDraftSessionCreateRequestDto();
         requestDto.setTitle(title);
         requestDto.setTeam1PickerUserId(team1PickerId);
         requestDto.setTeam2PickerUserId(team2PickerId);
-        requestDto.setCandidateUserIds(candidateUserIds);
+        requestDto.setCandidateNames(candidateNames);
         return rpsDraftService.createSession(requestDto, actor(ownerId, "owner")).getData();
     }
 
@@ -280,19 +245,13 @@ class RpsDraftSnapshotServiceTest {
         return new RpsDraftActor(userPk, userId, "ROLE_USER");
     }
 
-    private Long createUser(String userId, String name, String role) {
-        return createUser(userId, name, role, null, null);
-    }
-
-    private Long createUser(String userId, String name, String role, String tier, String race) {
+    private Long createUser(String userId) {
         UserEntity user = UserEntity.builder()
                 .userId(userId)
                 .password("password")
-                .name(name)
-                .tier(tier)
-                .race(race)
+                .name(userId)
                 .status("ACTIVE")
-                .userType(role)
+                .userType("ROLE_USER")
                 .build();
         return userRepository.save(user).getId();
     }

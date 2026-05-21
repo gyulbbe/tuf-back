@@ -24,12 +24,12 @@ import java.time.LocalDateTime;
 @Table(
         name = "RPS_DRAFT_PICKS",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_rps_draft_picks_session_candidate", columnNames = {"RPS_DRAFT_SESSION_ID", "CANDIDATE_USER_ID"})
+                @UniqueConstraint(name = "uq_rps_draft_picks_session_candidate", columnNames = {"RPS_DRAFT_SESSION_ID", "CANDIDATE_ID"})
         },
         indexes = {
                 @Index(name = "idx_rps_draft_picks_session", columnList = "RPS_DRAFT_SESSION_ID"),
                 @Index(name = "idx_rps_draft_picks_team", columnList = "RPS_DRAFT_TEAM_ID"),
-                @Index(name = "idx_rps_draft_picks_candidate", columnList = "CANDIDATE_USER_ID")
+                @Index(name = "idx_rps_draft_picks_candidate", columnList = "CANDIDATE_ID")
         }
 )
 public class RpsDraftPickEntity {
@@ -45,8 +45,8 @@ public class RpsDraftPickEntity {
     @Column(name = "RPS_DRAFT_TEAM_ID", nullable = false)
     private Long rpsDraftTeamId;
 
-    @Column(name = "CANDIDATE_USER_ID", nullable = false)
-    private Long candidateUserId;
+    @Column(name = "CANDIDATE_ID", nullable = false)
+    private Long candidateId;
 
     @Column(name = "PICKED_BY_USER_ID", nullable = false)
     private Long pickedByUserId;

@@ -62,10 +62,10 @@ class RpsDraftEventPublisherTest {
             assertThat(event.getSnapshot().getPermissions()).isNull();
             assertThat(event.getSnapshot().getSession().getOwnerUserLoginId()).isEqualTo("owner-login");
             assertThat(event.getSnapshot().getTeams()).extracting("pickerUserLoginId").containsExactly("picker-login");
-            assertThat(event.getSnapshot().getAvailableCandidates()).extracting("candidateUserLoginId").containsExactly("available-login");
-            assertThat(event.getSnapshot().getPickedCandidates()).extracting("candidateUserLoginId").containsExactly("picked-login");
-            assertThat(event.getSnapshot().getRecentPicks()).extracting("candidateUserLoginId").containsExactly("picked-login");
-            assertThat(event.getSnapshot().getTeams().get(0).getRoster()).extracting("candidateUserLoginId").containsExactly("picked-login");
+            assertThat(event.getSnapshot().getAvailableCandidates()).extracting("candidateName").containsExactly("available-name");
+            assertThat(event.getSnapshot().getPickedCandidates()).extracting("candidateName").containsExactly("picked-name");
+            assertThat(event.getSnapshot().getRecentPicks()).extracting("candidateName").containsExactly("picked-name");
+            assertThat(event.getSnapshot().getTeams().get(0).getRoster()).extracting("candidateName").containsExactly("picked-name");
         }
     }
 
@@ -91,11 +91,8 @@ class RpsDraftEventPublisherTest {
         session.setOwnerName("owner-login");
 
         RpsDraftLiveRosterItemResponseDto rosterItem = new RpsDraftLiveRosterItemResponseDto();
-        rosterItem.setCandidateUserId(3L);
-        rosterItem.setCandidateUserLoginId("picked-login");
-        rosterItem.setCandidateName("picked-login");
-        rosterItem.setTier("1");
-        rosterItem.setRace("ZERG");
+        rosterItem.setCandidateId(3L);
+        rosterItem.setCandidateName("picked-name");
 
         RpsDraftLiveTeamResponseDto team = new RpsDraftLiveTeamResponseDto();
         team.setPickerUserId(2L);
@@ -104,25 +101,16 @@ class RpsDraftEventPublisherTest {
         team.setRoster(List.of(rosterItem));
 
         RpsDraftCandidateResponseDto availableCandidate = new RpsDraftCandidateResponseDto();
-        availableCandidate.setCandidateUserId(4L);
-        availableCandidate.setCandidateUserLoginId("available-login");
-        availableCandidate.setCandidateName("available-login");
-        availableCandidate.setTier("2");
-        availableCandidate.setRace("TERRAN");
+        availableCandidate.setId(4L);
+        availableCandidate.setCandidateName("available-name");
 
         RpsDraftCandidateResponseDto pickedCandidate = new RpsDraftCandidateResponseDto();
-        pickedCandidate.setCandidateUserId(3L);
-        pickedCandidate.setCandidateUserLoginId("picked-login");
-        pickedCandidate.setCandidateName("picked-login");
-        pickedCandidate.setTier("1");
-        pickedCandidate.setRace("ZERG");
+        pickedCandidate.setId(3L);
+        pickedCandidate.setCandidateName("picked-name");
 
         RpsDraftPickResponseDto recentPick = new RpsDraftPickResponseDto();
-        recentPick.setCandidateUserId(3L);
-        recentPick.setCandidateUserLoginId("picked-login");
-        recentPick.setCandidateName("picked-login");
-        recentPick.setTier("1");
-        recentPick.setRace("ZERG");
+        recentPick.setCandidateId(3L);
+        recentPick.setCandidateName("picked-name");
         recentPick.setPickedByUserId(2L);
         recentPick.setPickedByUserLoginId("picker-login");
         recentPick.setPickedByUserName("picker-login");

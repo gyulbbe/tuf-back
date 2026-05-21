@@ -75,7 +75,7 @@ public class CommentaryService {
                 try {
                     int result = embeddingService.embedAndSave(
                             commentary.getId(),
-                            "COMMENTARIES",
+                            "commentaries",
                             commentary.getMatchSummary()
                     );
 

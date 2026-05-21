@@ -28,9 +28,10 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "RPS_DRAFT_TEAMS",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_rps_draft_teams_session_name", columnNames = {"RPS_DRAFT_SESSION_ID", "TEAM_NAME"}),
-                @UniqueConstraint(name = "uk_rps_draft_teams_session_order", columnNames = {"RPS_DRAFT_SESSION_ID", "DISPLAY_ORDER"}),
-                @UniqueConstraint(name = "uk_rps_draft_teams_session_picker", columnNames = {"RPS_DRAFT_SESSION_ID", "PICKER_USER_ID"})
+                @UniqueConstraint(name = "uq_rps_draft_teams_session_name", columnNames = {"RPS_DRAFT_SESSION_ID", "TEAM_NAME"}),
+                @UniqueConstraint(name = "uq_rps_draft_teams_session_order", columnNames = {"RPS_DRAFT_SESSION_ID", "DISPLAY_ORDER"}),
+                @UniqueConstraint(name = "uq_rps_draft_teams_session_picker", columnNames = {"RPS_DRAFT_SESSION_ID", "PICKER_USER_ID"}),
+                @UniqueConstraint(name = "uq_rps_draft_teams_id_session", columnNames = {"ID", "RPS_DRAFT_SESSION_ID"})
         },
         indexes = {
                 @Index(name = "idx_rps_draft_teams_session", columnList = "RPS_DRAFT_SESSION_ID"),
@@ -54,8 +55,4 @@ public class RpsDraftTeamEntity {
 
     @Column(name = "PICKER_USER_ID")
     private Long pickerUserId;
-
-    public void assignPicker(Long pickerUserId) {
-        this.pickerUserId = pickerUserId;
-    }
 }

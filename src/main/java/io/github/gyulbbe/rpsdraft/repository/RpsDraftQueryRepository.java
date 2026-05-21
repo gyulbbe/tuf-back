@@ -19,7 +19,5 @@ public interface RpsDraftQueryRepository {
 
     List<RpsDraftCandidateResponseDto> findCandidatesBySessionId(Long sessionId);
 
-    Optional<RpsDraftCandidateResponseDto> findCandidate(Long sessionId, Long candidateUserId);
-
     List<RpsDraftPickResponseDto> findPicksBySessionId(Long sessionId);
 }

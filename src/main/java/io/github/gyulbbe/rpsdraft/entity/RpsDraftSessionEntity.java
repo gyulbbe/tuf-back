@@ -37,7 +37,6 @@ import java.time.LocalDateTime;
 )
 public class RpsDraftSessionEntity {
 
-    public static final String STATUS_READY = "READY";
     public static final String STATUS_RPS_PENDING = "RPS_PENDING";
     public static final String STATUS_PICKING = "PICKING";
     public static final String STATUS_FINISHED = "FINISHED";
@@ -63,7 +62,7 @@ public class RpsDraftSessionEntity {
 
     @Builder.Default
     @Column(name = "STATUS", nullable = false)
-    private String status = STATUS_READY;
+    private String status = STATUS_RPS_PENDING;
 
     @Builder.Default
     @Column(name = "CURRENT_PICK_NO", nullable = false)
@@ -90,18 +89,6 @@ public class RpsDraftSessionEntity {
 
     @Column(name = "ENDED_AT")
     private LocalDateTime endedAt;
-
-    public void start(LocalDateTime now) {
-        this.status = STATUS_RPS_PENDING;
-        this.currentPickNo = 1;
-        this.currentDraftTeamId = null;
-        this.pendingDraftTeamId = null;
-        this.team1RpsChoice = null;
-        this.team2RpsChoice = null;
-        this.rpsResult = RPS_RESULT_PENDING;
-        this.startedAt = now;
-        this.endedAt = null;
-    }
 
     public void submitChoice(int displayOrder, String choice) {
         if (displayOrder == 1) {

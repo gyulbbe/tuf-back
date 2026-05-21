@@ -134,17 +134,14 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
     public List<RpsDraftCandidateResponseDto> findCandidatesBySessionId(Long sessionId) {
         QRpsDraftCandidateEntity candidate = QRpsDraftCandidateEntity.rpsDraftCandidateEntity;
         QRpsDraftTeamEntity team = QRpsDraftTeamEntity.rpsDraftTeamEntity;
-        QUserEntity candidateUser = new QUserEntity("rpsDraftCandidateUser");
 
         return queryFactory
                 .select(Projections.bean(
                         RpsDraftCandidateResponseDto.class,
+                        candidate.id,
                         candidate.rpsDraftSessionId,
-                        candidate.candidateUserId,
-                        candidateUser.userId.as("candidateUserLoginId"),
-                        candidateUser.userId.as("candidateName"),
-                        candidateUser.tier,
-                        candidate.race,
+                        candidate.candidateName,
+                        candidate.displayOrder,
                         candidate.status,
                         candidate.pickedRpsDraftTeamId,
                         team.teamName.as("pickedRpsDraftTeamName"),
@@ -156,46 +153,9 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
                         team.id.eq(candidate.pickedRpsDraftTeamId)
                                 .and(team.rpsDraftSessionId.eq(candidate.rpsDraftSessionId))
                 )
-                .leftJoin(candidateUser).on(candidateUser.id.eq(candidate.candidateUserId))
                 .where(candidate.rpsDraftSessionId.eq(sessionId))
-                .orderBy(candidateUser.userId.asc(), candidate.candidateUserId.asc())
+                .orderBy(candidate.displayOrder.asc(), candidate.id.asc())
                 .fetch();
-    }
-
-    @Override
-    public Optional<RpsDraftCandidateResponseDto> findCandidate(Long sessionId, Long candidateUserId) {
-        QRpsDraftCandidateEntity candidate = QRpsDraftCandidateEntity.rpsDraftCandidateEntity;
-        QRpsDraftTeamEntity team = QRpsDraftTeamEntity.rpsDraftTeamEntity;
-        QUserEntity candidateUser = new QUserEntity("rpsDraftCandidateUser");
-
-        return Optional.ofNullable(
-                queryFactory
-                        .select(Projections.bean(
-                                RpsDraftCandidateResponseDto.class,
-                                candidate.rpsDraftSessionId,
-                                candidate.candidateUserId,
-                                candidateUser.userId.as("candidateUserLoginId"),
-                                candidateUser.userId.as("candidateName"),
-                                candidateUser.tier,
-                                candidate.race,
-                                candidate.status,
-                                candidate.pickedRpsDraftTeamId,
-                                team.teamName.as("pickedRpsDraftTeamName"),
-                                candidate.pickedAt
-                        ))
-                        .from(candidate)
-                        .leftJoin(team)
-                        .on(
-                                team.id.eq(candidate.pickedRpsDraftTeamId)
-                                        .and(team.rpsDraftSessionId.eq(candidate.rpsDraftSessionId))
-                        )
-                        .leftJoin(candidateUser).on(candidateUser.id.eq(candidate.candidateUserId))
-                        .where(
-                                candidate.rpsDraftSessionId.eq(sessionId),
-                                candidate.candidateUserId.eq(candidateUserId)
-                        )
-                        .fetchOne()
-        );
     }
 
     @Override
@@ -203,7 +163,6 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
         QRpsDraftPickEntity pick = QRpsDraftPickEntity.rpsDraftPickEntity;
         QRpsDraftTeamEntity team = QRpsDraftTeamEntity.rpsDraftTeamEntity;
         QRpsDraftCandidateEntity candidate = QRpsDraftCandidateEntity.rpsDraftCandidateEntity;
-        QUserEntity candidateUser = new QUserEntity("rpsDraftPickCandidateUser");
         QUserEntity pickedBy = new QUserEntity("rpsDraftPickedBy");
 
         return queryFactory
@@ -213,11 +172,8 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
                         pick.pickNo,
                         pick.rpsDraftTeamId,
                         team.teamName.as("rpsDraftTeamName"),
-                        pick.candidateUserId,
-                        candidateUser.userId.as("candidateUserLoginId"),
-                        candidateUser.userId.as("candidateName"),
-                        candidateUser.tier,
-                        candidate.race,
+                        pick.candidateId,
+                        candidate.candidateName,
                         pick.pickedByUserId,
                         pickedBy.userId.as("pickedByUserLoginId"),
                         pickedBy.userId.as("pickedByUserName"),
@@ -232,9 +188,8 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
                 .join(candidate)
                 .on(
                         candidate.rpsDraftSessionId.eq(pick.rpsDraftSessionId)
-                                .and(candidate.candidateUserId.eq(pick.candidateUserId))
+                                .and(candidate.id.eq(pick.candidateId))
                 )
-                .leftJoin(candidateUser).on(candidateUser.id.eq(pick.candidateUserId))
                 .leftJoin(pickedBy).on(pickedBy.id.eq(pick.pickedByUserId))
                 .where(pick.rpsDraftSessionId.eq(sessionId))
                 .orderBy(pick.pickNo.asc())

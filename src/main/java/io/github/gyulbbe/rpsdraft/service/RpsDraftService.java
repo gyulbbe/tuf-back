@@ -2,7 +2,6 @@ package io.github.gyulbbe.rpsdraft.service;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.rpsdraft.auth.RpsDraftActor;
-import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionCreateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
@@ -25,9 +24,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
@@ -36,8 +37,6 @@ import java.util.Set;
 @Transactional
 @RequiredArgsConstructor
 public class RpsDraftService {
-
-    private static final Set<String> RACES = Set.of("ZERG", "TERRAN", "PROTOSS", "RANDOM");
 
     private final RpsDraftSessionRepository rpsDraftSessionRepository;
     private final RpsDraftTeamRepository rpsDraftTeamRepository;
@@ -59,6 +58,8 @@ public class RpsDraftService {
                     RpsDraftSessionEntity.builder()
                             .title(requestDto.getTitle().trim())
                             .ownerUserId(actor.userPk())
+                            .status(RpsDraftSessionEntity.STATUS_RPS_PENDING)
+                            .startedAt(LocalDateTime.now())
                             .build()
             );
 
@@ -79,18 +80,9 @@ public class RpsDraftService {
                             .build()
             );
 
-            if (!inputs.candidateUsers().isEmpty()) {
-                rpsDraftCandidateRepository.saveAll(
-                        inputs.candidateUsers().stream()
-                                .map(candidateUser -> buildCandidateEntity(
-                                        session.getId(),
-                                        candidateUser.getId(),
-                                        null,
-                                        candidateUser
-                                ))
-                                .toList()
-                );
-            }
+            rpsDraftCandidateRepository.saveAll(
+                    buildCandidateEntities(session.getId(), inputs.candidateNames())
+            );
 
             return ResponseDto.success(buildSessionDetail(session.getId()));
         } catch (Exception e) {
@@ -130,36 +122,6 @@ public class RpsDraftService {
             return ResponseDto.success(rpsDraftQueryRepository.findTeamsBySessionId(sessionId));
         } catch (Exception e) {
             log.error("Failed to list RPS draft teams.", e);
-            return ResponseDto.fail(e.getMessage());
-        }
-    }
-
-    public ResponseDto<RpsDraftSessionDetailResponseDto> registerCandidate(
-            Long sessionId,
-            RpsDraftCandidateRequestDto requestDto,
-            RpsDraftActor actor
-    ) {
-        try {
-            RpsDraftSessionEntity session = requireSession(sessionId);
-            rpsDraftPermissionService.assertOwner(session, actor);
-            assertReadySession(session);
-            validateCandidateRequest(requestDto);
-
-            if (rpsDraftCandidateRepository.existsByRpsDraftSessionIdAndCandidateUserId(sessionId, requestDto.getCandidateUserId())) {
-                throw new IllegalArgumentException("Candidate already exists in this session.");
-            }
-
-            UserEntity candidateUser = requireCandidateUser(requestDto.getCandidateUserId());
-            rpsDraftCandidateRepository.save(buildCandidateEntity(
-                    sessionId,
-                    requestDto.getCandidateUserId(),
-                    requestDto.getRace(),
-                    candidateUser
-            ));
-
-            return ResponseDto.success(buildSessionDetail(sessionId));
-        } catch (Exception e) {
-            log.error("Failed to register RPS draft candidate.", e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -276,11 +238,6 @@ public class RpsDraftService {
                 .orElseThrow(() -> new IllegalArgumentException("RPS draft session could not be found."));
     }
 
-    private RpsDraftCandidateResponseDto requireCandidate(Long sessionId, Long candidateUserId) {
-        return rpsDraftQueryRepository.findCandidate(sessionId, candidateUserId)
-                .orElseThrow(() -> new IllegalArgumentException("RPS draft candidate could not be found."));
-    }
-
     private RpsDraftSessionDeleteStats collectDeleteStats(Long sessionId, RpsDraftSessionEntity session) {
         return new RpsDraftSessionDeleteStats(
                 sessionId,
@@ -309,37 +266,11 @@ public class RpsDraftService {
         if (Objects.equals(requestDto.getTeam1PickerUserId(), requestDto.getTeam2PickerUserId())) {
             throw new IllegalArgumentException("Two distinct pickers must be selected.");
         }
-        validateDistinctCandidateUserIds(requestDto.getCandidateUserIds());
-    }
-
-    private void validateCandidateRequest(RpsDraftCandidateRequestDto requestDto) {
-        if (requestDto == null || requestDto.getCandidateUserId() == null) {
-            throw new IllegalArgumentException("Candidate user id is required.");
-        }
-        if (requestDto.getRace() != null && !requestDto.getRace().isBlank() && !RACES.contains(requestDto.getRace())) {
-            throw new IllegalArgumentException("Candidate race is invalid.");
-        }
     }
 
     private void validateDistinctTeamNames(String team1Name, String team2Name) {
         if (Objects.equals(team1Name, team2Name)) {
             throw new IllegalArgumentException("Team names must be different.");
-        }
-    }
-
-    private void validateDistinctCandidateUserIds(List<Long> candidateUserIds) {
-        if (candidateUserIds == null || candidateUserIds.isEmpty()) {
-            return;
-        }
-
-        Set<Long> uniqueCandidateUserIds = new LinkedHashSet<>();
-        for (Long candidateUserId : candidateUserIds) {
-            if (candidateUserId == null) {
-                throw new IllegalArgumentException("Candidate user id is required.");
-            }
-            if (!uniqueCandidateUserIds.add(candidateUserId)) {
-                throw new IllegalArgumentException("Duplicate candidate user ids are not allowed.");
-            }
         }
     }
 
@@ -362,7 +293,7 @@ public class RpsDraftService {
         return new CreateSessionInputs(
                 team1Picker,
                 team2Picker,
-                loadCandidateUsers(requestDto.getCandidateUserIds())
+                normalizeCandidateNames(requestDto.getCandidateNames())
         );
     }
 
@@ -375,21 +306,37 @@ public class RpsDraftService {
         return pickerUser;
     }
 
-    private List<UserEntity> loadCandidateUsers(List<Long> candidateUserIds) {
-        if (candidateUserIds == null || candidateUserIds.isEmpty()) {
-            return List.of();
+    private List<String> normalizeCandidateNames(List<String> candidateNames) {
+        if (candidateNames == null || candidateNames.isEmpty()) {
+            throw new IllegalArgumentException("At least one candidate name is required.");
         }
 
-        List<UserEntity> candidateUsers = new ArrayList<>(candidateUserIds.size());
-        for (Long candidateUserId : candidateUserIds) {
-            candidateUsers.add(requireCandidateUser(candidateUserId));
-        }
-        return candidateUsers;
-    }
+        List<String> normalizedNames = new ArrayList<>();
+        Set<String> uniqueNames = new LinkedHashSet<>();
 
-    private UserEntity requireCandidateUser(Long candidateUserId) {
-        return userRepository.findById(candidateUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Candidate user could not be found."));
+        for (String candidateName : candidateNames) {
+            if (candidateName == null) {
+                continue;
+            }
+
+            String normalizedName = candidateName.trim();
+            if (normalizedName.isEmpty()) {
+                continue;
+            }
+
+            String uniqueKey = normalizedName.toLowerCase(Locale.ROOT);
+            if (!uniqueNames.add(uniqueKey)) {
+                throw new IllegalArgumentException("Duplicate candidate names are not allowed.");
+            }
+
+            normalizedNames.add(normalizedName);
+        }
+
+        if (normalizedNames.isEmpty()) {
+            throw new IllegalArgumentException("At least one candidate name is required.");
+        }
+
+        return normalizedNames;
     }
 
     private String buildTeamName(UserEntity pickerUser) {
@@ -399,51 +346,25 @@ public class RpsDraftService {
         throw new IllegalArgumentException("Picker user id is required for team naming.");
     }
 
-    private RpsDraftCandidateEntity buildCandidateEntity(
+    private List<RpsDraftCandidateEntity> buildCandidateEntities(
             Long sessionId,
-            Long candidateUserId,
-            String requestedRace,
-            UserEntity candidateUser
+            List<String> candidateNames
     ) {
-        String candidateName = normalizeCandidateName(candidateUser);
-        String race = normalizeRace(requestedRace, candidateUser.getRace());
-
-        return RpsDraftCandidateEntity.builder()
-                .rpsDraftSessionId(sessionId)
-                .candidateUserId(candidateUserId)
-                .candidateName(candidateName)
-                .race(race)
-                .build();
-    }
-
-    private String normalizeCandidateName(UserEntity candidateUser) {
-        if (candidateUser.getUserId() != null && !candidateUser.getUserId().isBlank()) {
-            return candidateUser.getUserId().trim();
+        List<RpsDraftCandidateEntity> candidates = new ArrayList<>(candidateNames.size());
+        for (int index = 0; index < candidateNames.size(); index++) {
+            candidates.add(RpsDraftCandidateEntity.builder()
+                    .rpsDraftSessionId(sessionId)
+                    .candidateName(candidateNames.get(index))
+                    .displayOrder(index + 1)
+                    .build());
         }
-        throw new IllegalArgumentException("Candidate user's userId is required.");
-    }
-
-    private String normalizeRace(String requestedRace, String fallbackRace) {
-        String race = requestedRace != null && !requestedRace.isBlank() ? requestedRace : fallbackRace;
-        if (race == null || race.isBlank()) {
-            return null;
-        }
-        if (!RACES.contains(race)) {
-            throw new IllegalArgumentException("Candidate race is invalid.");
-        }
-        return race;
-    }
-
-    private void assertReadySession(RpsDraftSessionEntity session) {
-        if (!RpsDraftSessionEntity.STATUS_READY.equals(session.getStatus())) {
-            throw new IllegalArgumentException("Only READY sessions can be updated.");
-        }
+        return candidates;
     }
 
     private record CreateSessionInputs(
             UserEntity team1Picker,
             UserEntity team2Picker,
-            List<UserEntity> candidateUsers
+            List<String> candidateNames
     ) {
     }
 

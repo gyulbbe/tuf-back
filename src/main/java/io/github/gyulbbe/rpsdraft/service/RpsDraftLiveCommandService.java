@@ -4,7 +4,6 @@ import io.github.gyulbbe.rpsdraft.auth.RpsDraftActor;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftLiveEventType;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftLiveSnapshotResponseDto;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateEntity;
-import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateId;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftPickEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftTeamEntity;
@@ -32,38 +31,6 @@ public class RpsDraftLiveCommandService {
     private final RpsDraftPermissionService rpsDraftPermissionService;
     private final RpsDraftSnapshotService rpsDraftSnapshotService;
     private final RpsDraftEventPublisher rpsDraftEventPublisher;
-
-    public RpsDraftLiveSnapshotResponseDto startSession(Long sessionId, RpsDraftActor actor) {
-        RpsDraftSessionEntity session = loadSessionForUpdate(sessionId);
-        rpsDraftPermissionService.assertOwner(session, actor);
-
-        if (!RpsDraftSessionEntity.STATUS_READY.equals(session.getStatus())) {
-            throw new IllegalArgumentException("Only READY sessions can be started.");
-        }
-
-        List<RpsDraftTeamEntity> teams = loadSessionTeams(sessionId);
-        if (teams.size() != 2) {
-            throw new IllegalArgumentException("RPS draft requires exactly two teams.");
-        }
-        if (teams.stream().anyMatch(team -> team.getPickerUserId() == null)) {
-            throw new IllegalArgumentException("Both teams must have pickers before starting.");
-        }
-        if (rpsDraftCandidateRepository.countByRpsDraftSessionIdAndStatus(sessionId, RpsDraftCandidateEntity.STATUS_WAITING) <= 0) {
-            throw new IllegalArgumentException("At least one candidate is required before starting.");
-        }
-
-        session.start(LocalDateTime.now());
-
-        RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(sessionId, actor);
-        rpsDraftEventPublisher.publishAfterCommit(
-                sessionId,
-                RpsDraftLiveEventType.SESSION_STARTED,
-                actor,
-                "RPS draft session started.",
-                null
-        );
-        return snapshot;
-    }
 
     public RpsDraftLiveSnapshotResponseDto submitRps(Long sessionId, String choice, RpsDraftActor actor) {
         rpsDraftPermissionService.assertAuthenticated(actor);
@@ -116,10 +83,10 @@ public class RpsDraftLiveCommandService {
         return snapshot;
     }
 
-    public RpsDraftLiveSnapshotResponseDto pick(Long sessionId, Long candidateUserId, RpsDraftActor actor) {
+    public RpsDraftLiveSnapshotResponseDto pick(Long sessionId, Long candidateId, RpsDraftActor actor) {
         rpsDraftPermissionService.assertAuthenticated(actor);
-        if (candidateUserId == null) {
-            throw new IllegalArgumentException("Candidate user id is required.");
+        if (candidateId == null) {
+            throw new IllegalArgumentException("Candidate id is required.");
         }
 
         RpsDraftSessionEntity session = loadSessionForUpdate(sessionId);
@@ -132,9 +99,9 @@ public class RpsDraftLiveCommandService {
             throw new IllegalArgumentException("Only the current team's picker can make this pick.");
         }
 
-        RpsDraftCandidateEntity candidate = rpsDraftCandidateRepository.findById(new RpsDraftCandidateId(sessionId, candidateUserId))
+        RpsDraftCandidateEntity candidate = rpsDraftCandidateRepository.findById(candidateId)
                 .orElseThrow(() -> new IllegalArgumentException("RPS draft candidate could not be found."));
-        assertCandidatePickable(candidate, sessionId, candidateUserId);
+        assertCandidatePickable(candidate, sessionId, candidateId);
 
         LocalDateTime now = LocalDateTime.now();
         rpsDraftPickRepository.save(
@@ -142,7 +109,7 @@ public class RpsDraftLiveCommandService {
                         .rpsDraftSessionId(sessionId)
                         .pickNo(Long.valueOf(session.getCurrentPickNo()))
                         .rpsDraftTeamId(actorTeam.getId())
-                        .candidateUserId(candidateUserId)
+                        .candidateId(candidateId)
                         .pickedByUserId(actor.userPk())
                         .pickedAt(now)
                         .build()
@@ -234,8 +201,11 @@ public class RpsDraftLiveCommandService {
         return RpsDraftSessionEntity.RPS_RESULT_TEAM2_WIN;
     }
 
-    private void assertCandidatePickable(RpsDraftCandidateEntity candidate, Long sessionId, Long candidateUserId) {
-        if (rpsDraftPickRepository.existsByRpsDraftSessionIdAndCandidateUserId(sessionId, candidateUserId)) {
+    private void assertCandidatePickable(RpsDraftCandidateEntity candidate, Long sessionId, Long candidateId) {
+        if (!sessionId.equals(candidate.getRpsDraftSessionId())) {
+            throw new IllegalArgumentException("RPS draft candidate could not be found.");
+        }
+        if (rpsDraftPickRepository.existsByRpsDraftSessionIdAndCandidateId(sessionId, candidateId)) {
             throw new IllegalArgumentException("Candidate has already been picked.");
         }
         if (!RpsDraftCandidateEntity.STATUS_WAITING.equals(candidate.getStatus())) {

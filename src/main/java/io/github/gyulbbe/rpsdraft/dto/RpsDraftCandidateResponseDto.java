@@ -6,12 +6,10 @@ import java.time.LocalDateTime;
 
 @Data
 public class RpsDraftCandidateResponseDto {
+    private Long id;
     private Long rpsDraftSessionId;
-    private Long candidateUserId;
-    private String candidateUserLoginId;
     private String candidateName;
-    private String tier;
-    private String race;
+    private Integer displayOrder;
     private String status;
     private Long pickedRpsDraftTeamId;
     private String pickedRpsDraftTeamName;

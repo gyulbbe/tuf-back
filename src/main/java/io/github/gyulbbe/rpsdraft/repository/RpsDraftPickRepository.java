@@ -11,7 +11,7 @@ public interface RpsDraftPickRepository extends JpaRepository<RpsDraftPickEntity
 
     long countByRpsDraftSessionId(Long rpsDraftSessionId);
 
-    boolean existsByRpsDraftSessionIdAndCandidateUserId(Long rpsDraftSessionId, Long candidateUserId);
+    boolean existsByRpsDraftSessionIdAndCandidateId(Long rpsDraftSessionId, Long candidateId);
 
     List<RpsDraftPickEntity> findAllByRpsDraftSessionIdOrderByPickNoAsc(Long rpsDraftSessionId);
 }

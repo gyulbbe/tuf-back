@@ -2,14 +2,11 @@ package io.github.gyulbbe.rpsdraft.controller;
 
 import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.rpsdraft.auth.RpsDraftActorResolver;
-import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateResponseDto;
-import io.github.gyulbbe.rpsdraft.dto.RpsDraftPickerAssignRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionCreateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionSummaryResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftTeamResponseDto;
-import io.github.gyulbbe.rpsdraft.service.RpsDraftAdminService;
 import io.github.gyulbbe.rpsdraft.service.RpsDraftService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -31,7 +28,6 @@ import static io.github.gyulbbe.common.web.ApiResponses.respond;
 public class RpsDraftController {
 
     private final RpsDraftService rpsDraftService;
-    private final RpsDraftAdminService rpsDraftAdminService;
     private final RpsDraftActorResolver rpsDraftActorResolver;
 
     @PostMapping("/sessions")
@@ -67,40 +63,6 @@ public class RpsDraftController {
     @GetMapping("/sessions/{sessionId}/teams")
     public ResponseEntity<ResponseDto<List<RpsDraftTeamResponseDto>>> listTeams(@PathVariable Long sessionId) {
         return respond(rpsDraftService.listTeams(sessionId));
-    }
-
-    @PostMapping("/sessions/{sessionId}/teams/{teamId}/picker")
-    public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> assignPicker(
-            @PathVariable Long sessionId,
-            @PathVariable Long teamId,
-            @RequestBody RpsDraftPickerAssignRequestDto requestDto
-    ) {
-        try {
-            return respond(
-                    rpsDraftAdminService.assignPicker(
-                            sessionId,
-                            teamId,
-                            requestDto.getPickerUserId(),
-                            rpsDraftActorResolver.resolveRequired()
-                    )
-            );
-        } catch (Exception e) {
-            return respond(ResponseDto.fail(e.getMessage()));
-        }
-    }
-
-    @PostMapping("/sessions/{sessionId}/candidates")
-    public ResponseEntity<ResponseDto<RpsDraftSessionDetailResponseDto>> registerCandidate(
-            @PathVariable Long sessionId,
-            @RequestBody RpsDraftCandidateRequestDto requestDto
-    ) {
-        try {
-            return respond(
-                    rpsDraftService.registerCandidate(sessionId, requestDto, rpsDraftActorResolver.resolveRequired())
-            );
-        } catch (Exception e) {
-            return respond(ResponseDto.fail(e.getMessage()));
-        }
     }
 
     @GetMapping("/sessions/{sessionId}/candidates")

@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -26,7 +28,7 @@ public class EmbeddingService {
     /**
      * 텍스트를 임베딩 벡터로 변환하고 vectors 테이블에 저장
      * @param referenceId 참조 ID
-     * @param referenceTable 참조 타입 (예: "commentary", "speech")
+     * @param referenceTable 참조 테이블 (예: "commentaries", "speeches")
      * @param text 임베딩할 텍스트
      * @return 저장된 레코드 수
      */
@@ -42,9 +44,11 @@ public class EmbeddingService {
             dto.setReferenceId(referenceId);
             dto.setReferenceTable(referenceTable);
             dto.setText(text);
+            dto.setChunkIndex(0);
             dto.setEmbeddingVector(embeddingVector);
 
             // 3. 데이터베이스에 저장
+            embeddingVectorMapper.deleteByReferenceTableAndReferenceIds(referenceTable, List.of(referenceId));
             int result = embeddingVectorMapper.insertEmbeddingVector(dto);
             log.info("임베딩 벡터 저장 완료 - referenceId: {}, dimension: {}", referenceId, embeddingVector.length);
 
@@ -77,7 +81,9 @@ public class EmbeddingService {
             // 2. Python API를 호출하여 한 번에 임베딩 벡터 생성
             List<float[]> embeddings = getEmbeddings(texts);
 
-            // 3. 각 DTO에 임베딩 벡터 설정 및 저장
+            // 3. 기존 chunk를 지우고 새 벡터 저장
+            deleteExistingVectors(dtos);
+
             int totalSaved = 0;
             for (int i = 0; i < dtos.size(); i++) {
                 EmbeddingVectorDto dto = dtos.get(i);
@@ -92,6 +98,19 @@ public class EmbeddingService {
             log.error("배치 임베딩 실패 - error: {}", e.getMessage(), e);
             throw new RuntimeException("배치 임베딩 실패: " + e.getMessage(), e);
         }
+    }
+
+    private void deleteExistingVectors(List<EmbeddingVectorDto> dtos) {
+        Map<String, List<Long>> referenceIdsByTable = dtos.stream()
+                .filter(dto -> dto.getReferenceTable() != null && dto.getReferenceId() != null)
+                .collect(Collectors.groupingBy(
+                        EmbeddingVectorDto::getReferenceTable,
+                        Collectors.mapping(
+                                EmbeddingVectorDto::getReferenceId,
+                                Collectors.collectingAndThen(Collectors.toSet(), ArrayList::new)
+                        )
+                ));
+        referenceIdsByTable.forEach(embeddingVectorMapper::deleteByReferenceTableAndReferenceIds);
     }
 
     /**

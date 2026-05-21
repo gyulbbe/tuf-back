@@ -6,8 +6,10 @@
     <resultMap id="embeddingVectorResultMap" type="EmbeddingVectorDto">
         <result column="reference_id" property="referenceId" />
         <result column="reference_table" property="referenceTable" />
-        <result column="text" property="text" />
-        <result column="vector" property="embeddingVector"
+        <result column="content" property="text" />
+        <result column="chunk_index" property="chunkIndex" />
+        <result column="metadata" property="metadata" />
+        <result column="embedding_vector" property="embeddingVector"
                 typeHandler="io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler" />
         <result column="distance" property="distance" />
     </resultMap>
@@ -17,10 +19,16 @@
         INSERT INTO vectors (
             reference_id,
             reference_table,
-            imbedding_vector
+            chunk_index,
+            content,
+            metadata,
+            embedding_vector
         ) VALUES (
             #{referenceId},
             #{referenceTable},
+            COALESCE(#{chunkIndex}, 0),
+            #{text},
+            #{metadata},
             #{embeddingVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}
         )
     </insert>
@@ -30,10 +38,14 @@
         SELECT
             reference_id,
             reference_table,
-            imbedding_vector,
-            VECTOR_DISTANCE(imbedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
+            chunk_index,
+            content,
+            metadata,
+            embedding_vector,
+            VECTOR_DISTANCE(embedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
         FROM vectors
         <where>
+            embedding_vector IS NOT NULL
             <if test="referenceTable != null and referenceTable != ''">
                 AND reference_table = #{referenceTable}
             </if>
@@ -47,10 +59,14 @@
         SELECT
             reference_id,
             reference_table,
-        imbedding_vector,
-            VECTOR_DISTANCE(imbedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
+            chunk_index,
+            content,
+            metadata,
+            embedding_vector,
+            VECTOR_DISTANCE(embedding_vector, #{queryVector, typeHandler=io.github.gyulbbe.common.utils.embeddingVector.FloatArrayTypeHandler}, COSINE) as distance
         FROM vectors
         <where>
+            embedding_vector IS NOT NULL
             <if test="referenceTable != null and referenceTable != ''">
                 AND reference_table = #{referenceTable}
             </if>
@@ -58,5 +74,19 @@
         ORDER BY distance
         FETCH FIRST 1 ROWS ONLY
     </select>
+
+    <delete id="deleteByReferenceTableAndReferenceIds">
+        DELETE FROM vectors
+        WHERE reference_table = #{referenceTable}
+        <if test="referenceIds != null and referenceIds.size() > 0">
+            AND reference_id IN
+            <foreach collection="referenceIds" item="referenceId" open="(" separator="," close=")">
+                #{referenceId}
+            </foreach>
+        </if>
+        <if test="referenceIds == null or referenceIds.size() == 0">
+            AND 1 = 0
+        </if>
+    </delete>
 
 </mapper>
