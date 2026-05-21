@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -89,6 +91,28 @@ public class RpsDraftSessionEntity {
 
     @Column(name = "ENDED_AT")
     private LocalDateTime endedAt;
+
+    @Column(name = "REG_DATE", updatable = false)
+    private LocalDateTime regDate;
+
+    @Column(name = "UPDATE_DATE")
+    private LocalDateTime updateDate;
+
+    @PrePersist
+    void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        if (regDate == null) {
+            regDate = now;
+        }
+        if (updateDate == null) {
+            updateDate = regDate;
+        }
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updateDate = LocalDateTime.now();
+    }
 
     public void submitChoice(int displayOrder, String choice) {
         if (displayOrder == 1) {

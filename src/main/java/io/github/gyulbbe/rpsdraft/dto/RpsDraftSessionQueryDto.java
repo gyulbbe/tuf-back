@@ -20,4 +20,6 @@ public class RpsDraftSessionQueryDto {
     private String rpsResult;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
+    private LocalDateTime regDate;
+    private LocalDateTime updateDate;
 }

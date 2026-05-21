@@ -129,6 +129,8 @@ public class RpsDraftSnapshotService {
         info.setPendingDraftTeamId(session.getPendingDraftTeamId());
         info.setStartedAt(session.getStartedAt());
         info.setEndedAt(session.getEndedAt());
+        info.setRegDate(session.getRegDate());
+        info.setUpdateDate(session.getUpdateDate());
         info.setServerNow(now);
         return info;
     }

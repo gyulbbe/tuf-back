@@ -203,6 +203,8 @@ public class RpsDraftService {
         detail.setPendingDraftTeamId(session.getPendingDraftTeamId());
         detail.setStartedAt(session.getStartedAt());
         detail.setEndedAt(session.getEndedAt());
+        detail.setRegDate(session.getRegDate());
+        detail.setUpdateDate(session.getUpdateDate());
         detail.setTeams(rpsDraftQueryRepository.findTeamsBySessionId(sessionId));
         detail.setCandidates(rpsDraftQueryRepository.findCandidatesBySessionId(sessionId));
         return detail;
@@ -225,6 +227,8 @@ public class RpsDraftService {
         summary.setPendingDraftTeamId(session.getPendingDraftTeamId());
         summary.setStartedAt(session.getStartedAt());
         summary.setEndedAt(session.getEndedAt());
+        summary.setRegDate(session.getRegDate());
+        summary.setUpdateDate(session.getUpdateDate());
         return summary;
     }
 

@@ -1,11 +1,13 @@
 package io.github.gyulbbe.rpsdraft.repository;
 
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftCandidateResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftPickResponseDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionQueryDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftTeamResponseDto;
+import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
 import io.github.gyulbbe.rpsdraft.entity.QRpsDraftCandidateEntity;
 import io.github.gyulbbe.rpsdraft.entity.QRpsDraftPickEntity;
 import io.github.gyulbbe.rpsdraft.entity.QRpsDraftSessionEntity;
@@ -45,7 +47,9 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
                                 session.team2RpsChoice,
                                 session.rpsResult,
                                 session.startedAt,
-                                session.endedAt
+                                session.endedAt,
+                                session.regDate,
+                                session.updateDate
                         ))
                         .from(session)
                         .leftJoin(owner).on(owner.id.eq(session.ownerUserId))
@@ -75,11 +79,21 @@ public class RpsDraftQueryRepositoryImpl implements RpsDraftQueryRepository {
                         session.team2RpsChoice,
                         session.rpsResult,
                         session.startedAt,
-                        session.endedAt
+                        session.endedAt,
+                        session.regDate,
+                        session.updateDate
                 ))
                 .from(session)
                 .leftJoin(owner).on(owner.id.eq(session.ownerUserId))
-                .orderBy(session.id.desc())
+                .orderBy(
+                        new CaseBuilder()
+                                .when(session.status.eq(RpsDraftSessionEntity.STATUS_FINISHED))
+                                .then(1)
+                                .otherwise(0)
+                                .asc(),
+                        session.regDate.desc().nullsLast(),
+                        session.id.desc()
+                )
                 .fetch();
     }
 

@@ -17,5 +17,7 @@ public class RpsDraftLiveSessionInfoResponseDto {
     private Long pendingDraftTeamId;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
+    private LocalDateTime regDate;
+    private LocalDateTime updateDate;
     private LocalDateTime serverNow;
 }

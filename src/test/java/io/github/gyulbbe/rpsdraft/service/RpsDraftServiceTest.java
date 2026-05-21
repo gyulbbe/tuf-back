@@ -5,6 +5,7 @@ import io.github.gyulbbe.config.QueryDslConfig;
 import io.github.gyulbbe.rpsdraft.auth.RpsDraftActor;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionCreateRequestDto;
 import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionDetailResponseDto;
+import io.github.gyulbbe.rpsdraft.dto.RpsDraftSessionSummaryResponseDto;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftCandidateEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftPickEntity;
 import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
@@ -92,6 +93,7 @@ class RpsDraftServiceTest {
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getData().getStatus()).isEqualTo(RpsDraftSessionEntity.STATUS_RPS_PENDING);
         assertThat(response.getData().getStartedAt()).isNotNull();
+        assertThat(response.getData().getRegDate()).isNotNull();
         assertThat(response.getData().getOwnerUserId()).isEqualTo(ownerId);
         assertThat(response.getData().getOwnerUserLoginId()).isEqualTo("owner01");
         assertThat(response.getData().getTeams()).extracting("teamName").containsExactly("pickerA01", "pickerB01");
@@ -213,6 +215,45 @@ class RpsDraftServiceTest {
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.getMessage()).contains("session owner or an admin");
         assertThat(rpsDraftSessionRepository.findById(sessionId)).isPresent();
+    }
+
+    @Test
+    void listSessions_returns_all_sessions_with_active_first_then_newest_created() {
+        Long ownerId = createUser("owner08", "ACTIVE", "ROLE_USER");
+        Long pickerAId = createUser("picker08a", "ACTIVE", "ROLE_USER");
+        Long pickerBId = createUser("picker08b", "ACTIVE", "ROLE_USER");
+
+        RpsDraftSessionDetailResponseDto olderActive = rpsDraftService.createSession(
+                createSessionRequest("older active", pickerAId, pickerBId, List.of("candidate-a")),
+                actor(ownerId, "owner08", "ROLE_USER")
+        ).getData();
+        RpsDraftSessionDetailResponseDto finished = rpsDraftService.createSession(
+                createSessionRequest("finished", pickerAId, pickerBId, List.of("candidate-b")),
+                actor(ownerId, "owner08", "ROLE_USER")
+        ).getData();
+        RpsDraftSessionDetailResponseDto newerActive = rpsDraftService.createSession(
+                createSessionRequest("newer active", pickerAId, pickerBId, List.of("candidate-c")),
+                actor(ownerId, "owner08", "ROLE_USER")
+        ).getData();
+
+        RpsDraftSessionEntity finishedEntity = rpsDraftSessionRepository.findById(finished.getId()).orElseThrow();
+        finishedEntity.finish(LocalDateTime.now());
+        rpsDraftSessionRepository.flush();
+
+        ResponseDto<List<RpsDraftSessionSummaryResponseDto>> response = rpsDraftService.listSessions();
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getData())
+                .extracting(RpsDraftSessionSummaryResponseDto::getId)
+                .containsExactly(newerActive.getId(), olderActive.getId(), finished.getId());
+        assertThat(response.getData()).extracting(RpsDraftSessionSummaryResponseDto::getStatus)
+                .containsExactly(
+                        RpsDraftSessionEntity.STATUS_RPS_PENDING,
+                        RpsDraftSessionEntity.STATUS_RPS_PENDING,
+                        RpsDraftSessionEntity.STATUS_FINISHED
+                );
+        assertThat(response.getData()).extracting(RpsDraftSessionSummaryResponseDto::getRegDate)
+                .doesNotContainNull();
     }
 
     private Long createLiveLikeSession(Long ownerId, Long team1PickerUserId, Long team2PickerUserId) {

@@ -19,6 +19,8 @@ public class RpsDraftSessionDetailResponseDto {
     private Long pendingDraftTeamId;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
+    private LocalDateTime regDate;
+    private LocalDateTime updateDate;
     private List<RpsDraftTeamResponseDto> teams = new ArrayList<>();
     private List<RpsDraftCandidateResponseDto> candidates = new ArrayList<>();
 }
