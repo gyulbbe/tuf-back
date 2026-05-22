@@ -87,6 +87,7 @@ public class SecurityConfig {
                 .requestMatchers("/admin/home/schedules", "/admin/home/schedules/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/admin/maps", "/admin/maps/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/admin/ai-knowledge", "/admin/ai-knowledge/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers("/admin/ai-settings", "/admin/ai-settings/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/admin/leagues", "/admin/leagues/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/admin/proleagues", "/admin/proleagues/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers("/admin/personal-leagues", "/admin/personal-leagues/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")

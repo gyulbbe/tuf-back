@@ -1,6 +1,8 @@
 package io.github.gyulbbe.chat.provider;
 
-import lombok.RequiredArgsConstructor;
+import io.github.gyulbbe.chat.dto.AiChatRoutingMode;
+import io.github.gyulbbe.chat.dto.AiChatSettingsSnapshot;
+import io.github.gyulbbe.chat.service.AiChatSettingsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -11,58 +13,97 @@ import java.time.ZoneOffset;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ChatProviderRouter {
 
     /**
-     * Cloudflare Workers AI 일일 한도는 매일 UTC 00:00 에 초기화된다.
-     * (공식 문서: "All limits reset daily at 00:00 UTC.")
+     * Cloudflare Workers AI daily limits reset at UTC 00:00.
      */
     private static final int PROBE_MAX_ATTEMPTS = 5;
     private static final Duration PROBE_RETRY_INTERVAL = Duration.ofMinutes(3);
 
     private final CloudflareChatProvider cloudflareProvider;
     private final OllamaChatProvider ollamaProvider;
+    private final AiChatSettingsService aiChatSettingsService;
 
     private volatile Instant cloudflareResumeAt = Instant.EPOCH;
     private volatile Instant probeNextAttemptAt = Instant.EPOCH;
     private volatile int probeAttemptsRemaining = 0;
 
+    public ChatProviderRouter(
+            CloudflareChatProvider cloudflareProvider,
+            OllamaChatProvider ollamaProvider,
+            AiChatSettingsService aiChatSettingsService
+    ) {
+        this.cloudflareProvider = cloudflareProvider;
+        this.ollamaProvider = ollamaProvider;
+        this.aiChatSettingsService = aiChatSettingsService;
+    }
+
     public String chat(String systemPrompt, String userMessage) {
-        if (canAttemptCloudflare(Instant.now())) {
+        AiChatSettingsSnapshot settings = aiChatSettingsService.currentSettings();
+
+        if (settings.routingMode() == AiChatRoutingMode.OLLAMA_ONLY) {
+            return chatWithOllama(systemPrompt, userMessage, settings.ollamaModel());
+        }
+
+        if (settings.routingMode() == AiChatRoutingMode.CLOUDFLARE_ONLY) {
+            if (!cloudflareProvider.isConfigured(settings.cloudflareModel())) {
+                throw new IllegalStateException("Cloudflare AI is not configured.");
+            }
+            String response = cloudflareProvider.chat(systemPrompt, userMessage, settings.cloudflareModel());
+            onCloudflareSuccess();
+            log.info("Chat served by Cloudflare Workers AI (forced)");
+            return response;
+        }
+
+        if (canAttemptCloudflare(Instant.now(), settings.cloudflareModel())) {
             try {
-                String response = cloudflareProvider.chat(systemPrompt, userMessage);
+                String response = cloudflareProvider.chat(systemPrompt, userMessage, settings.cloudflareModel());
                 onCloudflareSuccess();
                 log.info("Chat served by Cloudflare Workers AI");
                 return response;
             } catch (CloudflareQuotaExhaustedException _) {
                 onCloudflareQuotaExhausted(Instant.now());
             } catch (Exception e) {
-                log.warn("Cloudflare 호출 실패({}). 이번 요청만 Ollama로 전환", e.getMessage());
+                log.warn("Cloudflare call failed ({}). Falling back to Ollama for this request.", e.getMessage());
             }
         }
 
-        log.info("Chat served by local Ollama");
-        return ollamaProvider.chat(systemPrompt, userMessage);
+        return chatWithOllama(systemPrompt, userMessage, settings.ollamaModel());
     }
 
-    /** health 엔드포인트용 현재 상태 스냅샷. */
     public synchronized ChatProviderStatus status() {
         Instant now = Instant.now();
+        AiChatSettingsSnapshot settings = aiChatSettingsService.currentSettings();
         maybeEnterProbeMode(now);
-        String active = canAttemptCloudflare(now) ? "cloudflare" : "ollama";
+        String active = activeProvider(now, settings);
         Instant blockedUntil = cloudflareResumeAt.equals(Instant.EPOCH) ? null : cloudflareResumeAt;
         return new ChatProviderStatus(
                 active,
-                cloudflareProvider.isConfigured(),
+                cloudflareProvider.isConfigured(settings.cloudflareModel()),
                 blockedUntil,
                 probeAttemptsRemaining,
                 probeNextAttemptAt.equals(Instant.EPOCH) ? null : probeNextAttemptAt
         );
     }
 
-    private synchronized boolean canAttemptCloudflare(Instant now) {
-        if (!cloudflareProvider.isConfigured()) {
+    private String chatWithOllama(String systemPrompt, String userMessage, String model) {
+        log.info("Chat served by local Ollama");
+        return ollamaProvider.chat(systemPrompt, userMessage, model);
+    }
+
+    private String activeProvider(Instant now, AiChatSettingsSnapshot settings) {
+        if (settings.routingMode() == AiChatRoutingMode.OLLAMA_ONLY) {
+            return "ollama";
+        }
+        if (settings.routingMode() == AiChatRoutingMode.CLOUDFLARE_ONLY) {
+            return "cloudflare";
+        }
+        return canAttemptCloudflare(now, settings.cloudflareModel()) ? "cloudflare" : "ollama";
+    }
+
+    private synchronized boolean canAttemptCloudflare(Instant now, String cloudflareModel) {
+        if (!cloudflareProvider.isConfigured(cloudflareModel)) {
             return false;
         }
         maybeEnterProbeMode(now);
@@ -72,14 +113,13 @@ public class ChatProviderRouter {
         return !now.isBefore(probeNextAttemptAt);
     }
 
-    /** 하드 블록 시간이 지나면 자동으로 probe 모드에 진입해 재시도 횟수를 채운다. */
     private void maybeEnterProbeMode(Instant now) {
         if (cloudflareResumeAt.isAfter(Instant.EPOCH)
                 && now.isAfter(cloudflareResumeAt)
                 && probeAttemptsRemaining == 0
                 && probeNextAttemptAt.equals(Instant.EPOCH)) {
             probeAttemptsRemaining = PROBE_MAX_ATTEMPTS;
-            log.info("Cloudflare 리셋 시각 경과. probe 모드 진입 (재시도 {}회)", PROBE_MAX_ATTEMPTS);
+            log.info("Cloudflare resume time passed. Entering probe mode ({} attempts).", PROBE_MAX_ATTEMPTS);
         }
     }
 
@@ -95,16 +135,16 @@ public class ChatProviderRouter {
             if (probeAttemptsRemaining == 0) {
                 cloudflareResumeAt = nextUtcMidnight(now);
                 probeNextAttemptAt = Instant.EPOCH;
-                log.warn("Cloudflare probe 재시도 모두 실패. {}까지 Ollama 사용", cloudflareResumeAt);
+                log.warn("All Cloudflare probe attempts failed. Using Ollama until {}", cloudflareResumeAt);
             } else {
                 probeNextAttemptAt = now.plus(PROBE_RETRY_INTERVAL);
-                log.warn("Cloudflare 아직 할당량 미복구 (남은 재시도 {}회, 다음 시도 {})",
+                log.warn("Cloudflare quota still unavailable ({} probe attempts left). Next attempt at {}",
                         probeAttemptsRemaining, probeNextAttemptAt);
             }
         } else {
             cloudflareResumeAt = nextUtcMidnight(now);
             probeNextAttemptAt = Instant.EPOCH;
-            log.warn("Cloudflare 일일 한도 소진. {}까지 Ollama로 전환", cloudflareResumeAt);
+            log.warn("Cloudflare daily quota exhausted. Falling back to Ollama until {}", cloudflareResumeAt);
         }
     }
 

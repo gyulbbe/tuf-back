@@ -28,7 +28,7 @@ public class CloudflareChatProvider {
     private final ObjectMapper objectMapper;
     private final String accountId;
     private final String apiToken;
-    private final String model;
+    private final String defaultModel;
     private final String gatewayBaseUrl;
 
     public CloudflareChatProvider(
@@ -42,11 +42,15 @@ public class CloudflareChatProvider {
         this.objectMapper = objectMapper;
         this.accountId = accountId;
         this.apiToken = apiToken;
-        this.model = model;
+        this.defaultModel = model;
         this.gatewayBaseUrl = gatewayBaseUrl;
     }
 
     public boolean isConfigured() {
+        return isConfigured(defaultModel);
+    }
+
+    public boolean isConfigured(String model) {
         boolean tokenAndModel = apiToken != null && !apiToken.isBlank()
                 && model != null && !model.isBlank();
         if (!tokenAndModel) {
@@ -56,6 +60,15 @@ public class CloudflareChatProvider {
     }
 
     public String chat(String systemPrompt, String userMessage) {
+        return chat(systemPrompt, userMessage, defaultModel);
+    }
+
+    public String chat(String systemPrompt, String userMessage, String model) {
+        if (!isConfigured(model)) {
+            throw new RuntimeException("Cloudflare AI is not configured.");
+        }
+
+        String selectedModel = model.trim();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiToken);
@@ -65,14 +78,14 @@ public class CloudflareChatProvider {
         if (isCompatEndpoint()) {
             url = gatewayBaseUrl;
             body = Map.of(
-                    "model", compatModelId(),
+                    "model", compatModelId(selectedModel),
                     "messages", List.of(
                             Map.of("role", "system", "content", systemPrompt),
                             Map.of("role", "user", "content", userMessage)
                     )
             );
         } else {
-            url = String.format(DIRECT_API_URL_TEMPLATE, accountId, model);
+            url = String.format(DIRECT_API_URL_TEMPLATE, accountId, selectedModel);
             body = Map.of(
                     "messages", List.of(
                             Map.of("role", "system", "content", systemPrompt),
@@ -113,7 +126,7 @@ public class CloudflareChatProvider {
      * Universal compat 엔드포인트(/compat/chat/completions)는 provider 접두사로
      * 어느 백엔드로 라우팅할지 결정한다. Workers AI 모델이면 workers-ai/ 접두 필요.
      */
-    private String compatModelId() {
+    private String compatModelId(String model) {
         if (model.startsWith("@cf/") && !model.startsWith("workers-ai/")) {
             return "workers-ai/" + model;
         }
