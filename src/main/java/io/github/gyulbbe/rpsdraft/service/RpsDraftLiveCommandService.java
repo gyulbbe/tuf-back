@@ -104,15 +104,13 @@ public class RpsDraftLiveCommandService {
         assertCandidatePickable(candidate, sessionId, candidateId);
 
         LocalDateTime now = LocalDateTime.now();
-        rpsDraftPickRepository.save(
-                RpsDraftPickEntity.builder()
-                        .rpsDraftSessionId(sessionId)
-                        .pickNo(Long.valueOf(session.getCurrentPickNo()))
-                        .rpsDraftTeamId(actorTeam.getId())
-                        .candidateId(candidateId)
-                        .pickedByUserId(actor.userPk())
-                        .pickedAt(now)
-                        .build()
+        savePick(
+                sessionId,
+                session.getCurrentPickNo(),
+                actorTeam.getId(),
+                candidateId,
+                actor.userPk(),
+                now
         );
         candidate.markPicked(actorTeam.getId(), now);
 
@@ -127,6 +125,10 @@ public class RpsDraftLiveCommandService {
             session.finish(now);
             eventType = RpsDraftLiveEventType.SESSION_FINISHED;
             message = "RPS draft session finished.";
+        } else if (waitingCandidates == 1 && session.getPendingDraftTeamId() != null) {
+            assignFinalCandidateToPendingTeam(sessionId, session, now);
+            eventType = RpsDraftLiveEventType.SESSION_FINISHED;
+            message = "RPS draft session finished with an automatic final assignment.";
         } else if (session.getPendingDraftTeamId() != null) {
             session.advanceToPendingPick(session.getCurrentPickNo() + 1);
             eventType = RpsDraftLiveEventType.TURN_CHANGED;
@@ -140,6 +142,62 @@ public class RpsDraftLiveCommandService {
         RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftSnapshotService.getSnapshot(sessionId, actor);
         rpsDraftEventPublisher.publishAfterCommit(sessionId, eventType, actor, message, null);
         return snapshot;
+    }
+
+    private void savePick(
+            Long sessionId,
+            Integer pickNo,
+            Long rpsDraftTeamId,
+            Long candidateId,
+            Long pickedByUserId,
+            LocalDateTime pickedAt
+    ) {
+        rpsDraftPickRepository.save(
+                RpsDraftPickEntity.builder()
+                        .rpsDraftSessionId(sessionId)
+                        .pickNo(Long.valueOf(pickNo))
+                        .rpsDraftTeamId(rpsDraftTeamId)
+                        .candidateId(candidateId)
+                        .pickedByUserId(pickedByUserId)
+                        .pickedAt(pickedAt)
+                        .build()
+        );
+    }
+
+    private void assignFinalCandidateToPendingTeam(
+            Long sessionId,
+            RpsDraftSessionEntity session,
+            LocalDateTime now
+    ) {
+        RpsDraftTeamEntity pendingTeam = rpsDraftTeamRepository.findById(session.getPendingDraftTeamId())
+                .filter(team -> sessionId.equals(team.getRpsDraftSessionId()))
+                .orElseThrow(() -> new IllegalArgumentException("Pending RPS draft team could not be found."));
+
+        if (pendingTeam.getPickerUserId() == null) {
+            throw new IllegalArgumentException("Pending RPS draft team picker could not be found.");
+        }
+
+        RpsDraftCandidateEntity finalCandidate = findSingleWaitingCandidate(sessionId);
+        int finalPickNo = session.getCurrentPickNo() + 1;
+
+        savePick(
+                sessionId,
+                finalPickNo,
+                pendingTeam.getId(),
+                finalCandidate.getId(),
+                pendingTeam.getPickerUserId(),
+                now
+        );
+        finalCandidate.markPicked(pendingTeam.getId(), now);
+        session.advanceToPendingPick(finalPickNo);
+        session.finish(now);
+    }
+
+    private RpsDraftCandidateEntity findSingleWaitingCandidate(Long sessionId) {
+        return rpsDraftCandidateRepository.findAllByRpsDraftSessionIdOrderByDisplayOrderAscIdAsc(sessionId).stream()
+                .filter(candidate -> RpsDraftCandidateEntity.STATUS_WAITING.equals(candidate.getStatus()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Waiting RPS draft candidate could not be found."));
     }
 
     public RpsDraftLiveSnapshotResponseDto finishSession(Long sessionId, RpsDraftActor actor) {

@@ -157,6 +157,38 @@ class RpsDraftLiveCommandServiceTest {
     }
 
     @Test
+    void winner_pick_auto_assigns_final_waiting_candidate_to_pending_team() {
+        Fixture fixture = createStartedFixture(2);
+        resolveTeam1Win(fixture);
+
+        RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftLiveCommandService.pick(
+                fixture.sessionId,
+                fixture.candidateIds[0],
+                actor(fixture.team1PickerId, "picker1")
+        );
+
+        assertThat(snapshot.getSession().getStatus()).isEqualTo(RpsDraftSessionEntity.STATUS_FINISHED);
+        assertThat(snapshot.getSession().getCurrentPickNo()).isEqualTo(2);
+        assertThat(snapshot.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(snapshot.getSession().getPendingDraftTeamId()).isNull();
+        assertThat(snapshot.getSession().getEndedAt()).isNotNull();
+        assertThat(snapshot.getAvailableCandidates()).isEmpty();
+        assertThat(snapshot.getPickedCandidates())
+                .extracting("candidateName")
+                .containsExactly("candidate-2-1", "candidate-2-2");
+        assertThat(snapshot.getTeams().get(0).getRoster())
+                .extracting("candidateName")
+                .containsExactly("candidate-2-1");
+        assertThat(snapshot.getTeams().get(1).getRoster())
+                .extracting("candidateName")
+                .containsExactly("candidate-2-2");
+        assertThat(snapshot.getRecentPicks())
+                .extracting("pickNo")
+                .containsExactly(2L, 1L);
+        assertThat(snapshot.getRecentPicks().get(0).getPickedByUserId()).isEqualTo(fixture.team2PickerId);
+    }
+
+    @Test
     void loser_pick_returns_to_rps_pending() {
         Fixture fixture = createStartedFixture(4);
         resolveTeam1Win(fixture);
@@ -176,6 +208,37 @@ class RpsDraftLiveCommandServiceTest {
         assertThat(snapshot.getSession().getCurrentPickNo()).isEqualTo(3);
         assertThat(snapshot.getSession().getCurrentDraftTeamId()).isNull();
         assertThat(snapshot.getRps().getResult()).isEqualTo(RpsDraftSessionEntity.RPS_RESULT_PENDING);
+    }
+
+    @Test
+    void loser_pick_with_one_candidate_remaining_starts_next_rps_round() {
+        Fixture fixture = createStartedFixture(3);
+        resolveTeam1Win(fixture);
+        rpsDraftLiveCommandService.pick(
+                fixture.sessionId,
+                fixture.candidateIds[0],
+                actor(fixture.team1PickerId, "picker1")
+        );
+
+        RpsDraftLiveSnapshotResponseDto snapshot = rpsDraftLiveCommandService.pick(
+                fixture.sessionId,
+                fixture.candidateIds[1],
+                actor(fixture.team2PickerId, "picker2")
+        );
+
+        assertThat(snapshot.getSession().getStatus()).isEqualTo(RpsDraftSessionEntity.STATUS_RPS_PENDING);
+        assertThat(snapshot.getSession().getCurrentPickNo()).isEqualTo(3);
+        assertThat(snapshot.getSession().getCurrentDraftTeamId()).isNull();
+        assertThat(snapshot.getSession().getPendingDraftTeamId()).isNull();
+        assertThat(snapshot.getAvailableCandidates())
+                .extracting("candidateName")
+                .containsExactly("candidate-3-3");
+        assertThat(snapshot.getTeams().get(0).getRoster())
+                .extracting("candidateName")
+                .containsExactly("candidate-3-1");
+        assertThat(snapshot.getTeams().get(1).getRoster())
+                .extracting("candidateName")
+                .containsExactly("candidate-3-2");
     }
 
     @Test

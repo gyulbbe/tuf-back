@@ -45,6 +45,11 @@
   - `rps_draft_teams`
   - `rps_draft_candidates`
   - `rps_draft_picks`
+- Entry submission
+  - `entry_submission_sessions`
+  - `entry_submission_teams`
+  - `entry_submission_players`
+  - `entry_submission_entries`
 - 토너먼트 대진표
   - `tournaments`
   - `tournament_participants`
@@ -87,6 +92,9 @@
   - `rps_draft_sessions_seq`
   - `rps_draft_teams_seq`
   - `rps_draft_candidates_seq`
+  - `entry_submission_sessions_seq`
+  - `entry_submission_teams_seq`
+  - `entry_submission_players_seq`
   - `tournaments_seq`
   - `tournament_matches_seq`
 - 복합 PK
@@ -94,6 +102,7 @@
   - `draft_orders`: `(draft_session_id, pick_no)`
   - `draft_picks`: `(draft_session_id, pick_no)`
   - `rps_draft_picks`: `(rps_draft_session_id, pick_no)`
+  - `entry_submission_entries`: `(entry_submission_session_id, entry_submission_team_id, set_no)`
 - String PK
   - `site_menu_visibility`: `menu_key`
 - Identity PK
@@ -798,6 +807,102 @@
 
 토너먼트 대진표는 듀얼 조별전과 싱글 엘리미네이션을 같은 구조로 처리한다. 핵심 모델은 `경기(tournament_matches)`, `경기 슬롯(tournament_match_slots)`, `결과 이동 규칙(tournament_routes)`, `결과 슬롯(tournament_result_slots)` 이다.
 
+## Entry submission
+
+Entry submission stores two captain-led teams, team player cards, and submitted set entries.
+
+Status flow
+- `SUBMITTING`: one or both captains have not submitted entries yet.
+- `COMPLETED`: both captains submitted entries and the set matchup table is final.
+
+### `entry_submission_sessions`
+
+- Top-level entry submission session.
+- Main columns
+  - `id`
+  - `title`
+  - `owner_user_id`
+  - `status`
+  - `set_count`
+  - `completed_at`
+  - `reg_date`, `update_date`
+- FK
+  - `owner_user_id -> users.id`
+- Constraints
+  - `status`: `SUBMITTING`, `COMPLETED`
+  - `set_count > 0`
+- Notes
+  - Default set count is calculated by application code as `max(team1 player count, team2 player count)`.
+  - A manually supplied set count overrides the default.
+
+### `entry_submission_teams`
+
+- Two teams belonging to an entry submission session.
+- Main columns
+  - `id`
+  - `entry_submission_session_id`
+  - `team_name`
+  - `display_order`
+  - `captain_user_id`
+  - `submitted_at`
+- FK
+  - `entry_submission_session_id -> entry_submission_sessions.id`
+  - `captain_user_id -> users.id`
+- Constraints
+  - `(entry_submission_session_id, display_order)` unique
+  - `(entry_submission_session_id, captain_user_id)` unique
+  - `(id, entry_submission_session_id)` unique
+  - `display_order IN (1, 2)`
+- Notes
+  - `team_name` is based on the captain's `users.user_id`.
+  - `submitted_at IS NOT NULL` means the team entry is locked.
+
+### `entry_submission_players`
+
+- Player cards for each entry submission team.
+- Main columns
+  - `id`
+  - `entry_submission_session_id`
+  - `entry_submission_team_id`
+  - `player_name`
+  - `display_order`
+  - `captain_yn`
+- FK
+  - `entry_submission_session_id -> entry_submission_sessions.id`
+  - `entry_submission_team_id + entry_submission_session_id -> entry_submission_teams.id + entry_submission_teams.entry_submission_session_id`
+- Constraints
+  - `(entry_submission_team_id, player_name)` unique
+  - `(entry_submission_team_id, display_order)` unique
+  - `(id, entry_submission_session_id)` unique
+  - `display_order > 0`
+  - `captain_yn IN ('Y', 'N')`
+- Notes
+  - Captains are automatically inserted as the first player card for each team.
+  - Additional players are name strings and are not linked to `users`.
+
+### `entry_submission_entries`
+
+- Submitted set entries for a team.
+- Main columns
+  - `entry_submission_session_id`
+  - `entry_submission_team_id`
+  - `set_no`
+  - `entry_submission_player_id`
+  - `submitted_by_user_id`
+  - `submitted_at`
+- PK
+  - `(entry_submission_session_id, entry_submission_team_id, set_no)`
+- FK
+  - `entry_submission_session_id -> entry_submission_sessions.id`
+  - `entry_submission_team_id + entry_submission_session_id -> entry_submission_teams.id + entry_submission_teams.entry_submission_session_id`
+  - `entry_submission_player_id + entry_submission_session_id -> entry_submission_players.id + entry_submission_players.entry_submission_session_id`
+  - `submitted_by_user_id -> users.id`
+- Constraints
+  - `set_no > 0`
+- Notes
+  - Application code requires one entry per set for each submitted team.
+  - Player repetition is allowed only when `set_count > that team's player count`.
+
 ### `tournaments`
 
 - 대회 최상위 정보
@@ -1204,6 +1309,22 @@
   - `rps_draft_teams.picker_user_id`
   - `rps_draft_picks.picked_by_user_id`
 
+### Entry submission
+
+- `entry_submission_sessions`
+  - `entry_submission_teams`
+  - `entry_submission_players`
+  - `entry_submission_entries`
+- `entry_submission_teams`
+  - `entry_submission_players`
+  - `entry_submission_entries`
+- `entry_submission_players`
+  - `entry_submission_entries.entry_submission_player_id`
+- `users`
+  - `entry_submission_sessions.owner_user_id`
+  - `entry_submission_teams.captain_user_id`
+  - `entry_submission_entries.submitted_by_user_id`
+
 ## 드래프트 인덱스 요약
 
 ### 기존 드래프트
@@ -1246,6 +1367,22 @@
   - `rps_draft_session_id`
   - `rps_draft_team_id`
   - `candidate_id`
+
+### Entry submission
+
+- `entry_submission_sessions`
+  - `status`
+  - `owner_user_id`
+- `entry_submission_teams`
+  - `entry_submission_session_id`
+  - `captain_user_id`
+- `entry_submission_players`
+  - `entry_submission_session_id`
+  - `entry_submission_team_id`
+- `entry_submission_entries`
+  - `entry_submission_session_id`
+  - `entry_submission_team_id`
+  - `entry_submission_player_id`
 
 ## 토너먼트 인덱스 요약
 

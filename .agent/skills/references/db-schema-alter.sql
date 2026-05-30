@@ -1,74 +1,103 @@
-DECLARE
-    v_count NUMBER;
-BEGIN
-    SELECT COUNT(*)
-    INTO v_count
-    FROM user_constraints
-    WHERE constraint_name = 'CHK_RPS_DRAFT_SESSIONS_STATUS';
+CREATE SEQUENCE entry_submission_sessions_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-    IF v_count > 0 THEN
-        EXECUTE IMMEDIATE 'ALTER TABLE rps_draft_sessions DROP CONSTRAINT chk_rps_draft_sessions_status';
-    END IF;
-END;
-/
+CREATE TABLE entry_submission_sessions (
+    id NUMBER DEFAULT entry_submission_sessions_seq.NEXTVAL PRIMARY KEY,
+    title VARCHAR2(200 CHAR) NOT NULL,
+    owner_user_id NUMBER NOT NULL,
+    status VARCHAR2(20 CHAR) DEFAULT 'SUBMITTING' NOT NULL,
+    set_count NUMBER(6) NOT NULL,
+    completed_at TIMESTAMP,
+    reg_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    update_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT fk_entry_submission_sessions_owner
+        FOREIGN KEY (owner_user_id) REFERENCES users(id),
+    CONSTRAINT chk_entry_submission_sessions_status
+        CHECK (status IN ('SUBMITTING', 'COMPLETED')),
+    CONSTRAINT chk_entry_submission_sessions_sets
+        CHECK (set_count > 0)
+);
 
-UPDATE rps_draft_sessions
-SET started_at = SYSTIMESTAMP
-WHERE status = 'READY'
-  AND started_at IS NULL;
+CREATE SEQUENCE entry_submission_teams_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-UPDATE rps_draft_sessions
-SET status = 'RPS_PENDING'
-WHERE status = 'READY';
+CREATE TABLE entry_submission_teams (
+    id NUMBER DEFAULT entry_submission_teams_seq.NEXTVAL PRIMARY KEY,
+    entry_submission_session_id NUMBER NOT NULL,
+    team_name VARCHAR2(100 CHAR) NOT NULL,
+    display_order NUMBER(1) NOT NULL,
+    captain_user_id NUMBER NOT NULL,
+    submitted_at TIMESTAMP,
+    CONSTRAINT fk_entry_submission_teams_session
+        FOREIGN KEY (entry_submission_session_id) REFERENCES entry_submission_sessions(id),
+    CONSTRAINT fk_entry_submission_teams_captain
+        FOREIGN KEY (captain_user_id) REFERENCES users(id),
+    CONSTRAINT uq_entry_submission_teams_session_order
+        UNIQUE (entry_submission_session_id, display_order),
+    CONSTRAINT uq_entry_submission_teams_session_captain
+        UNIQUE (entry_submission_session_id, captain_user_id),
+    CONSTRAINT uq_entry_submission_teams_id_session
+        UNIQUE (id, entry_submission_session_id),
+    CONSTRAINT chk_entry_submission_teams_order
+        CHECK (display_order IN (1, 2))
+);
 
-ALTER TABLE rps_draft_sessions
-    MODIFY (status DEFAULT 'RPS_PENDING');
+CREATE SEQUENCE entry_submission_players_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 
-ALTER TABLE rps_draft_sessions
-    ADD CONSTRAINT chk_rps_draft_sessions_status
-        CHECK (status IN ('RPS_PENDING', 'PICKING', 'FINISHED'));
+CREATE TABLE entry_submission_players (
+    id NUMBER DEFAULT entry_submission_players_seq.NEXTVAL PRIMARY KEY,
+    entry_submission_session_id NUMBER NOT NULL,
+    entry_submission_team_id NUMBER NOT NULL,
+    player_name VARCHAR2(100 CHAR) NOT NULL,
+    display_order NUMBER(6) NOT NULL,
+    captain_yn CHAR(1) DEFAULT 'N' NOT NULL,
+    CONSTRAINT fk_entry_submission_players_session
+        FOREIGN KEY (entry_submission_session_id) REFERENCES entry_submission_sessions(id),
+    CONSTRAINT fk_entry_submission_players_team
+        FOREIGN KEY (entry_submission_team_id, entry_submission_session_id)
+        REFERENCES entry_submission_teams(id, entry_submission_session_id),
+    CONSTRAINT uq_entry_submission_players_team_name
+        UNIQUE (entry_submission_team_id, player_name),
+    CONSTRAINT uq_entry_submission_players_team_order
+        UNIQUE (entry_submission_team_id, display_order),
+    CONSTRAINT uq_entry_submission_players_id_session
+        UNIQUE (id, entry_submission_session_id),
+    CONSTRAINT chk_entry_submission_players_order
+        CHECK (display_order > 0),
+    CONSTRAINT chk_entry_submission_players_captain
+        CHECK (captain_yn IN ('Y', 'N'))
+);
 
-COMMIT;
+CREATE TABLE entry_submission_entries (
+    entry_submission_session_id NUMBER NOT NULL,
+    entry_submission_team_id NUMBER NOT NULL,
+    set_no NUMBER(6) NOT NULL,
+    entry_submission_player_id NUMBER NOT NULL,
+    submitted_by_user_id NUMBER NOT NULL,
+    submitted_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT pk_entry_submission_entries
+        PRIMARY KEY (entry_submission_session_id, entry_submission_team_id, set_no),
+    CONSTRAINT fk_entry_submission_entries_session
+        FOREIGN KEY (entry_submission_session_id) REFERENCES entry_submission_sessions(id),
+    CONSTRAINT fk_entry_submission_entries_team
+        FOREIGN KEY (entry_submission_team_id, entry_submission_session_id)
+        REFERENCES entry_submission_teams(id, entry_submission_session_id),
+    CONSTRAINT fk_entry_submission_entries_player
+        FOREIGN KEY (entry_submission_player_id, entry_submission_session_id)
+        REFERENCES entry_submission_players(id, entry_submission_session_id),
+    CONSTRAINT fk_entry_submission_entries_submitter
+        FOREIGN KEY (submitted_by_user_id) REFERENCES users(id),
+    CONSTRAINT chk_entry_submission_entries_set_no
+        CHECK (set_no > 0)
+);
 
-DECLARE
-    v_count NUMBER;
-BEGIN
-    SELECT COUNT(*)
-    INTO v_count
-    FROM user_tables
-    WHERE table_name = 'AI_CHAT_SETTINGS';
+CREATE INDEX idx_entry_submission_sessions_status ON entry_submission_sessions(status);
+CREATE INDEX idx_entry_submission_sessions_owner ON entry_submission_sessions(owner_user_id);
 
-    IF v_count = 0 THEN
-        EXECUTE IMMEDIATE q'[
-            CREATE TABLE ai_chat_settings (
-                setting_key VARCHAR2(50 CHAR) PRIMARY KEY,
-                routing_mode VARCHAR2(30 CHAR) DEFAULT 'AUTO' NOT NULL,
-                cloudflare_model VARCHAR2(255 CHAR) NOT NULL,
-                ollama_model VARCHAR2(255 CHAR) NOT NULL,
-                updated_by NUMBER,
-                updated_at TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
-                CONSTRAINT chk_ai_chat_settings_key CHECK (setting_key = 'default'),
-                CONSTRAINT chk_ai_chat_settings_mode
-                    CHECK (routing_mode IN ('AUTO', 'CLOUDFLARE_ONLY', 'OLLAMA_ONLY')),
-                CONSTRAINT fk_ai_chat_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id)
-            )
-        ]';
-    END IF;
-END;
-/
+CREATE INDEX idx_entry_submission_teams_session ON entry_submission_teams(entry_submission_session_id);
+CREATE INDEX idx_entry_submission_teams_captain ON entry_submission_teams(captain_user_id);
 
-DECLARE
-    v_count NUMBER;
-BEGIN
-    SELECT COUNT(*)
-    INTO v_count
-    FROM user_indexes
-    WHERE index_name = 'IDX_AI_CHAT_SETTINGS_UPDATED_BY';
+CREATE INDEX idx_entry_submission_players_session ON entry_submission_players(entry_submission_session_id);
+CREATE INDEX idx_entry_submission_players_team ON entry_submission_players(entry_submission_team_id);
 
-    IF v_count = 0 THEN
-        EXECUTE IMMEDIATE 'CREATE INDEX idx_ai_chat_settings_updated_by ON ai_chat_settings(updated_by)';
-    END IF;
-END;
-/
-
-COMMIT;
+CREATE INDEX idx_entry_submission_entries_session ON entry_submission_entries(entry_submission_session_id);
+CREATE INDEX idx_entry_submission_entries_team ON entry_submission_entries(entry_submission_team_id);
+CREATE INDEX idx_entry_submission_entries_player ON entry_submission_entries(entry_submission_player_id);
