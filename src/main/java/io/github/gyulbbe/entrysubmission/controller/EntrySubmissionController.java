@@ -85,6 +85,22 @@ public class EntrySubmissionController {
         }
     }
 
+    @PostMapping("/sessions/{sessionId}/restart")
+    public ResponseEntity<ResponseDto<EntrySubmissionSnapshotResponseDto>> restartSession(@PathVariable Long sessionId) {
+        try {
+            return respond(
+                    ResponseDto.success(
+                            entrySubmissionCommandService.restartSession(
+                                    sessionId,
+                                    entrySubmissionActorResolver.resolveRequired()
+                            )
+                    )
+            );
+        } catch (Exception e) {
+            return respond(ResponseDto.fail(e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<ResponseDto<Void>> deleteSession(@PathVariable Long sessionId) {
         return respond(entrySubmissionService.deleteSession(sessionId, entrySubmissionActorResolver.resolveOptional()));

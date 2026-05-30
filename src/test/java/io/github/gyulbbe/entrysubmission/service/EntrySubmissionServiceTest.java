@@ -299,6 +299,74 @@ class EntrySubmissionServiceTest {
                 .containsExactly("e", "captain-complete-b", "f");
     }
 
+    @Test
+    void restartSession_clears_submissions_and_keeps_initial_setup() {
+        Long ownerId = createUser("entry-owner-restart");
+        Long team1CaptainId = createUser("captain-restart-a");
+        Long team2CaptainId = createUser("captain-restart-b");
+        EntrySubmissionSnapshotResponseDto snapshot = createSession(
+                ownerId,
+                team1CaptainId,
+                team2CaptainId,
+                List.of("a"),
+                List.of("b"),
+                null
+        );
+
+        entrySubmissionCommandService.submitEntries(
+                snapshot.getSession().getId(),
+                submitRequest(List.of(
+                        playerId(snapshot, 1, "captain-restart-a"),
+                        playerId(snapshot, 1, "a")
+                )),
+                actor(team1CaptainId, "captain-restart-a")
+        );
+        entrySubmissionCommandService.submitEntries(
+                snapshot.getSession().getId(),
+                submitRequest(List.of(
+                        playerId(snapshot, 2, "captain-restart-b"),
+                        playerId(snapshot, 2, "b")
+                )),
+                actor(team2CaptainId, "captain-restart-b")
+        );
+
+        EntrySubmissionSnapshotResponseDto restarted = entrySubmissionCommandService.restartSession(
+                snapshot.getSession().getId(),
+                actor(ownerId, "entry-owner-restart")
+        );
+
+        assertThat(restarted.getSession().getStatus()).isEqualTo(EntrySubmissionSessionEntity.STATUS_SUBMITTING);
+        assertThat(restarted.getSession().getCompletedAt()).isNull();
+        assertThat(restarted.getSession().getSetCount()).isEqualTo(2);
+        assertThat(playerNames(restarted, 1)).containsExactly("captain-restart-a", "a");
+        assertThat(playerNames(restarted, 2)).containsExactly("captain-restart-b", "b");
+        assertThat(restarted.getTeams()).extracting("submitted").containsExactly(false, false);
+        assertThat(restarted.getEntries()).isEmpty();
+        assertThat(restarted.getMatches()).extracting("team1PlayerName").containsOnlyNulls();
+        assertThat(restarted.getMatches()).extracting("team2PlayerName").containsOnlyNulls();
+        assertThat(restarted.getPermissions().isCanRestart()).isTrue();
+    }
+
+    @Test
+    void only_owner_or_admin_can_restart_session() {
+        Long ownerId = createUser("entry-owner-restart-denied");
+        Long team1CaptainId = createUser("captain-restart-denied-a");
+        Long team2CaptainId = createUser("captain-restart-denied-b");
+        EntrySubmissionSnapshotResponseDto snapshot = createSession(
+                ownerId,
+                team1CaptainId,
+                team2CaptainId,
+                List.of("a"),
+                List.of("b"),
+                null
+        );
+
+        assertThatThrownBy(() -> entrySubmissionCommandService.restartSession(
+                snapshot.getSession().getId(),
+                actor(team1CaptainId, "captain-restart-denied-a")
+        )).hasMessageContaining("session owner or an admin");
+    }
+
     private EntrySubmissionSnapshotResponseDto createSession(
             Long ownerId,
             Long team1CaptainId,

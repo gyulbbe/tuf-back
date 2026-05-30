@@ -225,6 +225,7 @@ public class EntrySubmissionSnapshotService {
                 .orElse(null);
 
         permissions.setCanDelete(isOwner || isAdmin);
+        permissions.setCanRestart(isOwner || isAdmin);
         permissions.setMyTeamId(myTeam != null ? myTeam.getId() : null);
         if (isOwner && myTeam != null) {
             permissions.setMyRole("OWNER_CAPTAIN");

@@ -89,6 +89,29 @@ public class EntrySubmissionCommandService {
         return snapshot;
     }
 
+    public EntrySubmissionSnapshotResponseDto restartSession(Long sessionId, EntrySubmissionActor actor) {
+        entrySubmissionPermissionService.assertAuthenticated(actor);
+
+        EntrySubmissionSessionEntity session = entrySubmissionSessionRepository.findByIdForUpdate(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Entry submission session could not be found."));
+        entrySubmissionPermissionService.assertOwnerOrAdmin(session, actor);
+
+        List<EntrySubmissionTeamEntity> teams = entrySubmissionTeamRepository
+                .findAllByEntrySubmissionSessionIdOrderByDisplayOrderAscIdAsc(sessionId);
+        entrySubmissionEntryRepository.deleteByEntrySubmissionSessionId(sessionId);
+        teams.forEach(EntrySubmissionTeamEntity::resetSubmission);
+        session.restart();
+
+        EntrySubmissionSnapshotResponseDto snapshot = entrySubmissionSnapshotService.getSnapshot(sessionId, actor);
+        entrySubmissionEventPublisher.publishAfterCommit(
+                sessionId,
+                EntrySubmissionEventType.SESSION_RESTARTED,
+                actor,
+                "Entry submission restarted."
+        );
+        return snapshot;
+    }
+
     private List<EntrySubmissionEntryEntity> buildEntries(
             EntrySubmissionSessionEntity session,
             EntrySubmissionTeamEntity actorTeam,

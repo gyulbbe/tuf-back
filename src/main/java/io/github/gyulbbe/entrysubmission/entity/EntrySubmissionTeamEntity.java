@@ -63,4 +63,8 @@ public class EntrySubmissionTeamEntity {
     public void markSubmitted(LocalDateTime submittedAt) {
         this.submittedAt = submittedAt;
     }
+
+    public void resetSubmission() {
+        this.submittedAt = null;
+    }
 }

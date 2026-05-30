@@ -86,4 +86,9 @@ public class EntrySubmissionSessionEntity {
         this.status = STATUS_COMPLETED;
         this.completedAt = completedAt;
     }
+
+    public void restart() {
+        this.status = STATUS_SUBMITTING;
+        this.completedAt = null;
+    }
 }
