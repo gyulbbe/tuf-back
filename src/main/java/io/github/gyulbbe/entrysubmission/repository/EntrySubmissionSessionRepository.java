@@ -15,4 +15,6 @@ public interface EntrySubmissionSessionRepository extends JpaRepository<EntrySub
     Optional<EntrySubmissionSessionEntity> findByIdForUpdate(Long sessionId);
 
     List<EntrySubmissionSessionEntity> findAllByOrderByRegDateDescIdDesc();
+
+    long countBySourceRpsDraftSessionId(Long sourceRpsDraftSessionId);
 }

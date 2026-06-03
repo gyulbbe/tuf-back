@@ -1,5 +1,6 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentMatchScoreRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
@@ -69,6 +70,7 @@ public class TournamentMatchScoreSubmissionService {
     private final UserRepository userRepository;
     private final TournamentBracketProgressionService progressionService;
     private final TournamentService tournamentService;
+    private final MapRepository mapRepository;
 
     @Transactional
     public TournamentScoreSubmissionResponseDto submitScore(
@@ -80,6 +82,7 @@ public class TournamentMatchScoreSubmissionService {
     ) {
         MatchContext context = loadContext(tournamentId, matchId);
         validateScoreSubmittableMatch(context);
+        Long submissionMapId = resolveSubmissionMap(context, request);
 
         Long submittedByParticipantId = resolveSubmitterParticipantId(context, actorUserId, actorRole);
         ScoreDecision decision = decideScore(context, request);
@@ -96,6 +99,7 @@ public class TournamentMatchScoreSubmissionService {
                 .slot1Score(decision.slot1Score())
                 .slot2Score(decision.slot2Score())
                 .winnerSlotNo(decision.winnerSlotNo())
+                .mapId(submissionMapId)
                 .status(TournamentMatchScoreSubmissionEntity.STATUS_PENDING)
                 .build();
 
@@ -144,12 +148,14 @@ public class TournamentMatchScoreSubmissionService {
         if (!TournamentMatchScoreSubmissionEntity.STATUS_PENDING.equals(submission.getStatus())) {
             throw invalid("Only PENDING score submissions can be approved.");
         }
+        requireSubmissionMap(submission);
 
         ScoreDecision decision = decideStoredScore(context, submission);
         if (!Objects.equals(submission.getWinnerSlotNo(), decision.winnerSlotNo())) {
             throw invalid("Stored winner slot does not match submission scores.");
         }
 
+        context.match().assignMap(submission.getMapId());
         TournamentMatchSlotEntity winnerSlot = context.slotsByNo().get(decision.winnerSlotNo());
         TournamentMatchSlotEntity loserSlot = context.slotsByNo().get(decision.loserSlotNo());
         winnerSlot.updateScore(decision.winnerScore());
@@ -157,6 +163,7 @@ public class TournamentMatchScoreSubmissionService {
         loserSlot.updateScore(decision.loserScore());
         loserSlot.markWinner(false);
         context.match().finish(winnerSlot.getParticipantId());
+        matchRepository.save(context.match());
 
         LocalDateTime reviewedAt = LocalDateTime.now();
         submission.approve(adminUserId, reviewedAt, null);
@@ -274,6 +281,46 @@ public class TournamentMatchScoreSubmissionService {
         if (!context.participantsBySlotNo().containsKey(1) || !context.participantsBySlotNo().containsKey(2)) {
             throw notFound("Tournament participant not found.");
         }
+    }
+
+    private Long resolveSubmissionMap(MatchContext context, TournamentScoreSubmissionRequestDto request) {
+        Long requestedMapId = request == null ? null : request.getMapId();
+        Long currentMapId = context.match().getMapId();
+        Long effectiveMapId = requestedMapId == null ? currentMapId : requestedMapId;
+
+        if (effectiveMapId == null) {
+            throw invalid("Map is required before submitting a score.");
+        }
+        if (!mapRepository.existsById(effectiveMapId)) {
+            throw invalid("Unknown mapId in score submission.");
+        }
+
+        if (
+                !Objects.equals(currentMapId, effectiveMapId)
+                        && hasLockedScoreSubmission(context.tournament().getId(), context.match().getId())
+        ) {
+            throw invalid("Match map cannot be changed after score submission.");
+        }
+
+        return effectiveMapId;
+    }
+
+    private void requireSubmissionMap(TournamentMatchScoreSubmissionEntity submission) {
+        Long mapId = submission.getMapId();
+        if (mapId == null) {
+            throw invalid("Map is required before approving a score submission.");
+        }
+        if (!mapRepository.existsById(mapId)) {
+            throw invalid("Unknown mapId in score submission.");
+        }
+    }
+
+    private boolean hasLockedScoreSubmission(Long tournamentId, Long matchId) {
+        return submissionRepository.existsByTournamentIdAndMatchIdAndStatusNot(
+                tournamentId,
+                matchId,
+                TournamentMatchScoreSubmissionEntity.STATUS_REJECTED
+        );
     }
 
     private Long resolveSubmitterParticipantId(MatchContext context, Long actorUserId, String actorRole) {
@@ -574,6 +621,7 @@ public class TournamentMatchScoreSubmissionService {
                 .slot1Score(submission.getSlot1Score())
                 .slot2Score(submission.getSlot2Score())
                 .winnerSlotNo(submission.getWinnerSlotNo())
+                .mapId(submission.getMapId())
                 .status(submission.getStatus())
                 .adminReviewerUserId(submission.getAdminReviewerUserId())
                 .adminReviewedAt(submission.getAdminReviewedAt())

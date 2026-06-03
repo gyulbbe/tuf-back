@@ -1,6 +1,9 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.entity.MapEntity;
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentCreateGroupRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentCreateMapDefaultRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateSlotRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
@@ -79,6 +82,9 @@ class TournamentCreationServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private MapRepository mapRepository;
 
     @Mock
     private TournamentBracketProgressionService bracketProgressionService;
@@ -200,6 +206,151 @@ class TournamentCreationServiceTest {
     }
 
     @Test
+    void createTournament_appliesSingleEliminationRoundMapDefaults() {
+        SavedEntities saved = stubGeneratedIds();
+        TournamentCreateRequestDto request = request(
+                "Single",
+                TournamentStageEntity.TYPE_SINGLE_ELIMINATION,
+                group(null, null,
+                        externalSlot(1, "P1"),
+                        externalSlot(2, "P2"),
+                        externalSlot(3, "P3"),
+                        externalSlot(4, "P4"),
+                        externalSlot(5, "P5"),
+                        externalSlot(6, "P6"),
+                        externalSlot(7, "P7"),
+                        externalSlot(8, "P8"))
+        );
+        request.setMapDefaults(List.of(
+                roundMapDefault(1, 700L),
+                roundMapDefault(2, 701L),
+                roundMapDefault(3, 702L)
+        ));
+        given(mapRepository.findAllById(any())).willReturn(List.of(map(700L), map(701L), map(702L)));
+        given(tournamentService.buildDetail(any(TournamentEntity.class)))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        service.createTournament(request, 99L);
+
+        assertThat(saved.matches())
+                .filteredOn(match -> Integer.valueOf(1).equals(match.getRoundNo()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(700L);
+        assertThat(saved.matches())
+                .filteredOn(match -> Integer.valueOf(2).equals(match.getRoundNo()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(701L);
+        assertThat(saved.matches())
+                .filteredOn(match -> Integer.valueOf(3).equals(match.getRoundNo()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(702L);
+    }
+
+    @Test
+    void createTournament_appliesDualGroupRoleMapDefaults() {
+        SavedEntities saved = stubGeneratedIds();
+        TournamentCreateRequestDto request = request(
+                "Dual",
+                TournamentStageEntity.TYPE_DUAL_GROUP,
+                group("A", "A Group",
+                        externalSlot(1, "A1"),
+                        externalSlot(2, "A2"),
+                        externalSlot(3, "A3"),
+                        externalSlot(4, "A4"))
+        );
+        request.setMapDefaults(List.of(
+                roleMapDefault(TournamentMatchEntity.ROLE_OPENING, 700L),
+                roleMapDefault(TournamentMatchEntity.ROLE_WINNERS, 701L),
+                roleMapDefault(TournamentMatchEntity.ROLE_LOSERS, 702L),
+                roleMapDefault(TournamentMatchEntity.ROLE_DECIDER, 703L)
+        ));
+        given(mapRepository.findAllById(any())).willReturn(List.of(map(700L), map(701L), map(702L), map(703L)));
+        given(tournamentService.buildDetail(any(TournamentEntity.class)))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        service.createTournament(request, 99L);
+
+        assertThat(saved.matches())
+                .filteredOn(match -> TournamentMatchEntity.ROLE_OPENING.equals(match.getMatchRole()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(700L);
+        assertThat(saved.matches())
+                .filteredOn(match -> TournamentMatchEntity.ROLE_WINNERS.equals(match.getMatchRole()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(701L);
+        assertThat(saved.matches())
+                .filteredOn(match -> TournamentMatchEntity.ROLE_LOSERS.equals(match.getMatchRole()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(702L);
+        assertThat(saved.matches())
+                .filteredOn(match -> TournamentMatchEntity.ROLE_DECIDER.equals(match.getMatchRole()))
+                .extracting(TournamentMatchEntity::getMapId)
+                .containsOnly(703L);
+    }
+
+    @Test
+    void createTournament_appliesUltimateBattleMapDefault() {
+        SavedEntities saved = stubGeneratedIds();
+        TournamentCreateRequestDto request = request(
+                "Ultimate",
+                TournamentStageEntity.TYPE_ULTIMATE_BATTLE,
+                group(null, null,
+                        externalSlot(1, "P1"),
+                        externalSlot(2, "P2"))
+        );
+        request.setMapDefaults(List.of(roleMapDefault(TournamentMatchEntity.ROLE_FINAL, 700L)));
+        given(mapRepository.findAllById(any())).willReturn(List.of(map(700L)));
+        given(tournamentService.buildDetail(any(TournamentEntity.class)))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        service.createTournament(request, 99L);
+
+        assertThat(saved.matches()).extracting(TournamentMatchEntity::getMapId).containsOnly(700L);
+    }
+
+    @Test
+    void createTournament_rejectsInvalidMapDefaults() {
+        TournamentCreateRequestDto unknownMapRequest = request(
+                "Single",
+                TournamentStageEntity.TYPE_SINGLE_ELIMINATION,
+                group(null, null, externalSlot(1, "P1"), externalSlot(2, "P2"))
+        );
+        unknownMapRequest.setMapDefaults(List.of(roundMapDefault(1, 700L)));
+        given(mapRepository.findAllById(any())).willReturn(List.of());
+
+        assertThatThrownBy(() -> service.createTournament(unknownMapRequest, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown mapId");
+
+        TournamentCreateRequestDto duplicateRequest = request(
+                "Single",
+                TournamentStageEntity.TYPE_SINGLE_ELIMINATION,
+                group(null, null, externalSlot(1, "P1"), externalSlot(2, "P2"))
+        );
+        duplicateRequest.setMapDefaults(List.of(
+                roundMapDefault(1, 700L),
+                roundMapDefault(1, 701L)
+        ));
+
+        assertThatThrownBy(() -> service.createTournament(duplicateRequest, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate ROUND mapDefault");
+
+        TournamentCreateRequestDto raceRequest = request(
+                "Race",
+                TournamentStageEntity.TYPE_RACE_SURVIVAL,
+                group("TERRAN", "TERRAN", externalSlot(1, "T1")),
+                group("ZERG", "ZERG", externalSlot(1, "Z1")),
+                group("PROTOSS", "PROTOSS", externalSlot(1, "P1"))
+        );
+        raceRequest.setMapDefaults(List.of(roleMapDefault(TournamentMatchEntity.ROLE_FINAL, 700L)));
+
+        assertThatThrownBy(() -> service.createTournament(raceRequest, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("RACE_SURVIVAL does not accept mapDefaults");
+    }
+
+    @Test
     void createTournament_rejectsSingleEliminationWithOneParticipant() {
         TournamentCreateRequestDto request = request(
                 "Single",
@@ -309,6 +460,29 @@ class TournamentCreationServiceTest {
         slot.setSlotNo(slotNo);
         slot.setUserId(userId);
         return slot;
+    }
+
+    private TournamentCreateMapDefaultRequestDto roundMapDefault(Integer roundNo, Long mapId) {
+        TournamentCreateMapDefaultRequestDto mapDefault = new TournamentCreateMapDefaultRequestDto();
+        mapDefault.setTarget("ROUND");
+        mapDefault.setRoundNo(roundNo);
+        mapDefault.setMapId(mapId);
+        return mapDefault;
+    }
+
+    private TournamentCreateMapDefaultRequestDto roleMapDefault(String matchRole, Long mapId) {
+        TournamentCreateMapDefaultRequestDto mapDefault = new TournamentCreateMapDefaultRequestDto();
+        mapDefault.setTarget("MATCH_ROLE");
+        mapDefault.setMatchRole(matchRole);
+        mapDefault.setMapId(mapId);
+        return mapDefault;
+    }
+
+    private MapEntity map(Long id) {
+        return MapEntity.builder()
+                .id(id)
+                .mapName("Map " + id)
+                .build();
     }
 
     private record SavedEntities(

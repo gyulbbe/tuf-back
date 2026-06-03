@@ -6,5 +6,6 @@ import java.util.List;
 
 @Data
 public class TournamentScoreSubmissionRequestDto {
+    private Long mapId;
     private List<TournamentMatchScoreRequestDto> scores;
 }

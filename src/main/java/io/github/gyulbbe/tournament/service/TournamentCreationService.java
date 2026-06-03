@@ -1,6 +1,9 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.entity.MapEntity;
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentCreateGroupRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentCreateMapDefaultRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateSlotRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
@@ -55,7 +58,15 @@ public class TournamentCreationService {
     private static final String RACE_PROTOSS = "PROTOSS";
     private static final String MATCHES_GROUP_CODE = "MATCHES";
     private static final String RACE_SURVIVAL_EMPTY_SLOT_LABEL = "선수 지정";
+    private static final String MAP_DEFAULT_TARGET_ROUND = "ROUND";
+    private static final String MAP_DEFAULT_TARGET_MATCH_ROLE = "MATCH_ROLE";
     private static final List<String> RACE_SURVIVAL_GROUP_CODES = List.of(RACE_TERRAN, RACE_ZERG, RACE_PROTOSS);
+    private static final Set<String> DUAL_MAP_DEFAULT_ROLES = Set.of(
+            TournamentMatchEntity.ROLE_OPENING,
+            TournamentMatchEntity.ROLE_WINNERS,
+            TournamentMatchEntity.ROLE_LOSERS,
+            TournamentMatchEntity.ROLE_DECIDER
+    );
 
     private final TournamentRepository tournamentRepository;
     private final TournamentParticipantRepository participantRepository;
@@ -70,6 +81,7 @@ public class TournamentCreationService {
     private final UserRepository userRepository;
     private final TournamentBracketProgressionService bracketProgressionService;
     private final TournamentService tournamentService;
+    private final MapRepository mapRepository;
 
     @Transactional
     public TournamentDetailResponseDto createTournament(TournamentCreateRequestDto request, Long ownerUserId) {
@@ -215,12 +227,14 @@ public class TournamentCreationService {
         }
         validateSpecialBracket(bracketType, groups, participantCount);
         verifyUsers(userIds);
+        NormalizedMapDefaults mapDefaults = normalizeMapDefaults(bracketType, request.getMapDefaults());
 
         return new NormalizedTournament(
                 title,
                 bracketType,
                 bestOf,
-                groups
+                groups,
+                mapDefaults
         );
     }
 
@@ -278,6 +292,113 @@ public class TournamentCreationService {
             if (group.slots().isEmpty()) {
                 throw new IllegalArgumentException("Each RACE_SURVIVAL group requires at least one participant.");
             }
+        }
+    }
+
+    private NormalizedMapDefaults normalizeMapDefaults(
+            String bracketType,
+            List<TournamentCreateMapDefaultRequestDto> requestedMapDefaults
+    ) {
+        if (requestedMapDefaults == null || requestedMapDefaults.isEmpty()) {
+            return NormalizedMapDefaults.empty();
+        }
+        if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(bracketType)) {
+            throw new IllegalArgumentException("RACE_SURVIVAL does not accept mapDefaults.");
+        }
+
+        Map<Integer, Long> roundMapIds = new HashMap<>();
+        Map<String, Long> roleMapIds = new HashMap<>();
+        Set<Long> mapIds = new LinkedHashSet<>();
+
+        for (TournamentCreateMapDefaultRequestDto requestedMapDefault : requestedMapDefaults) {
+            if (requestedMapDefault == null) {
+                throw new IllegalArgumentException("mapDefaults cannot contain null.");
+            }
+
+            String target = requireText(requestedMapDefault.getTarget(), "mapDefaults.target is required.").toUpperCase();
+            Long mapId = requestedMapDefault.getMapId();
+            if (mapId == null || mapId <= 0) {
+                throw new IllegalArgumentException("mapDefaults.mapId must be a positive number.");
+            }
+            mapIds.add(mapId);
+
+            if (MAP_DEFAULT_TARGET_ROUND.equals(target)) {
+                normalizeRoundMapDefault(bracketType, requestedMapDefault, mapId, roundMapIds);
+            } else if (MAP_DEFAULT_TARGET_MATCH_ROLE.equals(target)) {
+                normalizeRoleMapDefault(bracketType, requestedMapDefault, mapId, roleMapIds);
+            } else {
+                throw new IllegalArgumentException("mapDefaults.target must be ROUND or MATCH_ROLE.");
+            }
+        }
+
+        validateMapIds(mapIds);
+        return new NormalizedMapDefaults(Map.copyOf(roundMapIds), Map.copyOf(roleMapIds));
+    }
+
+    private void normalizeRoundMapDefault(
+            String bracketType,
+            TournamentCreateMapDefaultRequestDto request,
+            Long mapId,
+            Map<Integer, Long> roundMapIds
+    ) {
+        if (!TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType)) {
+            throw new IllegalArgumentException("ROUND mapDefaults are only allowed for SINGLE_ELIMINATION.");
+        }
+        if (trimToNull(request.getMatchRole()) != null) {
+            throw new IllegalArgumentException("ROUND mapDefaults cannot include matchRole.");
+        }
+        Integer roundNo = request.getRoundNo();
+        if (roundNo == null || roundNo <= 0) {
+            throw new IllegalArgumentException("ROUND mapDefaults require a positive roundNo.");
+        }
+        if (roundMapIds.put(roundNo, mapId) != null) {
+            throw new IllegalArgumentException("Duplicate ROUND mapDefault is not allowed.");
+        }
+    }
+
+    private void normalizeRoleMapDefault(
+            String bracketType,
+            TournamentCreateMapDefaultRequestDto request,
+            Long mapId,
+            Map<String, Long> roleMapIds
+    ) {
+        if (TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(bracketType)) {
+            throw new IllegalArgumentException("MATCH_ROLE mapDefaults are not allowed for SINGLE_ELIMINATION.");
+        }
+        if (request.getRoundNo() != null) {
+            throw new IllegalArgumentException("MATCH_ROLE mapDefaults cannot include roundNo.");
+        }
+
+        String matchRole = requireText(request.getMatchRole(), "MATCH_ROLE mapDefaults require matchRole.").toUpperCase();
+        if (TournamentStageEntity.TYPE_DUAL_GROUP.equals(bracketType)) {
+            if (!DUAL_MAP_DEFAULT_ROLES.contains(matchRole)) {
+                throw new IllegalArgumentException("DUAL_GROUP mapDefaults require OPENING, WINNERS, LOSERS, or DECIDER matchRole.");
+            }
+        } else if (TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(bracketType)) {
+            if (!TournamentMatchEntity.ROLE_FINAL.equals(matchRole)) {
+                throw new IllegalArgumentException("ULTIMATE_BATTLE mapDefaults require FINAL matchRole.");
+            }
+        } else {
+            throw new IllegalArgumentException("MATCH_ROLE mapDefaults are not allowed for this bracketType.");
+        }
+
+        if (roleMapIds.put(matchRole, mapId) != null) {
+            throw new IllegalArgumentException("Duplicate MATCH_ROLE mapDefault is not allowed.");
+        }
+    }
+
+    private void validateMapIds(Set<Long> mapIds) {
+        if (mapIds.isEmpty()) {
+            return;
+        }
+        Set<Long> existingMapIds = mapRepository.findAllById(mapIds).stream()
+                .map(MapEntity::getId)
+                .collect(Collectors.toSet());
+        List<Long> missingMapIds = mapIds.stream()
+                .filter(mapId -> !existingMapIds.contains(mapId))
+                .toList();
+        if (!missingMapIds.isEmpty()) {
+            throw new IllegalArgumentException("Unknown mapId in mapDefaults.");
         }
     }
 
@@ -369,7 +490,7 @@ public class TournamentCreationService {
                 .toList();
         int bracketSize = nextPowerOfTwo(orderedParticipants.size());
         List<TournamentParticipantEntity> firstRoundSlots = distributeSingleEliminationByes(orderedParticipants, bracketSize);
-        List<List<TournamentMatchEntity>> rounds = createSingleMatches(stage, group, normalized.bestOf(), bracketSize);
+        List<List<TournamentMatchEntity>> rounds = createSingleMatches(stage, group, normalized.bestOf(), bracketSize, normalized.mapDefaults());
         Map<Long, Boolean> byeOpeningMatches = createSingleSlots(rounds, firstRoundSlots);
 
         TournamentResultSlotEntity champion = resultSlotRepository.save(TournamentResultSlotEntity.builder()
@@ -396,7 +517,8 @@ public class TournamentCreationService {
             TournamentStageEntity stage,
             TournamentGroupEntity group,
             int bestOf,
-            int bracketSize
+            int bracketSize,
+            NormalizedMapDefaults mapDefaults
     ) {
         List<List<TournamentMatchEntity>> rounds = new ArrayList<>();
         int matchesInRound = bracketSize / 2;
@@ -416,6 +538,7 @@ public class TournamentCreationService {
                         .displayName(finalRound ? "Final" : "Round " + roundNo + " Match " + matchNo)
                         .bestOf(bestOf)
                         .status(roundNo == 1 ? TournamentMatchEntity.STATUS_READY : TournamentMatchEntity.STATUS_PENDING)
+                        .mapId(mapDefaults.mapForRound(roundNo))
                         .layoutCol(roundNo)
                         .layoutRow(matchNo)
                         .displayOrder(displayOrder++)
@@ -498,7 +621,7 @@ public class TournamentCreationService {
                     .displayOrder(normalizedGroup.groupIndex() + 1)
                     .build());
             createGroupEntries(group, normalizedGroup, participantsBySlot);
-            displayOrder = createDualGroupBracket(stage, group, normalizedGroup, normalized.bestOf(), participantsBySlot, displayOrder);
+            displayOrder = createDualGroupBracket(stage, group, normalizedGroup, normalized.bestOf(), normalized.mapDefaults(), participantsBySlot, displayOrder);
         }
     }
 
@@ -507,6 +630,7 @@ public class TournamentCreationService {
             TournamentGroupEntity group,
             NormalizedGroup normalizedGroup,
             int bestOf,
+            NormalizedMapDefaults mapDefaults,
             Map<SlotKey, TournamentParticipantEntity> participantsBySlot,
             int displayOrder
     ) {
@@ -517,11 +641,11 @@ public class TournamentCreationService {
         TournamentParticipantEntity seat3 = seats.get(2);
         TournamentParticipantEntity seat4 = seats.get(3);
 
-        TournamentMatchEntity openingOne = saveMatch(stage, group, code + "1", TournamentMatchEntity.ROLE_OPENING, 1, 1, code + "1", bestOf, initialStatus(seat1, seat2), 1, 1, displayOrder++);
-        TournamentMatchEntity openingTwo = saveMatch(stage, group, code + "2", TournamentMatchEntity.ROLE_OPENING, 1, 2, code + "2", bestOf, initialStatus(seat3, seat4), 1, 2, displayOrder++);
-        TournamentMatchEntity winners = saveMatch(stage, group, code + "W", TournamentMatchEntity.ROLE_WINNERS, 2, 1, code + " Winners", bestOf, TournamentMatchEntity.STATUS_PENDING, 2, 1, displayOrder++);
-        TournamentMatchEntity losers = saveMatch(stage, group, code + "L", TournamentMatchEntity.ROLE_LOSERS, 2, 2, code + " Losers", bestOf, TournamentMatchEntity.STATUS_PENDING, 2, 2, displayOrder++);
-        TournamentMatchEntity decider = saveMatch(stage, group, code + "F", TournamentMatchEntity.ROLE_DECIDER, 3, 1, code + " Decider", bestOf, TournamentMatchEntity.STATUS_PENDING, 3, 1, displayOrder++);
+        TournamentMatchEntity openingOne = saveMatch(stage, group, code + "1", TournamentMatchEntity.ROLE_OPENING, 1, 1, code + "1", bestOf, initialStatus(seat1, seat2), 1, 1, displayOrder++, mapDefaults.mapForRole(TournamentMatchEntity.ROLE_OPENING));
+        TournamentMatchEntity openingTwo = saveMatch(stage, group, code + "2", TournamentMatchEntity.ROLE_OPENING, 1, 2, code + "2", bestOf, initialStatus(seat3, seat4), 1, 2, displayOrder++, mapDefaults.mapForRole(TournamentMatchEntity.ROLE_OPENING));
+        TournamentMatchEntity winners = saveMatch(stage, group, code + "W", TournamentMatchEntity.ROLE_WINNERS, 2, 1, code + " Winners", bestOf, TournamentMatchEntity.STATUS_PENDING, 2, 1, displayOrder++, mapDefaults.mapForRole(TournamentMatchEntity.ROLE_WINNERS));
+        TournamentMatchEntity losers = saveMatch(stage, group, code + "L", TournamentMatchEntity.ROLE_LOSERS, 2, 2, code + " Losers", bestOf, TournamentMatchEntity.STATUS_PENDING, 2, 2, displayOrder++, mapDefaults.mapForRole(TournamentMatchEntity.ROLE_LOSERS));
+        TournamentMatchEntity decider = saveMatch(stage, group, code + "F", TournamentMatchEntity.ROLE_DECIDER, 3, 1, code + " Decider", bestOf, TournamentMatchEntity.STATUS_PENDING, 3, 1, displayOrder++, mapDefaults.mapForRole(TournamentMatchEntity.ROLE_DECIDER));
 
         saveParticipantOrByeSlot(openingOne.getId(), 1, seat1);
         saveParticipantOrByeSlot(openingOne.getId(), 2, seat2);
@@ -599,7 +723,8 @@ public class TournamentCreationService {
                 TournamentMatchEntity.STATUS_READY,
                 1,
                 1,
-                1
+                1,
+                normalized.mapDefaults().mapForRole(TournamentMatchEntity.ROLE_FINAL)
         );
         saveParticipantOrByeSlot(match.getId(), 1, participants.get(0));
         saveParticipantOrByeSlot(match.getId(), 2, participants.get(1));
@@ -735,6 +860,38 @@ public class TournamentCreationService {
             int layoutRow,
             int displayOrder
     ) {
+        return saveMatch(
+                stage,
+                group,
+                matchKey,
+                matchRole,
+                roundNo,
+                matchNo,
+                displayName,
+                bestOf,
+                status,
+                layoutCol,
+                layoutRow,
+                displayOrder,
+                null
+        );
+    }
+
+    private TournamentMatchEntity saveMatch(
+            TournamentStageEntity stage,
+            TournamentGroupEntity group,
+            String matchKey,
+            String matchRole,
+            int roundNo,
+            int matchNo,
+            String displayName,
+            int bestOf,
+            String status,
+            int layoutCol,
+            int layoutRow,
+            int displayOrder,
+            Long mapId
+    ) {
         return matchRepository.save(TournamentMatchEntity.builder()
                 .stageId(stage.getId())
                 .groupId(group.getId())
@@ -745,6 +902,7 @@ public class TournamentCreationService {
                 .displayName(displayName)
                 .bestOf(bestOf)
                 .status(status)
+                .mapId(mapId)
                 .layoutCol(layoutCol)
                 .layoutRow(layoutRow)
                 .displayOrder(displayOrder)
@@ -958,8 +1116,26 @@ public class TournamentCreationService {
             String title,
             String bracketType,
             int bestOf,
-            List<NormalizedGroup> groups
+            List<NormalizedGroup> groups,
+            NormalizedMapDefaults mapDefaults
     ) {
+    }
+
+    private record NormalizedMapDefaults(
+            Map<Integer, Long> roundMapIds,
+            Map<String, Long> roleMapIds
+    ) {
+        private static NormalizedMapDefaults empty() {
+            return new NormalizedMapDefaults(Map.of(), Map.of());
+        }
+
+        private Long mapForRound(Integer roundNo) {
+            return roundMapIds.get(roundNo);
+        }
+
+        private Long mapForRole(String matchRole) {
+            return roleMapIds.get(matchRole);
+        }
     }
 
     private record NormalizedGroup(

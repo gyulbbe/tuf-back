@@ -822,18 +822,21 @@ Status flow
   - `id`
   - `title`
   - `owner_user_id`
+  - `source_rps_draft_session_id`
   - `status`
   - `set_count`
   - `completed_at`
   - `reg_date`, `update_date`
 - FK
   - `owner_user_id -> users.id`
+  - `source_rps_draft_session_id -> rps_draft_sessions.id ON DELETE SET NULL`
 - Constraints
   - `status`: `SUBMITTING`, `COMPLETED`
   - `set_count > 0`
 - Notes
   - Default set count is calculated by application code as `max(team1 player count, team2 player count)`.
   - A manually supplied set count overrides the default.
+  - If created from a finished RPS draft, `source_rps_draft_session_id` links the entry session to that RPS draft.
 
 ### `entry_submission_teams`
 
@@ -1114,6 +1117,7 @@ Status flow
   - `submitter_role`
   - `slot1_score`, `slot2_score`
   - `winner_slot_no`
+  - `map_id`
   - `status`
   - `admin_reviewer_user_id`
   - `admin_reviewed_at`
@@ -1124,6 +1128,7 @@ Status flow
   - `match_id -> tournament_matches.id`
   - `submitted_by_user_id -> users.id`
   - `submitted_by_participant_id -> tournament_participants.id`
+  - `map_id -> maps.id`
   - `admin_reviewer_user_id -> users.id`
 - 제약
   - `submitter_role`: `PLAYER`, `ADMIN`
@@ -1133,8 +1138,9 @@ Status flow
 - 사용
   - 내부 회원 참가자와 관리자는 READY 경기의 점수를 제출할 수 있다.
   - 외부 참가자는 `user_id = null` 이므로 직접 제출할 수 없고 관리자가 대신 제출한다.
-  - 제출만으로는 match slot, match status, route, result slot 을 변경하지 않는다.
-  - 관리자 승인 시 점수를 `tournament_match_slots` 에 반영하고 match 를 `FINISHED` 로 확정한 뒤 route 를 전파한다.
+  - 제출만으로는 match slot, match status, route, result slot, 공식 match map 을 변경하지 않는다.
+  - 제출 시 선택한 맵은 `map_id` 에 저장한다.
+  - 관리자 승인 시 `map_id` 를 `tournament_matches.map_id` 로 반영하고, 점수를 `tournament_match_slots` 에 반영하고 match 를 `FINISHED` 로 확정한 뒤 route 를 전파한다.
   - 한 제출이 승인되면 같은 경기의 다른 `PENDING` 제출은 `REJECTED` 로 바꾼다.
 
 ### `race_survival_progress_submissions`
@@ -1296,6 +1302,7 @@ Status flow
 ### 가위바위보 드래프트
 
 - `rps_draft_sessions`
+  - `entry_submission_sessions.source_rps_draft_session_id`
   - `rps_draft_teams`
   - `rps_draft_candidates`
   - `rps_draft_picks`
@@ -1373,6 +1380,7 @@ Status flow
 - `entry_submission_sessions`
   - `status`
   - `owner_user_id`
+  - `source_rps_draft_session_id`
 - `entry_submission_teams`
   - `entry_submission_session_id`
   - `captain_user_id`

@@ -1,5 +1,6 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentMatchScoreRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
@@ -50,6 +51,7 @@ class TournamentMatchScoreSubmissionServiceTest {
     private static final Long PLAYER_A_PARTICIPANT_ID = 1001L;
     private static final Long PLAYER_B_PARTICIPANT_ID = 1002L;
     private static final Long PLAYER_C_PARTICIPANT_ID = 1003L;
+    private static final Long MAP_ID = 700L;
 
     @Mock
     private TournamentRepository tournamentRepository;
@@ -71,6 +73,9 @@ class TournamentMatchScoreSubmissionServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private MapRepository mapRepository;
 
     @Mock
     private TournamentBracketProgressionService progressionService;
@@ -146,6 +151,82 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThat(response.getSubmitterLoginId()).isEqualTo("admin01");
         assertThat(response.getSubmittedByParticipantId()).isNull();
         assertThat(response.getWinnerSlotNo()).isEqualTo(1);
+    }
+
+    @Test
+    void submitScore_requiresMapBeforeSubmitting() {
+        givenReadyMatchContext(matchWithMap(TournamentMatchEntity.STATUS_READY, 3, null), internalParticipantA(), internalParticipantB());
+
+        assertThatThrownBy(() -> service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                request(score(1, 2), score(2, 0)),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Map is required");
+    }
+
+    @Test
+    void submitScore_requiresMapForRaceSurvivalMatch() {
+        givenContext(
+                tournament(),
+                raceSurvivalStage(),
+                matchWithMap(TournamentMatchEntity.STATUS_READY, 1, null),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+
+        assertThatThrownBy(() -> service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                request(score(1, 1), score(2, 0)),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Map is required");
+    }
+
+    @Test
+    void submitScore_assignsMapFromRequestWhenMatchHasNoMap() {
+        TournamentMatchEntity match = matchWithMap(TournamentMatchEntity.STATUS_READY, 3, null);
+        givenReadyMatchContext(match, internalParticipantA(), internalParticipantB());
+        given(submissionRepository.save(any(TournamentMatchScoreSubmissionEntity.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        givenSubmitterUsers(user(PLAYER_A_USER_ID, "playerA"));
+
+        TournamentScoreSubmissionResponseDto response = service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                requestWithMap(701L, score(1, 2), score(2, 0)),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        );
+
+        assertThat(response.getMapId()).isEqualTo(701L);
+        assertThat(match.getMapId()).isNull();
+    }
+
+    @Test
+    void submitScore_rejectsMapChangeAfterActiveSubmissionExists() {
+        givenReadyMatchContext(match(TournamentMatchEntity.STATUS_READY, 3), internalParticipantA(), internalParticipantB());
+        given(submissionRepository.existsByTournamentIdAndMatchIdAndStatusNot(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                TournamentMatchScoreSubmissionEntity.STATUS_REJECTED
+        )).willReturn(true);
+
+        assertThatThrownBy(() -> service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                requestWithMap(701L, score(1, 2), score(2, 0)),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("map cannot be changed");
     }
 
     @Test
@@ -302,7 +383,7 @@ class TournamentMatchScoreSubmissionServiceTest {
     @Test
     void approveSubmission_finishesMatchPropagatesRoutesAndRejectsOtherPendingSubmissions() {
         TournamentEntity tournament = tournament();
-        TournamentMatchEntity match = match(TournamentMatchEntity.STATUS_READY, 5);
+        TournamentMatchEntity match = matchWithMap(TournamentMatchEntity.STATUS_READY, 5, null);
         TournamentMatchScoreSubmissionEntity approved = submission(900L, TournamentMatchScoreSubmissionEntity.STATUS_PENDING, 3, 1, 1);
         TournamentMatchScoreSubmissionEntity other = submission(901L, TournamentMatchScoreSubmissionEntity.STATUS_PENDING, 3, 2, 1);
         TournamentMatchSlotEntity firstSlot = actualSlot(1, PLAYER_A_PARTICIPANT_ID);
@@ -327,6 +408,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         );
 
         assertThat(response.getId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(match.getMapId()).isEqualTo(MAP_ID);
         assertThat(match.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_FINISHED);
         assertThat(match.getWinnerParticipantId()).isEqualTo(PLAYER_A_PARTICIPANT_ID);
         assertThat(firstSlot.getScore()).isEqualTo(3);
@@ -487,6 +569,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
         given(matchSlotRepository.findAllByMatchIdOrderBySlotNoAsc(MATCH_ID)).willReturn(slots);
         given(participantRepository.findAllById(any())).willReturn(participants);
+        org.mockito.Mockito.lenient().when(mapRepository.existsById(anyLong())).thenReturn(true);
     }
 
     private TournamentEntity tournament() {
@@ -518,6 +601,10 @@ class TournamentMatchScoreSubmissionServiceTest {
     }
 
     private TournamentMatchEntity match(String status, Integer bestOf) {
+        return matchWithMap(status, bestOf, MAP_ID);
+    }
+
+    private TournamentMatchEntity matchWithMap(String status, Integer bestOf, Long mapId) {
         return TournamentMatchEntity.builder()
                 .id(MATCH_ID)
                 .stageId(STAGE_ID)
@@ -527,6 +614,7 @@ class TournamentMatchScoreSubmissionServiceTest {
                 .displayName("Round 1 Match 1")
                 .bestOf(bestOf)
                 .status(status)
+                .mapId(mapId)
                 .displayOrder(1)
                 .build();
     }
@@ -619,6 +707,7 @@ class TournamentMatchScoreSubmissionServiceTest {
                 .slot1Score(slot1Score)
                 .slot2Score(slot2Score)
                 .winnerSlotNo(winnerSlotNo)
+                .mapId(MAP_ID)
                 .status(status)
                 .build();
     }
@@ -626,6 +715,12 @@ class TournamentMatchScoreSubmissionServiceTest {
     private TournamentScoreSubmissionRequestDto request(TournamentMatchScoreRequestDto... scores) {
         TournamentScoreSubmissionRequestDto request = new TournamentScoreSubmissionRequestDto();
         request.setScores(List.of(scores));
+        return request;
+    }
+
+    private TournamentScoreSubmissionRequestDto requestWithMap(Long mapId, TournamentMatchScoreRequestDto... scores) {
+        TournamentScoreSubmissionRequestDto request = request(scores);
+        request.setMapId(mapId);
         return request;
     }
 

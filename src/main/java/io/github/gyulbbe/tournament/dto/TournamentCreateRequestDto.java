@@ -10,5 +10,6 @@ public class TournamentCreateRequestDto {
     private String bracketType;
     private Integer bestOf;
     private Boolean publishNow;
+    private List<TournamentCreateMapDefaultRequestDto> mapDefaults;
     private List<TournamentCreateGroupRequestDto> groups;
 }

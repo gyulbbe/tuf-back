@@ -239,6 +239,37 @@ class TournamentBracketProgressionServiceTest {
     }
 
     @Test
+    void propagateManualResult_finishesDualGroupTournamentWhenAllResultSlotsAreDecided() {
+        TournamentStageEntity stage = dualGroupStage();
+        TournamentEntity tournament = liveTournament();
+        TournamentRouteEntity winnerRoute = resultSlotRoute(100L, TournamentRouteEntity.OUTCOME_WINNER, 904L);
+        TournamentRouteEntity loserRoute = eliminatedRoute(100L);
+        TournamentResultSlotEntity finalResultSlot = qualifiedResultSlot(904L);
+        List<TournamentResultSlotEntity> resultSlots = List.of(
+                decidedQualifiedResultSlot(901L, 101L),
+                decidedQualifiedResultSlot(902L, 102L),
+                decidedQualifiedResultSlot(903L, 103L),
+                finalResultSlot
+        );
+
+        given(routeRepository.findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_WINNER))
+                .willReturn(Optional.of(winnerRoute));
+        given(routeRepository.findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_LOSER))
+                .willReturn(Optional.of(loserRoute));
+        given(resultSlotRepository.findById(904L)).willReturn(Optional.of(finalResultSlot));
+        given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
+        given(resultSlotRepository.findAllByStageIdOrderByRankNoAscIdAsc(STAGE_ID)).willReturn(resultSlots);
+        given(tournamentRepository.findById(1L)).willReturn(Optional.of(tournament));
+        given(matchRepository.findAllByStageIdOrderByDisplayOrderAsc(STAGE_ID)).willReturn(List.of());
+
+        service.propagateManualResult(100L, STAGE_ID, 201L, 202L);
+
+        assertThat(finalResultSlot.getParticipantId()).isEqualTo(201L);
+        assertThat(finalResultSlot.getDecidedAt()).isNotNull();
+        assertThat(tournament.getStatus()).isEqualTo(TournamentEntity.STATUS_FINISHED);
+    }
+
+    @Test
     void applyByeWinsForStage_cascadesByeWinnersAfterRoutePropagation() {
         TournamentStageEntity stage = singleEliminationStage();
         TournamentMatchEntity r1Match = match(100L, TournamentMatchEntity.STATUS_READY, 1);
@@ -447,5 +478,11 @@ class TournamentBracketProgressionServiceTest {
                 .rankNo(1)
                 .label("A 1st")
                 .build();
+    }
+
+    private TournamentResultSlotEntity decidedQualifiedResultSlot(Long id, Long participantId) {
+        TournamentResultSlotEntity resultSlot = qualifiedResultSlot(id);
+        resultSlot.decide(participantId, java.time.LocalDateTime.now());
+        return resultSlot;
     }
 }

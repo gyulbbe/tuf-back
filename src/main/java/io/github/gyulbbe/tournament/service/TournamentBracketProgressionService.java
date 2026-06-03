@@ -152,6 +152,8 @@ public class TournamentBracketProgressionService {
                     resultSlot.decide(participantId, LocalDateTime.now());
                     if (isChampionResultSlot(resultSlot)) {
                         finishTournamentByStageId(resultSlot.getStageId());
+                    } else {
+                        finishDualGroupTournamentIfComplete(resultSlot.getStageId());
                     }
                 });
     }
@@ -167,6 +169,25 @@ public class TournamentBracketProgressionService {
         }
 
         stageRepository.findById(stageId)
+                .flatMap(stage -> tournamentRepository.findById(stage.getTournamentId()))
+                .filter(tournament -> !TournamentEntity.STATUS_FINISHED.equals(tournament.getStatus()))
+                .ifPresent(TournamentEntity::finish);
+    }
+
+    private void finishDualGroupTournamentIfComplete(Long stageId) {
+        if (stageId == null) {
+            return;
+        }
+
+        stageRepository.findById(stageId)
+                .filter(stage -> TournamentStageEntity.TYPE_DUAL_GROUP.equals(stage.getStageType()))
+                .filter(stage -> {
+                    List<TournamentResultSlotEntity> resultSlots =
+                            resultSlotRepository.findAllByStageIdOrderByRankNoAscIdAsc(stage.getId());
+
+                    return !resultSlots.isEmpty() &&
+                            resultSlots.stream().allMatch(resultSlot -> resultSlot.getParticipantId() != null);
+                })
                 .flatMap(stage -> tournamentRepository.findById(stage.getTournamentId()))
                 .filter(tournament -> !TournamentEntity.STATUS_FINISHED.equals(tournament.getStatus()))
                 .ifPresent(TournamentEntity::finish);

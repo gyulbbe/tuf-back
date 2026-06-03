@@ -10,6 +10,7 @@ public class EntrySubmissionSessionInfoResponseDto {
     private String title;
     private Long ownerUserId;
     private String ownerUserLoginId;
+    private Long sourceRpsDraftSessionId;
     private String status;
     private Integer setCount;
     private LocalDateTime completedAt;

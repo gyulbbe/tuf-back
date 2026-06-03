@@ -102,6 +102,7 @@ public class EntrySubmissionSnapshotService {
         dto.setTitle(session.getTitle());
         dto.setOwnerUserId(session.getOwnerUserId());
         dto.setOwnerUserLoginId(ownerUserLoginId);
+        dto.setSourceRpsDraftSessionId(session.getSourceRpsDraftSessionId());
         dto.setStatus(session.getStatus());
         dto.setSetCount(session.getSetCount());
         dto.setCompletedAt(session.getCompletedAt());

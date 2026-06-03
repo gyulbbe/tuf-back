@@ -32,7 +32,8 @@ import java.time.LocalDateTime;
         name = "ENTRY_SUBMISSION_SESSIONS",
         indexes = {
                 @Index(name = "idx_entry_submission_sessions_status", columnList = "STATUS"),
-                @Index(name = "idx_entry_submission_sessions_owner", columnList = "OWNER_USER_ID")
+                @Index(name = "idx_entry_submission_sessions_owner", columnList = "OWNER_USER_ID"),
+                @Index(name = "idx_entry_submission_sessions_source_rps", columnList = "SOURCE_RPS_DRAFT_SESSION_ID")
         }
 )
 public class EntrySubmissionSessionEntity {
@@ -49,6 +50,9 @@ public class EntrySubmissionSessionEntity {
 
     @Column(name = "OWNER_USER_ID", nullable = false)
     private Long ownerUserId;
+
+    @Column(name = "SOURCE_RPS_DRAFT_SESSION_ID")
+    private Long sourceRpsDraftSessionId;
 
     @Builder.Default
     @Column(name = "STATUS", nullable = false)

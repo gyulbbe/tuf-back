@@ -4,6 +4,7 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.entrysubmission.auth.EntrySubmissionActor;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSessionCreateRequestDto;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSessionSummaryResponseDto;
+import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSourceStatusResponseDto;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSnapshotResponseDto;
 import io.github.gyulbbe.entrysubmission.entity.EntrySubmissionPlayerEntity;
 import io.github.gyulbbe.entrysubmission.entity.EntrySubmissionSessionEntity;
@@ -12,6 +13,10 @@ import io.github.gyulbbe.entrysubmission.repository.EntrySubmissionEntryReposito
 import io.github.gyulbbe.entrysubmission.repository.EntrySubmissionPlayerRepository;
 import io.github.gyulbbe.entrysubmission.repository.EntrySubmissionSessionRepository;
 import io.github.gyulbbe.entrysubmission.repository.EntrySubmissionTeamRepository;
+import io.github.gyulbbe.rpsdraft.entity.RpsDraftSessionEntity;
+import io.github.gyulbbe.rpsdraft.entity.RpsDraftTeamEntity;
+import io.github.gyulbbe.rpsdraft.repository.RpsDraftSessionRepository;
+import io.github.gyulbbe.rpsdraft.repository.RpsDraftTeamRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletResponse;
@@ -43,6 +48,8 @@ public class EntrySubmissionService {
     private final EntrySubmissionPermissionService entrySubmissionPermissionService;
     private final EntrySubmissionSnapshotService entrySubmissionSnapshotService;
     private final UserRepository userRepository;
+    private final RpsDraftSessionRepository rpsDraftSessionRepository;
+    private final RpsDraftTeamRepository rpsDraftTeamRepository;
 
     public ResponseDto<EntrySubmissionSnapshotResponseDto> createSession(
             EntrySubmissionSessionCreateRequestDto requestDto,
@@ -50,12 +57,13 @@ public class EntrySubmissionService {
     ) {
         try {
             entrySubmissionPermissionService.assertAuthenticated(actor);
-            CreateInputs inputs = prepareCreateInputs(requestDto);
+            CreateInputs inputs = prepareCreateInputs(requestDto, actor);
 
             EntrySubmissionSessionEntity session = entrySubmissionSessionRepository.save(
                     EntrySubmissionSessionEntity.builder()
                             .title(requestDto.getTitle().trim())
                             .ownerUserId(actor.userPk())
+                            .sourceRpsDraftSessionId(inputs.sourceRpsDraftSessionId())
                             .status(EntrySubmissionSessionEntity.STATUS_SUBMITTING)
                             .setCount(inputs.setCount())
                             .build()
@@ -84,6 +92,25 @@ public class EntrySubmissionService {
             return ResponseDto.success(entrySubmissionSnapshotService.getSnapshot(session.getId(), actor));
         } catch (Exception e) {
             log.error("Failed to create entry submission session.", e);
+            return ResponseDto.fail(e.getMessage());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseDto<EntrySubmissionSourceStatusResponseDto> getSourceRpsStatus(Long sourceRpsDraftSessionId) {
+        try {
+            if (sourceRpsDraftSessionId == null) {
+                return ResponseDto.fail("Source RPS draft session id is required.");
+            }
+
+            long count = entrySubmissionSessionRepository.countBySourceRpsDraftSessionId(sourceRpsDraftSessionId);
+            EntrySubmissionSourceStatusResponseDto dto = new EntrySubmissionSourceStatusResponseDto();
+            dto.setSourceRpsDraftSessionId(sourceRpsDraftSessionId);
+            dto.setCount(count);
+            dto.setExists(count > 0);
+            return ResponseDto.success(dto);
+        } catch (Exception e) {
+            log.error("Failed to get entry submission source status. sourceRpsDraftSessionId={}", sourceRpsDraftSessionId, e);
             return ResponseDto.fail(e.getMessage());
         }
     }
@@ -166,6 +193,7 @@ public class EntrySubmissionService {
         dto.setTitle(session.getTitle());
         dto.setOwnerUserId(session.getOwnerUserId());
         dto.setOwnerUserLoginId(owner != null ? owner.getUserId() : null);
+        dto.setSourceRpsDraftSessionId(session.getSourceRpsDraftSessionId());
         dto.setStatus(session.getStatus());
         dto.setSetCount(session.getSetCount());
         dto.setCompletedAt(session.getCompletedAt());
@@ -174,7 +202,7 @@ public class EntrySubmissionService {
         return dto;
     }
 
-    private CreateInputs prepareCreateInputs(EntrySubmissionSessionCreateRequestDto requestDto) {
+    private CreateInputs prepareCreateInputs(EntrySubmissionSessionCreateRequestDto requestDto, EntrySubmissionActor actor) {
         validateCreateRequest(requestDto);
 
         UserEntity team1Captain = requireActiveUser(requestDto.getTeam1CaptainUserId(), "Team 1 captain user could not be found.");
@@ -185,11 +213,57 @@ public class EntrySubmissionService {
 
         List<String> team1Players = buildPlayerNames(team1Captain, requestDto.getTeam1PlayerNames());
         List<String> team2Players = buildPlayerNames(team2Captain, requestDto.getTeam2PlayerNames());
+        Long sourceRpsDraftSessionId = validateSourceRpsDraftSession(requestDto, actor);
         int setCount = requestDto.getSetCount() != null
                 ? validateSetCount(requestDto.getSetCount())
                 : Math.max(team1Players.size(), team2Players.size());
 
-        return new CreateInputs(team1Captain, team2Captain, team1Players, team2Players, setCount);
+        return new CreateInputs(team1Captain, team2Captain, team1Players, team2Players, setCount, sourceRpsDraftSessionId);
+    }
+
+    private Long validateSourceRpsDraftSession(
+            EntrySubmissionSessionCreateRequestDto requestDto,
+            EntrySubmissionActor actor
+    ) {
+        Long sourceRpsDraftSessionId = requestDto.getSourceRpsDraftSessionId();
+        if (sourceRpsDraftSessionId == null) {
+            return null;
+        }
+
+        RpsDraftSessionEntity rpsSession = rpsDraftSessionRepository.findById(sourceRpsDraftSessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Source RPS draft session could not be found."));
+        if (!RpsDraftSessionEntity.STATUS_FINISHED.equals(rpsSession.getStatus())) {
+            throw new IllegalArgumentException("Source RPS draft session must be finished.");
+        }
+
+        List<RpsDraftTeamEntity> rpsTeams = rpsDraftTeamRepository
+                .findAllByRpsDraftSessionIdOrderByDisplayOrderAscIdAsc(sourceRpsDraftSessionId);
+        RpsDraftTeamEntity team1 = rpsTeams.stream()
+                .filter(team -> Objects.equals(team.getDisplayOrder(), 1))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Source RPS draft team 1 could not be found."));
+        RpsDraftTeamEntity team2 = rpsTeams.stream()
+                .filter(team -> Objects.equals(team.getDisplayOrder(), 2))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Source RPS draft team 2 could not be found."));
+
+        boolean actorCanCreate = Objects.equals(rpsSession.getOwnerUserId(), actor.userPk())
+                || rpsTeams.stream().anyMatch(team -> Objects.equals(team.getPickerUserId(), actor.userPk()));
+        if (!actorCanCreate) {
+            throw new SecurityException("Only the RPS draft owner or captains can create linked entry submissions.");
+        }
+
+        if (!Objects.equals(team1.getPickerUserId(), requestDto.getTeam1CaptainUserId())
+                || !Objects.equals(team2.getPickerUserId(), requestDto.getTeam2CaptainUserId())) {
+            throw new IllegalArgumentException("Entry submission captains must match the source RPS draft captains.");
+        }
+
+        long existingCount = entrySubmissionSessionRepository.countBySourceRpsDraftSessionId(sourceRpsDraftSessionId);
+        if (existingCount > 0 && !Boolean.TRUE.equals(requestDto.getAllowDuplicateSource())) {
+            throw new IllegalArgumentException("이미 엔트리가 등록되어있습니다.");
+        }
+
+        return sourceRpsDraftSessionId;
     }
 
     private void validateCreateRequest(EntrySubmissionSessionCreateRequestDto requestDto) {
@@ -280,7 +354,8 @@ public class EntrySubmissionService {
             UserEntity team2Captain,
             List<String> team1Players,
             List<String> team2Players,
-            int setCount
+            int setCount,
+            Long sourceRpsDraftSessionId
     ) {
     }
 }

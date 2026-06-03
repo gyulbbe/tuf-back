@@ -19,6 +19,7 @@ public class TournamentScoreSubmissionResponseDto {
     private Integer slot1Score;
     private Integer slot2Score;
     private Integer winnerSlotNo;
+    private Long mapId;
     private String status;
     private Long adminReviewerUserId;
     private LocalDateTime adminReviewedAt;

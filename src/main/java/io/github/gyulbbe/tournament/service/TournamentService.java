@@ -170,6 +170,18 @@ public class TournamentService {
             throw new IllegalArgumentException("해당 토너먼트의 경기가 아닙니다.");
         }
 
+        if (TournamentMatchEntity.STATUS_FINISHED.equals(match.getStatus())
+                || TournamentMatchEntity.STATUS_CANCELLED.equals(match.getStatus())) {
+            throw new IllegalArgumentException("Finished or cancelled match map cannot be changed.");
+        }
+        if (scoreSubmissionRepository.existsByTournamentIdAndMatchIdAndStatusNot(
+                tournamentId,
+                matchId,
+                TournamentMatchScoreSubmissionEntity.STATUS_REJECTED
+        )) {
+            throw new IllegalArgumentException("Match map cannot be changed after score submission.");
+        }
+
         if (mapId != null && !mapRepository.existsById(mapId)) {
             throw new IllegalArgumentException("존재하지 않는 맵입니다.");
         }

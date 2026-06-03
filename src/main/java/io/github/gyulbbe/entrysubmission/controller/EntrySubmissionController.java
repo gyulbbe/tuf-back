@@ -4,6 +4,7 @@ import io.github.gyulbbe.common.dto.ResponseDto;
 import io.github.gyulbbe.entrysubmission.auth.EntrySubmissionActorResolver;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSessionCreateRequestDto;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSessionSummaryResponseDto;
+import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSourceStatusResponseDto;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSnapshotResponseDto;
 import io.github.gyulbbe.entrysubmission.dto.EntrySubmissionSubmitRequestDto;
 import io.github.gyulbbe.entrysubmission.service.EntrySubmissionCommandService;
@@ -47,6 +48,13 @@ public class EntrySubmissionController {
     @GetMapping("/sessions")
     public ResponseEntity<ResponseDto<List<EntrySubmissionSessionSummaryResponseDto>>> listSessions() {
         return respond(entrySubmissionService.listSessions());
+    }
+
+    @GetMapping("/sessions/source-rps/{rpsDraftSessionId}/status")
+    public ResponseEntity<ResponseDto<EntrySubmissionSourceStatusResponseDto>> getSourceRpsStatus(
+            @PathVariable Long rpsDraftSessionId
+    ) {
+        return respond(entrySubmissionService.getSourceRpsStatus(rpsDraftSessionId));
     }
 
     @GetMapping("/sessions/{sessionId}/snapshot")

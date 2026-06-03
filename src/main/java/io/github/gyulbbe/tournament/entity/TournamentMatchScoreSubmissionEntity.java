@@ -65,6 +65,9 @@ public class TournamentMatchScoreSubmissionEntity {
     @Column(name = "WINNER_SLOT_NO", nullable = false)
     private Integer winnerSlotNo;
 
+    @Column(name = "MAP_ID")
+    private Long mapId;
+
     @Builder.Default
     @Column(name = "STATUS", nullable = false)
     private String status = STATUS_PENDING;

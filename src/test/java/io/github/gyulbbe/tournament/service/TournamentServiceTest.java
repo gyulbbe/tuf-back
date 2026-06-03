@@ -7,6 +7,7 @@ import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntryEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentResultSlotEntity;
@@ -14,6 +15,7 @@ import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -32,8 +34,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -59,6 +63,9 @@ class TournamentServiceTest {
 
     @Mock
     private TournamentMatchRepository matchRepository;
+
+    @Mock
+    private TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
 
     @Mock
     private TournamentMatchSlotRepository matchSlotRepository;
@@ -304,6 +311,36 @@ class TournamentServiceTest {
         var responseMatch = response.getData().getGroups().get(0).getMatches().get(0);
         assertThat(responseMatch.getMapId()).isEqualTo(700L);
         assertThat(responseMatch.getMapName()).isEqualTo("Polypoid");
+    }
+
+    @Test
+    void assignMatchMap_rejectsAfterScoreSubmissionExists() {
+        TournamentStageEntity stage = stage(100L);
+        TournamentMatchEntity match = TournamentMatchEntity.builder()
+                .id(300L)
+                .stageId(stage.getId())
+                .groupId(200L)
+                .matchKey("M1")
+                .matchRole(TournamentMatchEntity.ROLE_ROUND)
+                .displayName("Match 1")
+                .bestOf(1)
+                .status(TournamentMatchEntity.STATUS_READY)
+                .displayOrder(1)
+                .build();
+
+        given(tournamentRepository.findById(1L)).willReturn(Optional.of(tournament(1L, TournamentEntity.STATUS_LIVE)));
+        given(matchRepository.findById(match.getId())).willReturn(Optional.of(match));
+        given(stageRepository.findById(stage.getId())).willReturn(Optional.of(stage));
+        given(scoreSubmissionRepository.existsByTournamentIdAndMatchIdAndStatusNot(
+                1L,
+                match.getId(),
+                TournamentMatchScoreSubmissionEntity.STATUS_REJECTED
+        )).willReturn(true);
+
+        assertThatThrownBy(() -> tournamentService.assignMatchMap(1L, match.getId(), 700L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("score submission");
+        verify(mapRepository, never()).existsById(anyLong());
     }
 
     private void givenPublicTournament(Long tournamentId) {

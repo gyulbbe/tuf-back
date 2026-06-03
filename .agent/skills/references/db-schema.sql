@@ -700,6 +700,7 @@ CREATE TABLE entry_submission_sessions (
     id NUMBER DEFAULT entry_submission_sessions_seq.NEXTVAL PRIMARY KEY,
     title VARCHAR2(200 CHAR) NOT NULL,
     owner_user_id NUMBER NOT NULL,
+    source_rps_draft_session_id NUMBER,
     status VARCHAR2(20 CHAR) DEFAULT 'SUBMITTING' NOT NULL,
     set_count NUMBER(6) NOT NULL,
     completed_at TIMESTAMP,
@@ -707,6 +708,8 @@ CREATE TABLE entry_submission_sessions (
     update_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT fk_entry_submission_sessions_owner
         FOREIGN KEY (owner_user_id) REFERENCES users(id),
+    CONSTRAINT fk_entry_submission_sessions_source_rps
+        FOREIGN KEY (source_rps_draft_session_id) REFERENCES rps_draft_sessions(id) ON DELETE SET NULL,
     CONSTRAINT chk_entry_submission_sessions_status
         CHECK (status IN ('SUBMITTING', 'COMPLETED')),
     CONSTRAINT chk_entry_submission_sessions_sets
@@ -971,6 +974,7 @@ CREATE TABLE tournament_match_score_submissions (
     slot1_score NUMBER(3) NOT NULL,
     slot2_score NUMBER(3) NOT NULL,
     winner_slot_no NUMBER(1) NOT NULL,
+    map_id NUMBER,
     status VARCHAR2(20 CHAR) DEFAULT 'PENDING' NOT NULL,
     admin_reviewer_user_id NUMBER,
     admin_reviewed_at TIMESTAMP,
@@ -985,6 +989,8 @@ CREATE TABLE tournament_match_score_submissions (
         FOREIGN KEY (submitted_by_user_id) REFERENCES users(id),
     CONSTRAINT fk_tournament_score_sub_participant
         FOREIGN KEY (submitted_by_participant_id) REFERENCES tournament_participants(id),
+    CONSTRAINT fk_tournament_score_sub_map
+        FOREIGN KEY (map_id) REFERENCES maps(id),
     CONSTRAINT fk_tournament_score_sub_reviewer
         FOREIGN KEY (admin_reviewer_user_id) REFERENCES users(id),
     CONSTRAINT chk_tournament_score_sub_role
@@ -1314,6 +1320,7 @@ CREATE INDEX idx_rps_draft_picks_candidate_id ON rps_draft_picks(candidate_id);
 
 CREATE INDEX idx_entry_submission_sessions_status ON entry_submission_sessions(status);
 CREATE INDEX idx_entry_submission_sessions_owner ON entry_submission_sessions(owner_user_id);
+CREATE INDEX idx_entry_submission_sessions_source_rps ON entry_submission_sessions(source_rps_draft_session_id);
 
 CREATE INDEX idx_entry_submission_teams_session ON entry_submission_teams(entry_submission_session_id);
 CREATE INDEX idx_entry_submission_teams_captain ON entry_submission_teams(captain_user_id);
@@ -1354,6 +1361,7 @@ CREATE INDEX idx_tournament_score_sub_match ON tournament_match_score_submission
 CREATE INDEX idx_tournament_score_sub_tournament ON tournament_match_score_submissions(tournament_id);
 CREATE INDEX idx_tournament_score_sub_status ON tournament_match_score_submissions(status);
 CREATE INDEX idx_tournament_score_sub_user ON tournament_match_score_submissions(submitted_by_user_id);
+CREATE INDEX idx_tournament_score_sub_map ON tournament_match_score_submissions(map_id);
 
 CREATE INDEX idx_race_survival_progress_tournament ON race_survival_progress_submissions(tournament_id, status);
 CREATE INDEX idx_race_survival_progress_submitter ON race_survival_progress_submissions(submitted_by_user_id);
