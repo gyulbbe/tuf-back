@@ -3,11 +3,14 @@ package io.github.gyulbbe.tournament.controller;
 import io.github.gyulbbe.config.SecurityConfig;
 import io.github.gyulbbe.jwt.JWTUtil;
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
 import io.github.gyulbbe.tournament.entity.RaceSurvivalProgressSubmissionEntity;
 import io.github.gyulbbe.tournament.service.RaceSurvivalProgressSubmissionService;
+import io.github.gyulbbe.tournament.service.TournamentClanShareSendLogService;
 import io.github.gyulbbe.tournament.service.TournamentCreationService;
 import io.github.gyulbbe.tournament.service.TournamentMatchScoreSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentService;
@@ -60,6 +63,9 @@ class TournamentControllerSecurityTest {
 
     @MockBean
     private RaceSurvivalProgressSubmissionService raceSurvivalProgressSubmissionService;
+
+    @MockBean
+    private TournamentClanShareSendLogService clanShareSendLogService;
 
     @MockBean
     private AuthenticationConfiguration authenticationConfiguration;
@@ -251,6 +257,59 @@ class TournamentControllerSecurityTest {
     }
 
     @Test
+    void clanShareSendLogSummaryAndCreate_areAdminOnly() throws Exception {
+        mockMvc.perform(get("/tournaments/1/clan-share-send-logs/summary")
+                        .with(auth(101L, "ROLE_USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+
+        mockMvc.perform(post("/tournaments/clan-share-send-logs")
+                        .with(auth(101L, "ROLE_USER"))
+                        .contentType("application/json")
+                        .content(clanShareLogBody()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+    }
+
+    @Test
+    void clanShareSendLogSummaryAndCreate_returnOk_forManagerMasterAndAdminRoles() throws Exception {
+        given(clanShareSendLogService.getSummary(eq(1L)))
+                .willReturn(TournamentClanShareSendLogSummaryResponseDto.builder()
+                        .hasHistory(true)
+                        .totalCount(1)
+                        .build());
+        given(clanShareSendLogService.createLog(any(), anyLong()))
+                .willReturn(TournamentClanShareSendLogResponseDto.builder()
+                        .id(700L)
+                        .tournamentId(1L)
+                        .matchId(100L)
+                        .eloStatus("SUCCESS")
+                        .sheetStatus("SUCCESS")
+                        .build());
+
+        for (String role : List.of("ROLE_MANAGER", "ROLE_MASTER", "ROLE_ADMIN")) {
+            mockMvc.perform(get("/tournaments/1/clan-share-send-logs/summary")
+                            .with(auth(999L, role)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.hasHistory").value(true))
+                    .andExpect(jsonPath("$.data.totalCount").value(1));
+
+            mockMvc.perform(post("/tournaments/clan-share-send-logs")
+                            .with(auth(999L, role))
+                            .contentType("application/json")
+                            .content(clanShareLogBody()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.id").value(700))
+                    .andExpect(jsonPath("$.data.eloStatus").value("SUCCESS"))
+                    .andExpect(jsonPath("$.data.sheetStatus").value("SUCCESS"));
+        }
+    }
+
+    @Test
     void approveScoreSubmission_returnsOk_forManagerMasterAndAdminRoles() throws Exception {
         given(scoreSubmissionService.approveSubmission(eq(1L), eq(100L), eq(900L), anyLong(), anyString()))
                 .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
@@ -339,6 +398,28 @@ class TournamentControllerSecurityTest {
                       "slot2Score": 0
                     }
                   ]
+                }
+                """;
+    }
+
+    private String clanShareLogBody() {
+        return """
+                {
+                  "tournamentId": 1,
+                  "matchId": 100,
+                  "sendGroupId": "00000000-0000-0000-0000-000000000000",
+                  "player1": "A",
+                  "player2": "B",
+                  "winner": "A",
+                  "loser": "B",
+                  "mapName": "투혼",
+                  "matchType": "개인리그",
+                  "matchName": "테스트 대회",
+                  "playedDate": "2026-05-31",
+                  "eloStatus": "SUCCESS",
+                  "eloMessage": "SUCCESS",
+                  "sheetStatus": "SUCCESS",
+                  "sheetMessage": "SUCCESS"
                 }
                 """;
     }

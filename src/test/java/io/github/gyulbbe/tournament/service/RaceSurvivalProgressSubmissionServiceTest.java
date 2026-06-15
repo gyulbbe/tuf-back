@@ -21,8 +21,10 @@ import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionMat
 import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
+import io.github.gyulbbe.tournament.repository.TournamentClanShareSendLogRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -86,6 +88,12 @@ class RaceSurvivalProgressSubmissionServiceTest {
 
     @Mock
     private TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
+
+    @Mock
+    private TournamentMatchScoreSubmissionSetRepository scoreSubmissionSetRepository;
+
+    @Mock
+    private TournamentClanShareSendLogRepository clanShareSendLogRepository;
 
     @Mock
     private RaceSurvivalProgressSubmissionRepository submissionRepository;

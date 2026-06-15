@@ -14,6 +14,8 @@ public interface TournamentMatchScoreSubmissionRepository extends JpaRepository<
 
     List<TournamentMatchScoreSubmissionEntity> findAllByTournamentIdAndMatchIdAndStatus(Long tournamentId, Long matchId, String status);
 
+    boolean existsByTournamentIdAndMatchIdAndStatus(Long tournamentId, Long matchId, String status);
+
     @Query("""
             select case when count(s) > 0 then true else false end
             from TournamentMatchScoreSubmissionEntity s

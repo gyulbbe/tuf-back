@@ -971,6 +971,7 @@ CREATE TABLE tournament_match_score_submissions (
     submitted_by_user_id NUMBER NOT NULL,
     submitted_by_participant_id NUMBER,
     submitter_role VARCHAR2(20 CHAR) NOT NULL,
+    best_of NUMBER(3),
     slot1_score NUMBER(3) NOT NULL,
     slot2_score NUMBER(3) NOT NULL,
     winner_slot_no NUMBER(1) NOT NULL,
@@ -995,6 +996,8 @@ CREATE TABLE tournament_match_score_submissions (
         FOREIGN KEY (admin_reviewer_user_id) REFERENCES users(id),
     CONSTRAINT chk_tournament_score_sub_role
         CHECK (submitter_role IN ('PLAYER', 'ADMIN')),
+    CONSTRAINT chk_tournament_score_sub_best_of
+        CHECK (best_of IS NULL OR (best_of > 0 AND MOD(best_of, 2) = 1)),
     CONSTRAINT chk_tournament_score_sub_status
         CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
     CONSTRAINT chk_tournament_score_sub_slot1
@@ -1003,6 +1006,83 @@ CREATE TABLE tournament_match_score_submissions (
         CHECK (slot2_score >= 0),
     CONSTRAINT chk_tournament_score_sub_winner
         CHECK (winner_slot_no IN (1, 2))
+);
+
+CREATE SEQUENCE tournament_match_sets_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE TABLE tournament_match_sets (
+    id NUMBER DEFAULT tournament_match_sets_seq.NEXTVAL PRIMARY KEY,
+    match_id NUMBER NOT NULL,
+    set_no NUMBER(3) NOT NULL,
+    map_id NUMBER,
+    winner_slot_no NUMBER(1),
+    reg_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    update_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT fk_tournament_match_set_match
+        FOREIGN KEY (match_id) REFERENCES tournament_matches(id),
+    CONSTRAINT fk_tournament_match_set_map
+        FOREIGN KEY (map_id) REFERENCES maps(id),
+    CONSTRAINT uq_tournament_match_sets_no
+        UNIQUE (match_id, set_no),
+    CONSTRAINT chk_tournament_match_sets_no
+        CHECK (set_no > 0),
+    CONSTRAINT chk_tournament_match_sets_winner
+        CHECK (winner_slot_no IS NULL OR winner_slot_no IN (1, 2))
+);
+
+CREATE SEQUENCE tournament_match_score_sub_sets_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE TABLE tournament_match_score_submission_sets (
+    id NUMBER DEFAULT tournament_match_score_sub_sets_seq.NEXTVAL PRIMARY KEY,
+    score_submission_id NUMBER NOT NULL,
+    set_no NUMBER(3) NOT NULL,
+    winner_slot_no NUMBER(1) NOT NULL,
+    map_id NUMBER NOT NULL,
+    reg_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    update_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT fk_tournament_score_sub_set_sub
+        FOREIGN KEY (score_submission_id) REFERENCES tournament_match_score_submissions(id),
+    CONSTRAINT fk_tournament_score_sub_set_map
+        FOREIGN KEY (map_id) REFERENCES maps(id),
+    CONSTRAINT uq_tournament_score_sub_sets_no
+        UNIQUE (score_submission_id, set_no),
+    CONSTRAINT chk_tournament_score_sub_sets_no
+        CHECK (set_no > 0),
+    CONSTRAINT chk_tournament_score_sub_sets_winner
+        CHECK (winner_slot_no IN (1, 2))
+);
+
+CREATE SEQUENCE tournament_clan_share_send_logs_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
+
+CREATE TABLE tournament_clan_share_send_logs (
+    id NUMBER DEFAULT tournament_clan_share_send_logs_seq.NEXTVAL PRIMARY KEY,
+    tournament_id NUMBER NOT NULL,
+    match_id NUMBER NOT NULL,
+    send_group_id VARCHAR2(36 CHAR) NOT NULL,
+    player1 VARCHAR2(255 CHAR) NOT NULL,
+    player2 VARCHAR2(255 CHAR) NOT NULL,
+    winner VARCHAR2(255 CHAR) NOT NULL,
+    loser VARCHAR2(255 CHAR) NOT NULL,
+    map_name VARCHAR2(255 CHAR) NOT NULL,
+    match_type VARCHAR2(50 CHAR) NOT NULL,
+    match_name VARCHAR2(255 CHAR) NOT NULL,
+    played_date VARCHAR2(20 CHAR) NOT NULL,
+    elo_status VARCHAR2(20 CHAR) NOT NULL,
+    elo_message VARCHAR2(500 CHAR),
+    sheet_status VARCHAR2(20 CHAR) NOT NULL,
+    sheet_message VARCHAR2(500 CHAR),
+    requested_by_user_id NUMBER NOT NULL,
+    reg_date TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT fk_tournament_clan_share_log_tournament
+        FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+    CONSTRAINT fk_tournament_clan_share_log_match
+        FOREIGN KEY (match_id) REFERENCES tournament_matches(id),
+    CONSTRAINT fk_tournament_clan_share_log_user
+        FOREIGN KEY (requested_by_user_id) REFERENCES users(id),
+    CONSTRAINT chk_tournament_clan_share_log_elo
+        CHECK (elo_status IN ('SUCCESS', 'FAILED')),
+    CONSTRAINT chk_tournament_clan_share_log_sheet
+        CHECK (sheet_status IN ('SUCCESS', 'FAILED'))
 );
 
 CREATE SEQUENCE race_survival_progress_submissions_seq START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
@@ -1362,6 +1442,14 @@ CREATE INDEX idx_tournament_score_sub_tournament ON tournament_match_score_submi
 CREATE INDEX idx_tournament_score_sub_status ON tournament_match_score_submissions(status);
 CREATE INDEX idx_tournament_score_sub_user ON tournament_match_score_submissions(submitted_by_user_id);
 CREATE INDEX idx_tournament_score_sub_map ON tournament_match_score_submissions(map_id);
+CREATE INDEX idx_tournament_match_sets_match ON tournament_match_sets(match_id);
+CREATE INDEX idx_tournament_match_sets_map ON tournament_match_sets(map_id);
+CREATE INDEX idx_tournament_score_sub_sets_sub ON tournament_match_score_submission_sets(score_submission_id);
+CREATE INDEX idx_tournament_score_sub_sets_map ON tournament_match_score_submission_sets(map_id);
+CREATE INDEX idx_tournament_clan_share_logs_tournament ON tournament_clan_share_send_logs(tournament_id);
+CREATE INDEX idx_tournament_clan_share_logs_match ON tournament_clan_share_send_logs(match_id);
+CREATE INDEX idx_tournament_clan_share_logs_group ON tournament_clan_share_send_logs(send_group_id);
+CREATE INDEX idx_tournament_clan_share_logs_user ON tournament_clan_share_send_logs(requested_by_user_id);
 
 CREATE INDEX idx_race_survival_progress_tournament ON race_survival_progress_submissions(tournament_id, status);
 CREATE INDEX idx_race_survival_progress_submitter ON race_survival_progress_submissions(submitted_by_user_id);

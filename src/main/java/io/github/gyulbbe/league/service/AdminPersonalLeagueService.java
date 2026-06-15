@@ -212,16 +212,49 @@ public class AdminPersonalLeagueService {
 
     private List<TournamentCreateGroupRequestDto> toDualGroups(List<ResolvedPlayer> players) {
         List<TournamentCreateGroupRequestDto> groups = new ArrayList<>();
-        for (int start = 0; start < players.size(); start += DUAL_GROUP_SIZE) {
-            int groupIndex = start / DUAL_GROUP_SIZE;
+        int start = 0;
+        List<Integer> groupSizes = dualGroupSizes(players.size());
+        for (int groupIndex = 0; groupIndex < groupSizes.size(); groupIndex++) {
+            int groupSize = groupSizes.get(groupIndex);
             String groupCode = defaultDualGroupCode(groupIndex);
             TournamentCreateGroupRequestDto group = new TournamentCreateGroupRequestDto();
             group.setGroupCode(groupCode);
             group.setGroupName(groupCode + " Group");
-            group.setSlots(toSlots(players, start, Math.min(start + DUAL_GROUP_SIZE, players.size())));
+            group.setSlots(toDualSlots(players, start, groupSize));
             groups.add(group);
+            start += groupSize;
         }
         return groups;
+    }
+
+    private List<Integer> dualGroupSizes(int playerCount) {
+        List<Integer> groupSizes = new ArrayList<>();
+        int remaining = playerCount;
+        while (remaining > 0) {
+            if (remaining <= DUAL_GROUP_SIZE) {
+                groupSizes.add(remaining);
+                break;
+            }
+            if (remaining == DUAL_GROUP_SIZE + 1) {
+                groupSizes.add(3);
+                groupSizes.add(2);
+                break;
+            }
+            groupSizes.add(DUAL_GROUP_SIZE);
+            remaining -= DUAL_GROUP_SIZE;
+        }
+        return groupSizes;
+    }
+
+    private List<TournamentCreateSlotRequestDto> toDualSlots(List<ResolvedPlayer> players, int start, int groupSize) {
+        List<TournamentCreateSlotRequestDto> slots = new ArrayList<>();
+        for (int offset = 0; offset < groupSize; offset++) {
+            TournamentCreateSlotRequestDto slot = new TournamentCreateSlotRequestDto();
+            slot.setSlotNo(groupSize == 2 && offset == 1 ? 3 : offset + 1);
+            slot.setUserId(players.get(start + offset).user().getId());
+            slots.add(slot);
+        }
+        return slots;
     }
 
     private List<TournamentCreateSlotRequestDto> toSlots(List<ResolvedPlayer> players, int start, int end) {

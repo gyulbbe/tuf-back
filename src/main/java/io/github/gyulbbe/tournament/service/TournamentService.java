@@ -6,6 +6,7 @@ import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentGroupResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentMatchResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentMatchSetResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentMatchSlotResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentParticipantResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentPageResponseDto;
@@ -16,6 +17,7 @@ import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntryEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSetEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
@@ -23,8 +25,11 @@ import io.github.gyulbbe.tournament.entity.TournamentResultSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
+import io.github.gyulbbe.tournament.repository.TournamentClanShareSendLogRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -78,6 +83,9 @@ public class TournamentService {
     private final TournamentGroupEntryRepository groupEntryRepository;
     private final TournamentMatchRepository matchRepository;
     private final TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
+    private final TournamentMatchScoreSubmissionSetRepository scoreSubmissionSetRepository;
+    private final TournamentClanShareSendLogRepository clanShareSendLogRepository;
+    private final TournamentMatchSetRepository matchSetRepository;
     private final TournamentMatchSlotRepository matchSlotRepository;
     private final TournamentResultSlotRepository resultSlotRepository;
     private final TournamentRouteRepository routeRepository;
@@ -437,10 +445,13 @@ public class TournamentService {
             raceSurvivalProgressSubmissionMatchRepository.deleteBySubmissionIdIn(raceProgressSubmissionIds);
         }
         raceSurvivalProgressSubmissionRepository.deleteByTournamentId(tournamentId);
+        clanShareSendLogRepository.deleteByTournamentId(tournamentId);
+        scoreSubmissionSetRepository.deleteByTournamentId(tournamentId);
         scoreSubmissionRepository.deleteByTournamentId(tournamentId);
         if (!matchIds.isEmpty()) {
             routeRepository.deleteByFromMatchIdIn(matchIds);
             routeRepository.deleteByToMatchIdIn(matchIds);
+            matchSetRepository.deleteByMatchIdIn(matchIds);
             matchSlotRepository.deleteByMatchIdIn(matchIds);
         }
         if (!groupIds.isEmpty()) {
@@ -521,8 +532,9 @@ public class TournamentService {
         Map<Long, List<TournamentGroupEntryEntity>> entriesByGroupId = loadEntriesByGroupId(groupIds);
         Map<Long, List<TournamentMatchEntity>> matchesByGroupId = loadMatchesByGroupId(groupIds);
         Map<Long, List<TournamentMatchSlotEntity>> slotsByMatchId = loadSlotsByMatchId(matchesByGroupId);
+        Map<Long, List<TournamentMatchSetEntity>> setsByMatchId = loadSetsByMatchId(matchesByGroupId);
         Map<Long, List<TournamentResultSlotEntity>> resultSlotsByGroupId = loadResultSlotsByGroupId(groupIds);
-        Map<Long, String> mapNamesById = loadMapNames(matchesByGroupId);
+        Map<Long, String> mapNamesById = loadMapNames(matchesByGroupId, setsByMatchId);
 
         Map<Long, List<TournamentGroupResponseDto>> groupDtosByStageId = new HashMap<>();
         for (TournamentGroupEntity group : groups) {
@@ -531,6 +543,7 @@ public class TournamentService {
                     entriesByGroupId.getOrDefault(group.getId(), List.of()),
                     matchesByGroupId.getOrDefault(group.getId(), List.of()),
                     slotsByMatchId,
+                    setsByMatchId,
                     resultSlotsByGroupId.getOrDefault(group.getId(), List.of()),
                     participantsById,
                     mapNamesById
@@ -647,13 +660,36 @@ public class TournamentService {
                 .collect(Collectors.groupingBy(TournamentMatchSlotEntity::getMatchId));
     }
 
-    private Map<Long, String> loadMapNames(Map<Long, List<TournamentMatchEntity>> matchesByGroupId) {
-        List<Long> mapIds = matchesByGroupId.values().stream()
+    private Map<Long, List<TournamentMatchSetEntity>> loadSetsByMatchId(Map<Long, List<TournamentMatchEntity>> matchesByGroupId) {
+        List<Long> matchIds = matchesByGroupId.values().stream()
+                .flatMap(List::stream)
+                .map(TournamentMatchEntity::getId)
+                .toList();
+        if (matchIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return matchSetRepository.findAllByMatchIdInOrderByMatchIdAscSetNoAsc(matchIds).stream()
+                .sorted(Comparator
+                        .comparing((TournamentMatchSetEntity set) -> nullsLast(set.getSetNo()))
+                        .thenComparing(TournamentMatchSetEntity::getId))
+                .collect(Collectors.groupingBy(TournamentMatchSetEntity::getMatchId));
+    }
+
+    private Map<Long, String> loadMapNames(
+            Map<Long, List<TournamentMatchEntity>> matchesByGroupId,
+            Map<Long, List<TournamentMatchSetEntity>> setsByMatchId
+    ) {
+        Set<Long> mapIds = matchesByGroupId.values().stream()
                 .flatMap(List::stream)
                 .map(TournamentMatchEntity::getMapId)
                 .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+                .collect(Collectors.toCollection(HashSet::new));
+        setsByMatchId.values().stream()
+                .flatMap(List::stream)
+                .map(TournamentMatchSetEntity::getMapId)
+                .filter(Objects::nonNull)
+                .forEach(mapIds::add);
         if (mapIds.isEmpty()) {
             return Map.of();
         }
@@ -702,6 +738,7 @@ public class TournamentService {
             List<TournamentGroupEntryEntity> entries,
             List<TournamentMatchEntity> matches,
             Map<Long, List<TournamentMatchSlotEntity>> slotsByMatchId,
+            Map<Long, List<TournamentMatchSetEntity>> setsByMatchId,
             List<TournamentResultSlotEntity> resultSlots,
             Map<Long, TournamentParticipantResponseDto> participantsById,
             Map<Long, String> mapNamesById
@@ -721,7 +758,13 @@ public class TournamentService {
                 .description(buildGroupDescription(group))
                 .participants(groupParticipants)
                 .matches(matches.stream()
-                        .map(match -> toMatch(match, slotsByMatchId.getOrDefault(match.getId(), List.of()), participantsById, mapNamesById))
+                        .map(match -> toMatch(
+                                match,
+                                slotsByMatchId.getOrDefault(match.getId(), List.of()),
+                                setsByMatchId.getOrDefault(match.getId(), List.of()),
+                                participantsById,
+                                mapNamesById
+                        ))
                         .toList())
                 .resultSlots(resultSlots.stream()
                         .map(resultSlot -> toResultSlot(resultSlot, participantsById))
@@ -739,6 +782,7 @@ public class TournamentService {
     private TournamentMatchResponseDto toMatch(
             TournamentMatchEntity match,
             List<TournamentMatchSlotEntity> slots,
+            List<TournamentMatchSetEntity> sets,
             Map<Long, TournamentParticipantResponseDto> participantsById,
             Map<Long, String> mapNamesById
     ) {
@@ -756,6 +800,9 @@ public class TournamentService {
                 .winnerParticipantId(match.getWinnerParticipantId())
                 .mapId(match.getMapId())
                 .mapName(match.getMapId() == null ? null : mapNamesById.get(match.getMapId()))
+                .setResults(sets.stream()
+                        .map(set -> toMatchSet(set, mapNamesById))
+                        .toList())
                 .scheduledAt(match.getScheduledAt())
                 .layoutCol(match.getLayoutCol())
                 .layoutRow(match.getLayoutRow())
@@ -763,6 +810,18 @@ public class TournamentService {
                 .slots(slots.stream()
                         .map(slot -> toMatchSlot(slot, participantsById))
                         .toList())
+                .build();
+    }
+
+    private TournamentMatchSetResponseDto toMatchSet(
+            TournamentMatchSetEntity set,
+            Map<Long, String> mapNamesById
+    ) {
+        return TournamentMatchSetResponseDto.builder()
+                .setNo(set.getSetNo())
+                .mapId(set.getMapId())
+                .mapName(set.getMapId() == null ? null : mapNamesById.get(set.getMapId()))
+                .winnerSlotNo(set.getWinnerSlotNo())
                 .build();
     }
 

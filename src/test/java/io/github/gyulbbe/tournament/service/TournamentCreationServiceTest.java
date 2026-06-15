@@ -4,6 +4,7 @@ import io.github.gyulbbe.map.entity.MapEntity;
 import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentCreateGroupRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateMapDefaultRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentCreateMatchDefaultRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateSlotRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
@@ -11,6 +12,7 @@ import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntryEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSetEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentResultSlotEntity;
@@ -18,8 +20,11 @@ import io.github.gyulbbe.tournament.entity.TournamentRouteEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
+import io.github.gyulbbe.tournament.repository.TournamentClanShareSendLogRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -70,6 +75,15 @@ class TournamentCreationServiceTest {
 
     @Mock
     private TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
+
+    @Mock
+    private TournamentMatchScoreSubmissionSetRepository scoreSubmissionSetRepository;
+
+    @Mock
+    private TournamentClanShareSendLogRepository clanShareSendLogRepository;
+
+    @Mock
+    private TournamentMatchSetRepository matchSetRepository;
 
     @Mock
     private TournamentMatchSlotRepository matchSlotRepository;
@@ -206,6 +220,77 @@ class TournamentCreationServiceTest {
     }
 
     @Test
+    void createTournament_createsTwoParticipantDualGroupWithoutLosersMatch() {
+        SavedEntities saved = stubGeneratedIds();
+        TournamentCreateRequestDto request = request(
+                "Dual",
+                TournamentStageEntity.TYPE_DUAL_GROUP,
+                group("A", "A Group",
+                        externalSlot(1, "A1"),
+                        externalSlot(3, "A2"))
+        );
+        given(tournamentService.buildDetail(any(TournamentEntity.class)))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        service.createTournament(request, 99L);
+
+        TournamentMatchEntity winners = saved.matches().stream()
+                .filter(match -> "AW".equals(match.getMatchKey()))
+                .findFirst()
+                .orElseThrow();
+        TournamentMatchEntity decider = saved.matches().stream()
+                .filter(match -> "AF".equals(match.getMatchKey()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(saved.matches())
+                .extracting(TournamentMatchEntity::getMatchKey)
+                .containsExactly("A1", "A2", "AW", "AF");
+        assertThat(saved.matches())
+                .noneMatch(match -> TournamentMatchEntity.ROLE_LOSERS.equals(match.getMatchRole()));
+        assertThat(saved.matchSlots())
+                .anyMatch(slot ->
+                        Objects.equals(slot.getMatchId(), decider.getId())
+                                && Integer.valueOf(2).equals(slot.getSlotNo())
+                                && Integer.valueOf(1).equals(slot.getIsBye()));
+        assertThat(saved.routes()).anyMatch(route ->
+                Objects.equals(route.getFromMatchId(), winners.getId())
+                        && TournamentRouteEntity.OUTCOME_LOSER.equals(route.getOutcome())
+                        && Objects.equals(route.getToMatchId(), decider.getId())
+                        && Integer.valueOf(1).equals(route.getToSlotNo()));
+        verify(bracketProgressionService).applyByeWinsForStage(anyLong());
+    }
+
+    @Test
+    void createTournament_rejectsDualGroupWithOneParticipant() {
+        TournamentCreateRequestDto request = request(
+                "Dual",
+                TournamentStageEntity.TYPE_DUAL_GROUP,
+                group("A", "A Group",
+                        externalSlot(1, "A1"))
+        );
+
+        assertThatThrownBy(() -> service.createTournament(request, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least two participants");
+    }
+
+    @Test
+    void createTournament_rejectsTwoParticipantDualGroupInSameOpeningMatch() {
+        TournamentCreateRequestDto request = request(
+                "Dual",
+                TournamentStageEntity.TYPE_DUAL_GROUP,
+                group("A", "A Group",
+                        externalSlot(1, "A1"),
+                        externalSlot(2, "A2"))
+        );
+
+        assertThatThrownBy(() -> service.createTournament(request, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("one participant in each opening match");
+    }
+
+    @Test
     void createTournament_appliesSingleEliminationRoundMapDefaults() {
         SavedEntities saved = stubGeneratedIds();
         TournamentCreateRequestDto request = request(
@@ -309,6 +394,63 @@ class TournamentCreationServiceTest {
     }
 
     @Test
+    void createTournament_appliesUltimateBattleMatchDefaults() {
+        SavedEntities saved = stubGeneratedIds();
+        TournamentCreateRequestDto request = request(
+                "Ultimate",
+                TournamentStageEntity.TYPE_ULTIMATE_BATTLE,
+                group(null, null,
+                        externalSlot(1, "P1"),
+                        externalSlot(2, "P2"))
+        );
+        request.setMatchDefaults(List.of(
+                roleMatchDefault(
+                        TournamentMatchEntity.ROLE_FINAL,
+                        5,
+                        java.util.Arrays.asList(700L, 701L, null, 703L, 704L)
+                )
+        ));
+        given(mapRepository.findAllById(any())).willReturn(List.of(
+                map(700L),
+                map(701L),
+                map(703L),
+                map(704L)
+        ));
+        given(tournamentService.buildDetail(any(TournamentEntity.class)))
+                .willReturn(TournamentDetailResponseDto.builder().id(1L).build());
+
+        service.createTournament(request, 99L);
+
+        TournamentMatchEntity finalMatch = saved.matches().get(0);
+        assertThat(finalMatch.getBestOf()).isEqualTo(5);
+        assertThat(finalMatch.getMapId()).isEqualTo(700L);
+        assertThat(saved.matchSets())
+                .extracting(TournamentMatchSetEntity::getSetNo)
+                .containsExactly(1, 2, 3, 4, 5);
+        assertThat(saved.matchSets())
+                .extracting(TournamentMatchSetEntity::getMapId)
+                .containsExactly(700L, 701L, null, 703L, 704L);
+    }
+
+    @Test
+    void createTournament_rejectsUltimateBattleNonFinalMatchDefault() {
+        TournamentCreateRequestDto request = request(
+                "Ultimate",
+                TournamentStageEntity.TYPE_ULTIMATE_BATTLE,
+                group(null, null,
+                        externalSlot(1, "P1"),
+                        externalSlot(2, "P2"))
+        );
+        request.setMatchDefaults(List.of(
+                roleMatchDefault(TournamentMatchEntity.ROLE_WINNERS, 5, List.of(700L))
+        ));
+
+        assertThatThrownBy(() -> service.createTournament(request, 99L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ULTIMATE_BATTLE matchDefaults require FINAL");
+    }
+
+    @Test
     void createTournament_rejectsInvalidMapDefaults() {
         TournamentCreateRequestDto unknownMapRequest = request(
                 "Single",
@@ -386,6 +528,7 @@ class TournamentCreationServiceTest {
         List<TournamentGroupEntity> groups = new ArrayList<>();
         List<TournamentGroupEntryEntity> entries = new ArrayList<>();
         List<TournamentMatchEntity> matches = new ArrayList<>();
+        List<TournamentMatchSetEntity> matchSets = new ArrayList<>();
         List<TournamentMatchSlotEntity> matchSlots = new ArrayList<>();
         List<TournamentRouteEntity> routes = new ArrayList<>();
         List<TournamentResultSlotEntity> resultSlots = new ArrayList<>();
@@ -396,11 +539,13 @@ class TournamentCreationServiceTest {
         given(groupRepository.save(any(TournamentGroupEntity.class))).willAnswer(saveAnswer(sequence, groups));
         given(groupEntryRepository.save(any(TournamentGroupEntryEntity.class))).willAnswer(saveAnswer(sequence, entries));
         given(matchRepository.save(any(TournamentMatchEntity.class))).willAnswer(saveAnswer(sequence, matches));
+        org.mockito.Mockito.lenient().when(matchSetRepository.save(any(TournamentMatchSetEntity.class)))
+                .thenAnswer(saveAnswer(sequence, matchSets));
         given(matchSlotRepository.save(any(TournamentMatchSlotEntity.class))).willAnswer(saveAnswer(sequence, matchSlots));
         given(routeRepository.save(any(TournamentRouteEntity.class))).willAnswer(saveAnswer(sequence, routes));
         given(resultSlotRepository.save(any(TournamentResultSlotEntity.class))).willAnswer(saveAnswer(sequence, resultSlots));
 
-        return new SavedEntities(tournaments, participants, stages, groups, entries, matches, matchSlots, routes, resultSlots);
+        return new SavedEntities(tournaments, participants, stages, groups, entries, matches, matchSets, matchSlots, routes, resultSlots);
     }
 
     private <T> Answer<T> saveAnswer(AtomicLong sequence, List<T> savedEntities) {
@@ -478,6 +623,15 @@ class TournamentCreationServiceTest {
         return mapDefault;
     }
 
+    private TournamentCreateMatchDefaultRequestDto roleMatchDefault(String matchRole, Integer bestOf, List<Long> mapIds) {
+        TournamentCreateMatchDefaultRequestDto matchDefault = new TournamentCreateMatchDefaultRequestDto();
+        matchDefault.setTarget("MATCH_ROLE");
+        matchDefault.setMatchRole(matchRole);
+        matchDefault.setBestOf(bestOf);
+        matchDefault.setMapIds(mapIds);
+        return matchDefault;
+    }
+
     private MapEntity map(Long id) {
         return MapEntity.builder()
                 .id(id)
@@ -492,6 +646,7 @@ class TournamentCreationServiceTest {
             List<TournamentGroupEntity> groups,
             List<TournamentGroupEntryEntity> entries,
             List<TournamentMatchEntity> matches,
+            List<TournamentMatchSetEntity> matchSets,
             List<TournamentMatchSlotEntity> matchSlots,
             List<TournamentRouteEntity> routes,
             List<TournamentResultSlotEntity> resultSlots

@@ -22,6 +22,7 @@ public class TournamentMatchResponseDto {
     private Long winnerParticipantId;
     private Long mapId;
     private String mapName;
+    private List<TournamentMatchSetResponseDto> setResults;
     private LocalDateTime scheduledAt;
     private Integer layoutCol;
     private Integer layoutRow;

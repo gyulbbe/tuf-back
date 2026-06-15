@@ -56,6 +56,9 @@ public class TournamentMatchScoreSubmissionEntity {
     @Column(name = "SUBMITTER_ROLE", nullable = false)
     private String submitterRole;
 
+    @Column(name = "BEST_OF")
+    private Integer bestOf;
+
     @Column(name = "SLOT1_SCORE", nullable = false)
     private Integer slot1Score;
 

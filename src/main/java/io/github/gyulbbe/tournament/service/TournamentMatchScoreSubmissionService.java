@@ -1,16 +1,21 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.entity.MapEntity;
 import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentMatchScoreRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionSetRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionSetResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntryEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionSetEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSetEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentResultSlotEntity;
@@ -19,6 +24,8 @@ import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentResultSlotRepository;
@@ -27,6 +34,7 @@ import io.github.gyulbbe.tournament.repository.TournamentStageRepository;
 import io.github.gyulbbe.user.entity.UserEntity;
 import io.github.gyulbbe.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +54,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TournamentMatchScoreSubmissionService {
 
@@ -67,6 +76,8 @@ public class TournamentMatchScoreSubmissionService {
     private final TournamentParticipantRepository participantRepository;
     private final TournamentResultSlotRepository resultSlotRepository;
     private final TournamentMatchScoreSubmissionRepository submissionRepository;
+    private final TournamentMatchScoreSubmissionSetRepository submissionSetRepository;
+    private final TournamentMatchSetRepository matchSetRepository;
     private final UserRepository userRepository;
     private final TournamentBracketProgressionService progressionService;
     private final TournamentService tournamentService;
@@ -80,15 +91,38 @@ public class TournamentMatchScoreSubmissionService {
             Long actorUserId,
             String actorRole
     ) {
+        log.info(
+                "[tournament-score] submit start tournamentId={} matchId={} actorUserId={} actorRole={} requestBestOf={} requestSetCount={} requestScoreCount={} requestMapId={}",
+                tournamentId,
+                matchId,
+                actorUserId,
+                actorRole,
+                request == null ? null : request.getBestOf(),
+                request == null || request.getSets() == null ? 0 : request.getSets().size(),
+                request == null || request.getScores() == null ? 0 : request.getScores().size(),
+                request == null ? null : request.getMapId()
+        );
         MatchContext context = loadContext(tournamentId, matchId);
         validateScoreSubmittableMatch(context);
-        Long submissionMapId = resolveSubmissionMap(context, request);
-
         Long submittedByParticipantId = resolveSubmitterParticipantId(context, actorUserId, actorRole);
-        ScoreDecision decision = decideScore(context, request);
         String submitterRole = isAdmin(actorRole)
                 ? TournamentMatchScoreSubmissionEntity.ROLE_ADMIN
                 : TournamentMatchScoreSubmissionEntity.ROLE_PLAYER;
+        SubmissionDecision decision = decideSubmission(context, request);
+        log.info(
+                "[tournament-score] submit validated tournamentId={} matchId={} tournamentStatus={} matchStatus={} stageType={} decisionBestOf={} decisionScore={}:{} winnerSlotNo={} mapId={} setCount={}",
+                tournamentId,
+                matchId,
+                context.tournament().getStatus(),
+                context.match().getStatus(),
+                context.stage().getStageType(),
+                decision.bestOf(),
+                decision.slot1Score(),
+                decision.slot2Score(),
+                decision.winnerSlotNo(),
+                decision.mapId(),
+                decision.sets().size()
+        );
 
         TournamentMatchScoreSubmissionEntity submission = TournamentMatchScoreSubmissionEntity.builder()
                 .tournamentId(tournamentId)
@@ -96,14 +130,27 @@ public class TournamentMatchScoreSubmissionService {
                 .submittedByUserId(actorUserId)
                 .submittedByParticipantId(submittedByParticipantId)
                 .submitterRole(submitterRole)
+                .bestOf(decision.bestOf())
                 .slot1Score(decision.slot1Score())
                 .slot2Score(decision.slot2Score())
                 .winnerSlotNo(decision.winnerSlotNo())
-                .mapId(submissionMapId)
+                .mapId(decision.mapId())
                 .status(TournamentMatchScoreSubmissionEntity.STATUS_PENDING)
                 .build();
 
         TournamentMatchScoreSubmissionEntity savedSubmission = submissionRepository.save(submission);
+        saveSubmissionSets(savedSubmission.getId(), decision.sets());
+        log.info(
+                "[tournament-score] submit saved tournamentId={} matchId={} submissionId={} submissionStatus={} score={}:{} winnerSlotNo={} mapId={}",
+                tournamentId,
+                matchId,
+                savedSubmission.getId(),
+                savedSubmission.getStatus(),
+                savedSubmission.getSlot1Score(),
+                savedSubmission.getSlot2Score(),
+                savedSubmission.getWinnerSlotNo(),
+                savedSubmission.getMapId()
+        );
         return toResponse(savedSubmission, loadSubmitterLoginIds(List.of(savedSubmission)));
     }
 
@@ -142,20 +189,39 @@ public class TournamentMatchScoreSubmissionService {
     ) {
         requireAdmin(actorRole);
         MatchContext context = loadContext(tournamentId, matchId);
-        validateScoreSubmittableMatch(context);
 
         TournamentMatchScoreSubmissionEntity submission = findSubmission(tournamentId, matchId, submissionId);
+        log.info(
+                "[tournament-score] approve start tournamentId={} matchId={} submissionId={} actorUserId={} actorRole={} tournamentStatus={} matchStatus={} matchWinnerParticipantId={} submissionStatus={} submissionScore={}:{} submissionWinnerSlotNo={} submissionBestOf={} submissionMapId={}",
+                tournamentId,
+                matchId,
+                submissionId,
+                adminUserId,
+                actorRole,
+                context.tournament().getStatus(),
+                context.match().getStatus(),
+                context.match().getWinnerParticipantId(),
+                submission.getStatus(),
+                submission.getSlot1Score(),
+                submission.getSlot2Score(),
+                submission.getWinnerSlotNo(),
+                submission.getBestOf(),
+                submission.getMapId()
+        );
         if (!TournamentMatchScoreSubmissionEntity.STATUS_PENDING.equals(submission.getStatus())) {
             throw invalid("Only PENDING score submissions can be approved.");
         }
+        validateScoreApprovableMatch(context);
         requireSubmissionMap(submission);
 
-        ScoreDecision decision = decideStoredScore(context, submission);
+        SubmissionDecision decision = decideStoredSubmission(context, submission);
         if (!Objects.equals(submission.getWinnerSlotNo(), decision.winnerSlotNo())) {
             throw invalid("Stored winner slot does not match submission scores.");
         }
 
+        context.match().updateBestOf(decision.bestOf());
         context.match().assignMap(submission.getMapId());
+        replaceOfficialMatchSets(context.match().getId(), decision.sets());
         TournamentMatchSlotEntity winnerSlot = context.slotsByNo().get(decision.winnerSlotNo());
         TournamentMatchSlotEntity loserSlot = context.slotsByNo().get(decision.loserSlotNo());
         winnerSlot.updateScore(decision.winnerScore());
@@ -164,10 +230,34 @@ public class TournamentMatchScoreSubmissionService {
         loserSlot.markWinner(false);
         context.match().finish(winnerSlot.getParticipantId());
         matchRepository.save(context.match());
+        log.info(
+                "[tournament-score] approve applying tournamentId={} matchId={} submissionId={} decisionBestOf={} decisionScore={}:{} winnerSlotNo={} winnerParticipantId={} loserParticipantId={} mapId={} setCount={}",
+                tournamentId,
+                matchId,
+                submissionId,
+                decision.bestOf(),
+                decision.slot1Score(),
+                decision.slot2Score(),
+                decision.winnerSlotNo(),
+                winnerSlot.getParticipantId(),
+                loserSlot.getParticipantId(),
+                submission.getMapId(),
+                decision.sets().size()
+        );
 
         LocalDateTime reviewedAt = LocalDateTime.now();
         submission.approve(adminUserId, reviewedAt, null);
         rejectOtherPendingSubmissions(tournamentId, matchId, submissionId, adminUserId, reviewedAt);
+        log.info(
+                "[tournament-score] approve saved tournamentId={} matchId={} submissionId={} matchStatus={} matchWinnerParticipantId={} submissionStatus={} reviewedAt={}",
+                tournamentId,
+                matchId,
+                submissionId,
+                context.match().getStatus(),
+                context.match().getWinnerParticipantId(),
+                submission.getStatus(),
+                reviewedAt
+        );
 
         if (TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(context.stage().getStageType())) {
             progressRaceSurvival(context, winnerSlot.getParticipantId(), loserSlot.getParticipantId());
@@ -194,15 +284,31 @@ public class TournamentMatchScoreSubmissionService {
     ) {
         requireAdmin(actorRole);
         MatchContext context = loadContext(tournamentId, matchId);
-        if (!TournamentMatchEntity.STATUS_READY.equals(context.match().getStatus())) {
-            throw invalid("Only READY matches can reject score submissions.");
-        }
         TournamentMatchScoreSubmissionEntity submission = findSubmission(tournamentId, matchId, submissionId);
+        log.info(
+                "[tournament-score] reject start tournamentId={} matchId={} submissionId={} actorUserId={} actorRole={} tournamentStatus={} matchStatus={} submissionStatus={} notePresent={}",
+                tournamentId,
+                matchId,
+                submissionId,
+                adminUserId,
+                actorRole,
+                context.tournament().getStatus(),
+                context.match().getStatus(),
+                submission.getStatus(),
+                request != null && request.getAdminNote() != null && !request.getAdminNote().isBlank()
+        );
         if (!TournamentMatchScoreSubmissionEntity.STATUS_PENDING.equals(submission.getStatus())) {
             throw invalid("Only PENDING score submissions can be rejected.");
         }
 
         submission.reject(adminUserId, LocalDateTime.now(), request == null ? null : request.getAdminNote());
+        log.info(
+                "[tournament-score] reject saved tournamentId={} matchId={} submissionId={} submissionStatus={}",
+                tournamentId,
+                matchId,
+                submissionId,
+                submission.getStatus()
+        );
         return toResponse(submission, loadSubmitterLoginIds(List.of(submission)));
     }
 
@@ -269,6 +375,28 @@ public class TournamentMatchScoreSubmissionService {
         if (!TournamentMatchEntity.STATUS_READY.equals(context.match().getStatus())) {
             throw invalid("Only READY matches can accept score submissions.");
         }
+        validateScoreMatchSlots(context);
+    }
+
+    private void validateScoreApprovableMatch(MatchContext context) {
+        if (TournamentEntity.STATUS_FINISHED.equals(context.tournament().getStatus())) {
+            throw invalid("Finished tournament cannot approve score submissions.");
+        }
+        boolean readyMatch = TournamentMatchEntity.STATUS_READY.equals(context.match().getStatus());
+        boolean finishedMatch = TournamentMatchEntity.STATUS_FINISHED.equals(context.match().getStatus());
+        if (TournamentMatchEntity.STATUS_CANCELLED.equals(context.match().getStatus())) {
+            throw invalid("Cancelled match cannot approve score submissions.");
+        }
+        if (!readyMatch && !finishedMatch) {
+            throw invalid("Only READY matches can approve score submissions.");
+        }
+        if (finishedMatch && hasApprovedScoreSubmission(context)) {
+            throw invalid("Finished match result is already fixed.");
+        }
+        validateScoreMatchSlots(context);
+    }
+
+    private void validateScoreMatchSlots(MatchContext context) {
         if (context.slots().size() != 2
                 || !context.slotsByNo().containsKey(1)
                 || !context.slotsByNo().containsKey(2)) {
@@ -281,6 +409,14 @@ public class TournamentMatchScoreSubmissionService {
         if (!context.participantsBySlotNo().containsKey(1) || !context.participantsBySlotNo().containsKey(2)) {
             throw notFound("Tournament participant not found.");
         }
+    }
+
+    private boolean hasApprovedScoreSubmission(MatchContext context) {
+        return submissionRepository.existsByTournamentIdAndMatchIdAndStatus(
+                context.tournament().getId(),
+                context.match().getId(),
+                TournamentMatchScoreSubmissionEntity.STATUS_APPROVED
+        );
     }
 
     private Long resolveSubmissionMap(MatchContext context, TournamentScoreSubmissionRequestDto request) {
@@ -371,6 +507,307 @@ public class TournamentMatchScoreSubmissionService {
         return TournamentStageEntity.TYPE_RACE_SURVIVAL.equals(context.stage().getStageType());
     }
 
+    private boolean usesSetBasedScore(MatchContext context) {
+        return TournamentStageEntity.TYPE_SINGLE_ELIMINATION.equals(context.stage().getStageType())
+                || TournamentStageEntity.TYPE_DUAL_GROUP.equals(context.stage().getStageType())
+                || TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(context.stage().getStageType());
+    }
+
+    private SubmissionDecision decideSubmission(MatchContext context, TournamentScoreSubmissionRequestDto request) {
+        if (usesSetBasedScore(context)) {
+            return decideSetSubmission(context, request);
+        }
+
+        Long submissionMapId = resolveSubmissionMap(context, request);
+        ScoreDecision score = decideScore(context, request);
+        int bestOf = validateBestOf(context.match().getBestOf());
+        return new SubmissionDecision(
+                bestOf,
+                score.slot1Score(),
+                score.slot2Score(),
+                score.winnerSlotNo(),
+                score.loserSlotNo(),
+                score.winnerScore(),
+                score.loserScore(),
+                submissionMapId,
+                List.of()
+        );
+    }
+
+    private SubmissionDecision decideStoredSubmission(
+            MatchContext context,
+            TournamentMatchScoreSubmissionEntity submission
+    ) {
+        List<TournamentMatchScoreSubmissionSetEntity> storedSets =
+                submissionSetRepository.findAllByScoreSubmissionIdOrderBySetNoAsc(submission.getId());
+        if (!storedSets.isEmpty()) {
+            return decideStoredSetSubmission(context, submission, storedSets);
+        }
+
+        int bestOf = validateBestOf(submission.getBestOf() == null ? context.match().getBestOf() : submission.getBestOf());
+        ScoreDecision score = decideScores(
+                context.stage().getStageType(),
+                bestOf,
+                submission.getSlot1Score(),
+                submission.getSlot2Score()
+        );
+        return new SubmissionDecision(
+                bestOf,
+                score.slot1Score(),
+                score.slot2Score(),
+                score.winnerSlotNo(),
+                score.loserSlotNo(),
+                score.winnerScore(),
+                score.loserScore(),
+                submission.getMapId(),
+                List.of()
+        );
+    }
+
+    private SubmissionDecision decideSetSubmission(MatchContext context, TournamentScoreSubmissionRequestDto request) {
+        if (request == null || request.getBestOf() == null) {
+            throw invalid("bestOf is required before submitting a score.");
+        }
+        int bestOf = validateBestOf(request.getBestOf());
+        boolean ultimateBattle = TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(context.stage().getStageType());
+        List<ValidatedSubmissionSet> sets = ultimateBattle
+                ? normalizeUltimateBattleSubmissionSets(bestOf, request.getSets())
+                : normalizeSubmissionSets(bestOf, request.getSets());
+        ScoreDecision score = ultimateBattle
+                ? decideUltimateBattleSetScores(bestOf, sets)
+                : decideSetScores(bestOf, sets);
+        Long mapId = sets.get(0).mapId();
+        return new SubmissionDecision(
+                bestOf,
+                score.slot1Score(),
+                score.slot2Score(),
+                score.winnerSlotNo(),
+                score.loserSlotNo(),
+                score.winnerScore(),
+                score.loserScore(),
+                mapId,
+                sets
+        );
+    }
+
+    private SubmissionDecision decideStoredSetSubmission(
+            MatchContext context,
+            TournamentMatchScoreSubmissionEntity submission,
+            List<TournamentMatchScoreSubmissionSetEntity> storedSets
+    ) {
+        if (submission.getBestOf() == null) {
+            throw invalid("Stored bestOf is missing.");
+        }
+        int bestOf = validateBestOf(submission.getBestOf());
+        List<ValidatedSubmissionSet> sets = storedSets.stream()
+                .map(set -> {
+                    if (set.getWinnerSlotNo() == null || (set.getWinnerSlotNo() != 1 && set.getWinnerSlotNo() != 2)) {
+                        throw invalid("Stored winner slot is invalid.");
+                    }
+                    if (set.getMapId() == null || !mapRepository.existsById(set.getMapId())) {
+                        throw invalid("Unknown mapId in score submission.");
+                    }
+                    return new ValidatedSubmissionSet(set.getSetNo(), set.getWinnerSlotNo(), set.getMapId());
+                })
+                .toList();
+        boolean ultimateBattle = TournamentStageEntity.TYPE_ULTIMATE_BATTLE.equals(context.stage().getStageType());
+        ScoreDecision score = ultimateBattle
+                ? decideUltimateBattleSetScores(bestOf, sets)
+                : decideSetScores(bestOf, sets);
+        return new SubmissionDecision(
+                bestOf,
+                score.slot1Score(),
+                score.slot2Score(),
+                score.winnerSlotNo(),
+                score.loserSlotNo(),
+                score.winnerScore(),
+                score.loserScore(),
+                sets.get(0).mapId(),
+                sets
+        );
+    }
+
+    private List<ValidatedSubmissionSet> normalizeSubmissionSets(
+            int bestOf,
+            List<TournamentScoreSubmissionSetRequestDto> requestedSets
+    ) {
+        if (requestedSets == null || requestedSets.isEmpty()) {
+            throw invalid("Score submission sets are required.");
+        }
+
+        int requiredWins = bestOf / 2 + 1;
+        Map<Integer, TournamentScoreSubmissionSetRequestDto> setsByNo = new HashMap<>();
+        for (TournamentScoreSubmissionSetRequestDto requestedSet : requestedSets) {
+            if (requestedSet == null || requestedSet.getSetNo() == null) {
+                throw invalid("setNo is required.");
+            }
+            Integer setNo = requestedSet.getSetNo();
+            if (setNo < 1 || setNo > bestOf) {
+                throw invalid("setNo must be between 1 and bestOf.");
+            }
+            if (setsByNo.put(setNo, requestedSet) != null) {
+                throw invalid("Duplicate setNo is not allowed.");
+            }
+        }
+
+        List<ValidatedSubmissionSet> playedSets = new ArrayList<>();
+        int slot1Wins = 0;
+        int slot2Wins = 0;
+        for (int setNo = 1; setNo <= bestOf; setNo++) {
+            TournamentScoreSubmissionSetRequestDto requestedSet = setsByNo.get(setNo);
+            if (requestedSet == null) {
+                break;
+            }
+
+            Integer winnerSlotNo = requestedSet.getWinnerSlotNo();
+            if (winnerSlotNo == null || (winnerSlotNo != 1 && winnerSlotNo != 2)) {
+                throw invalid("winnerSlotNo must be 1 or 2.");
+            }
+            Long mapId = requestedSet.getMapId();
+            if (mapId == null) {
+                throw invalid("Map is required for every played set.");
+            }
+            if (!mapRepository.existsById(mapId)) {
+                throw invalid("Unknown mapId in score submission.");
+            }
+
+            playedSets.add(new ValidatedSubmissionSet(setNo, winnerSlotNo, mapId));
+            if (winnerSlotNo == 1) {
+                slot1Wins++;
+            } else {
+                slot2Wins++;
+            }
+            if (slot1Wins == requiredWins || slot2Wins == requiredWins) {
+                return playedSets;
+            }
+        }
+
+        throw invalid("Set results do not represent a completed best-of result.");
+    }
+
+    private List<ValidatedSubmissionSet> normalizeUltimateBattleSubmissionSets(
+            int bestOf,
+            List<TournamentScoreSubmissionSetRequestDto> requestedSets
+    ) {
+        if (requestedSets == null || requestedSets.size() != bestOf) {
+            throw invalid("ULTIMATE_BATTLE requires one set result for every game.");
+        }
+
+        Map<Integer, TournamentScoreSubmissionSetRequestDto> setsByNo = new HashMap<>();
+        for (TournamentScoreSubmissionSetRequestDto requestedSet : requestedSets) {
+            if (requestedSet == null || requestedSet.getSetNo() == null) {
+                throw invalid("setNo is required.");
+            }
+            Integer setNo = requestedSet.getSetNo();
+            if (setNo < 1 || setNo > bestOf) {
+                throw invalid("setNo must be between 1 and bestOf.");
+            }
+            if (setsByNo.put(setNo, requestedSet) != null) {
+                throw invalid("Duplicate setNo is not allowed.");
+            }
+        }
+
+        List<ValidatedSubmissionSet> playedSets = new ArrayList<>();
+        for (int setNo = 1; setNo <= bestOf; setNo++) {
+            TournamentScoreSubmissionSetRequestDto requestedSet = setsByNo.get(setNo);
+            if (requestedSet == null) {
+                throw invalid("ULTIMATE_BATTLE requires consecutive set results.");
+            }
+
+            Integer winnerSlotNo = requestedSet.getWinnerSlotNo();
+            if (winnerSlotNo == null || (winnerSlotNo != 1 && winnerSlotNo != 2)) {
+                throw invalid("winnerSlotNo must be 1 or 2.");
+            }
+            Long mapId = requestedSet.getMapId();
+            if (mapId == null) {
+                throw invalid("Map is required for every played set.");
+            }
+            if (!mapRepository.existsById(mapId)) {
+                throw invalid("Unknown mapId in score submission.");
+            }
+
+            playedSets.add(new ValidatedSubmissionSet(setNo, winnerSlotNo, mapId));
+        }
+
+        return playedSets;
+    }
+
+    private ScoreDecision decideSetScores(int bestOf, List<ValidatedSubmissionSet> sets) {
+        int requiredWins = bestOf / 2 + 1;
+        int slot1Score = 0;
+        int slot2Score = 0;
+        for (ValidatedSubmissionSet set : sets) {
+            if (set.winnerSlotNo() == 1) {
+                slot1Score++;
+            } else {
+                slot2Score++;
+            }
+        }
+
+        boolean slot1Wins = slot1Score == requiredWins && slot2Score < requiredWins;
+        boolean slot2Wins = slot2Score == requiredWins && slot1Score < requiredWins;
+        if (slot1Wins == slot2Wins) {
+            throw invalid("Set results do not represent a completed best-of result.");
+        }
+        if (slot1Wins) {
+            return new ScoreDecision(slot1Score, slot2Score, 1, 2, slot1Score, slot2Score);
+        }
+        return new ScoreDecision(slot1Score, slot2Score, 2, 1, slot2Score, slot1Score);
+    }
+
+    private ScoreDecision decideUltimateBattleSetScores(int bestOf, List<ValidatedSubmissionSet> sets) {
+        if (sets.size() != bestOf) {
+            throw invalid("ULTIMATE_BATTLE requires one set result for every game.");
+        }
+
+        int slot1Score = 0;
+        int slot2Score = 0;
+        for (ValidatedSubmissionSet set : sets) {
+            if (set.winnerSlotNo() == 1) {
+                slot1Score++;
+            } else {
+                slot2Score++;
+            }
+        }
+
+        if (slot1Score == slot2Score) {
+            throw invalid("ULTIMATE_BATTLE scores cannot be tied.");
+        }
+        if (slot1Score > slot2Score) {
+            return new ScoreDecision(slot1Score, slot2Score, 1, 2, slot1Score, slot2Score);
+        }
+        return new ScoreDecision(slot1Score, slot2Score, 2, 1, slot2Score, slot1Score);
+    }
+
+    private void saveSubmissionSets(Long submissionId, List<ValidatedSubmissionSet> sets) {
+        if (submissionId == null || sets.isEmpty()) {
+            return;
+        }
+        submissionSetRepository.saveAll(sets.stream()
+                .map(set -> TournamentMatchScoreSubmissionSetEntity.builder()
+                        .scoreSubmissionId(submissionId)
+                        .setNo(set.setNo())
+                        .winnerSlotNo(set.winnerSlotNo())
+                        .mapId(set.mapId())
+                        .build())
+                .toList());
+    }
+
+    private void replaceOfficialMatchSets(Long matchId, List<ValidatedSubmissionSet> sets) {
+        if (sets.isEmpty()) {
+            return;
+        }
+        matchSetRepository.deleteByMatchId(matchId);
+        matchSetRepository.saveAll(sets.stream()
+                .map(set -> TournamentMatchSetEntity.builder()
+                        .matchId(matchId)
+                        .setNo(set.setNo())
+                        .winnerSlotNo(set.winnerSlotNo())
+                        .mapId(set.mapId())
+                        .build())
+                .toList());
+    }
+
     private ScoreDecision decideScore(MatchContext context, TournamentScoreSubmissionRequestDto request) {
         Map<Integer, Integer> scoresBySlotNo = normalizeScores(request, context.slotsByNo());
         return decideScores(
@@ -378,15 +815,6 @@ public class TournamentMatchScoreSubmissionService {
                 context.match().getBestOf(),
                 scoresBySlotNo.get(1),
                 scoresBySlotNo.get(2)
-        );
-    }
-
-    private ScoreDecision decideStoredScore(MatchContext context, TournamentMatchScoreSubmissionEntity submission) {
-        return decideScores(
-                context.stage().getStageType(),
-                context.match().getBestOf(),
-                submission.getSlot1Score(),
-                submission.getSlot2Score()
         );
     }
 
@@ -609,6 +1037,10 @@ public class TournamentMatchScoreSubmissionService {
             TournamentMatchScoreSubmissionEntity submission,
             Map<Long, String> submitterLoginIds
     ) {
+        List<TournamentMatchScoreSubmissionSetEntity> sets = submission.getId() == null
+                ? List.of()
+                : submissionSetRepository.findAllByScoreSubmissionIdOrderBySetNoAsc(submission.getId());
+        Map<Long, String> mapNamesById = loadSetMapNames(sets);
         return TournamentScoreSubmissionResponseDto.builder()
                 .id(submission.getId())
                 .submissionId(submission.getId())
@@ -618,10 +1050,19 @@ public class TournamentMatchScoreSubmissionService {
                 .submittedByParticipantId(submission.getSubmittedByParticipantId())
                 .submitterLoginId(submitterLoginIds.get(submission.getSubmittedByUserId()))
                 .submitterRole(submission.getSubmitterRole())
+                .bestOf(submission.getBestOf())
                 .slot1Score(submission.getSlot1Score())
                 .slot2Score(submission.getSlot2Score())
                 .winnerSlotNo(submission.getWinnerSlotNo())
                 .mapId(submission.getMapId())
+                .sets(sets.stream()
+                        .map(set -> TournamentScoreSubmissionSetResponseDto.builder()
+                                .setNo(set.getSetNo())
+                                .winnerSlotNo(set.getWinnerSlotNo())
+                                .mapId(set.getMapId())
+                                .mapName(mapNamesById.get(set.getMapId()))
+                                .build())
+                        .toList())
                 .status(submission.getStatus())
                 .adminReviewerUserId(submission.getAdminReviewerUserId())
                 .adminReviewedAt(submission.getAdminReviewedAt())
@@ -629,6 +1070,18 @@ public class TournamentMatchScoreSubmissionService {
                 .regDate(submission.getRegDate())
                 .updateDate(submission.getUpdateDate())
                 .build();
+    }
+
+    private Map<Long, String> loadSetMapNames(List<TournamentMatchScoreSubmissionSetEntity> sets) {
+        Set<Long> mapIds = sets.stream()
+                .map(TournamentMatchScoreSubmissionSetEntity::getMapId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        if (mapIds.isEmpty()) {
+            return Map.of();
+        }
+        return mapRepository.findAllById(mapIds).stream()
+                .collect(Collectors.toMap(MapEntity::getId, MapEntity::getMapName));
     }
 
     private boolean isActualParticipantSlot(TournamentMatchSlotEntity slot) {
@@ -670,6 +1123,26 @@ public class TournamentMatchScoreSubmissionService {
             List<TournamentMatchSlotEntity> slots,
             Map<Integer, TournamentMatchSlotEntity> slotsByNo,
             Map<Integer, TournamentParticipantEntity> participantsBySlotNo
+    ) {
+    }
+
+    private record SubmissionDecision(
+            Integer bestOf,
+            Integer slot1Score,
+            Integer slot2Score,
+            Integer winnerSlotNo,
+            Integer loserSlotNo,
+            Integer winnerScore,
+            Integer loserScore,
+            Long mapId,
+            List<ValidatedSubmissionSet> sets
+    ) {
+    }
+
+    private record ValidatedSubmissionSet(
+            Integer setNo,
+            Integer winnerSlotNo,
+            Long mapId
     ) {
     }
 

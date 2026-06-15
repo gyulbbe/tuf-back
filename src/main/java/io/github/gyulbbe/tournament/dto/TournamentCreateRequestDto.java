@@ -11,5 +11,6 @@ public class TournamentCreateRequestDto {
     private Integer bestOf;
     private Boolean publishNow;
     private List<TournamentCreateMapDefaultRequestDto> mapDefaults;
+    private List<TournamentCreateMatchDefaultRequestDto> matchDefaults;
     private List<TournamentCreateGroupRequestDto> groups;
 }

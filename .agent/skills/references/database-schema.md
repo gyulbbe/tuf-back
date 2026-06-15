@@ -1143,6 +1143,37 @@ Status flow
   - 관리자 승인 시 `map_id` 를 `tournament_matches.map_id` 로 반영하고, 점수를 `tournament_match_slots` 에 반영하고 match 를 `FINISHED` 로 확정한 뒤 route 를 전파한다.
   - 한 제출이 승인되면 같은 경기의 다른 `PENDING` 제출은 `REJECTED` 로 바꾼다.
 
+### `tournament_clan_share_send_logs`
+
+- 토너먼트 종료 후 ELO/시트 연동 시도 이력
+- 주요 컬럼
+  - `id`
+  - `tournament_id`
+  - `match_id`
+  - `send_group_id`
+  - `player1`, `player2`
+  - `winner`, `loser`
+  - `map_name`
+  - `match_type`
+  - `match_name`
+  - `played_date`
+  - `elo_status`, `elo_message`
+  - `sheet_status`, `sheet_message`
+  - `requested_by_user_id`
+  - `reg_date`
+- FK
+  - `tournament_id -> tournaments.id`
+  - `match_id -> tournament_matches.id`
+  - `requested_by_user_id -> users.id`
+- 제약
+  - `elo_status`: `SUCCESS`, `FAILED`
+  - `sheet_status`: `SUCCESS`, `FAILED`
+- 사용
+  - ELO API 전송 결과와 Google Sheet 기록 결과를 경기 1건 단위로 저장한다.
+  - 성공/실패 모두 저장한다.
+  - 관리자 화면에서 “이미 연동한 이력” 경고를 띄우는 기준은 해당 토너먼트의 로그가 1건 이상 존재하는지 여부다.
+  - 같은 버튼 클릭으로 처리된 여러 경기 로그는 같은 `send_group_id` 를 가진다.
+
 ### `race_survival_progress_submissions`
 
 - `RACE_SURVIVAL` 전체 진행안 제출 헤더
@@ -1265,6 +1296,7 @@ Status flow
 - `tournaments`
   - `tournament_participants`
   - `tournament_stages`
+  - `tournament_clan_share_send_logs`
 - `tournament_stages`
   - `tournament_groups`
   - `tournament_matches`
@@ -1275,8 +1307,11 @@ Status flow
 - `tournament_matches`
   - `tournament_match_slots`
   - `tournament_match_score_submissions`
+  - `tournament_clan_share_send_logs`
   - `tournament_routes.from_match_id`
   - `maps`
+- `users`
+  - `tournament_clan_share_send_logs.requested_by_user_id`
 - `tournament_result_slots`
   - `tournament_routes.to_result_slot_id`
 
@@ -1445,3 +1480,23 @@ Status flow
 - `tournament_matches.status` 는 `LIVE` 를 쓰지 않는다. 개별 경기는 `READY` 에서 결과 입력 후 `FINISHED` 로 확정한다.
 - `tournament_matches.best_of` 가 실제 경기 방식의 단일 기준이다. stage 단위 `default_best_of` 컬럼은 두지 않는다.
 - `db-schema-alter.sql` 은 이번 변경분인 가위바위보 드래프트 `READY` 제거와 즉시 `RPS_PENDING` 시작 상태 전환만 반영한다.
+## Tournament Match Set Results
+
+This schema version stores SINGLE_ELIMINATION and DUAL_GROUP match results at set level.
+
+- `tournament_match_score_submissions`
+  - `best_of` stores the BO value submitted for review.
+  - `slot1_score`, `slot2_score`, and `winner_slot_no` remain aggregate values derived from submitted sets.
+  - `map_id` remains a representative map value for compatibility and uses the first played set map for set-based submissions.
+
+- `tournament_match_sets`
+  - Official match set defaults and approved set results.
+  - Columns: `id`, `match_id`, `set_no`, `map_id`, `winner_slot_no`, `reg_date`, `update_date`.
+  - `winner_slot_no` is null for creation-time defaults and set to `1` or `2` after score approval.
+  - Unique key: `(match_id, set_no)`.
+
+- `tournament_match_score_submission_sets`
+  - Pending/reviewed submitted set results.
+  - Columns: `id`, `score_submission_id`, `set_no`, `winner_slot_no`, `map_id`, `reg_date`, `update_date`.
+  - Every submitted played set requires a winner slot and map.
+  - Bo3 2:0 stores only sets 1 and 2; later entered sets are ignored.

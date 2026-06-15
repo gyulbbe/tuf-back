@@ -23,8 +23,10 @@ import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionMat
 import io.github.gyulbbe.tournament.repository.RaceSurvivalProgressSubmissionRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupEntryRepository;
 import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
+import io.github.gyulbbe.tournament.repository.TournamentClanShareSendLogRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -78,6 +80,8 @@ public class RaceSurvivalProgressSubmissionService {
     private final TournamentMatchSlotRepository matchSlotRepository;
     private final TournamentResultSlotRepository resultSlotRepository;
     private final TournamentMatchScoreSubmissionRepository scoreSubmissionRepository;
+    private final TournamentMatchScoreSubmissionSetRepository scoreSubmissionSetRepository;
+    private final TournamentClanShareSendLogRepository clanShareSendLogRepository;
     private final RaceSurvivalProgressSubmissionRepository submissionRepository;
     private final RaceSurvivalProgressSubmissionMatchRepository submissionMatchRepository;
     private final UserRepository userRepository;
@@ -406,6 +410,8 @@ public class RaceSurvivalProgressSubmissionService {
         List<Long> existingMatchIds = existingMatches.stream()
                 .map(TournamentMatchEntity::getId)
                 .toList();
+        clanShareSendLogRepository.deleteByTournamentId(context.tournament().getId());
+        scoreSubmissionSetRepository.deleteByTournamentId(context.tournament().getId());
         scoreSubmissionRepository.deleteByTournamentId(context.tournament().getId());
         if (!existingMatchIds.isEmpty()) {
             matchSlotRepository.deleteByMatchIdIn(existingMatchIds);

@@ -6,14 +6,19 @@ import io.github.gyulbbe.tournament.dto.TournamentMatchScoreRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionSetRequestDto;
 import io.github.gyulbbe.tournament.entity.TournamentEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchScoreSubmissionSetEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSetEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchScoreSubmissionSetRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSetRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
 import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
@@ -27,6 +32,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -72,6 +79,12 @@ class TournamentMatchScoreSubmissionServiceTest {
     private TournamentMatchScoreSubmissionRepository submissionRepository;
 
     @Mock
+    private TournamentMatchScoreSubmissionSetRepository submissionSetRepository;
+
+    @Mock
+    private TournamentMatchSetRepository matchSetRepository;
+
+    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -96,7 +109,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         TournamentScoreSubmissionResponseDto response = service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 3), score(2, 1)),
+                setScoreRequest(5, 3, 1),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         );
@@ -121,7 +134,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         TournamentScoreSubmissionResponseDto response = service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 1), score(2, 3)),
+                setScoreRequest(5, 1, 3),
                 PLAYER_B_USER_ID,
                 "ROLE_USER"
         );
@@ -142,7 +155,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         TournamentScoreSubmissionResponseDto response = service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(2, 0)),
+                setScoreRequest(3, 2, 0),
                 999L,
                 "ROLE_ADMIN"
         );
@@ -160,7 +173,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(2, 0)),
+                setRequest(3, set(1, 1, null), set(2, 1, null)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         ))
@@ -182,8 +195,8 @@ class TournamentMatchScoreSubmissionServiceTest {
                 TOURNAMENT_ID,
                 MATCH_ID,
                 request(score(1, 1), score(2, 0)),
-                PLAYER_A_USER_ID,
-                "ROLE_USER"
+                999L,
+                "ROLE_ADMIN"
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Map is required");
@@ -200,7 +213,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         TournamentScoreSubmissionResponseDto response = service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                requestWithMap(701L, score(1, 2), score(2, 0)),
+                setScoreRequest(3, 2, 0, 701L, 702L),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         );
@@ -211,7 +224,13 @@ class TournamentMatchScoreSubmissionServiceTest {
 
     @Test
     void submitScore_rejectsMapChangeAfterActiveSubmissionExists() {
-        givenReadyMatchContext(match(TournamentMatchEntity.STATUS_READY, 3), internalParticipantA(), internalParticipantB());
+        givenContext(
+                tournament(),
+                raceSurvivalStage(),
+                match(TournamentMatchEntity.STATUS_READY, 3),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
         given(submissionRepository.existsByTournamentIdAndMatchIdAndStatusNot(
                 TOURNAMENT_ID,
                 MATCH_ID,
@@ -222,8 +241,8 @@ class TournamentMatchScoreSubmissionServiceTest {
                 TOURNAMENT_ID,
                 MATCH_ID,
                 requestWithMap(701L, score(1, 2), score(2, 0)),
-                PLAYER_A_USER_ID,
-                "ROLE_USER"
+                999L,
+                "ROLE_ADMIN"
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("map cannot be changed");
@@ -291,7 +310,7 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(2, 1)),
+                setRequest(5, set(1, 1, 701L), set(2, 2, 702L), set(3, 1, 703L)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         )).isInstanceOf(IllegalArgumentException.class)
@@ -299,13 +318,13 @@ class TournamentMatchScoreSubmissionServiceTest {
     }
 
     @Test
-    void submitScore_rejectsTieAndNegativeScores() {
+    void submitScore_rejectsIncompleteAndInvalidSetWinner() {
         givenReadyMatchContext(match(TournamentMatchEntity.STATUS_READY, 3), internalParticipantA(), internalParticipantB());
 
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(2, 2)),
+                setRequest(3, set(1, 1, 701L), set(2, 2, 702L)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         )).isInstanceOf(IllegalArgumentException.class)
@@ -314,34 +333,34 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, -1), score(2, 2)),
+                setRequest(3, set(1, 0, 701L), set(2, 2, 702L)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("zero or greater");
+                .hasMessageContaining("winnerSlotNo");
     }
 
     @Test
-    void submitScore_rejectsDuplicateOrMissingSlotNo() {
+    void submitScore_rejectsDuplicateOrMissingSetNo() {
         givenReadyMatchContext(match(TournamentMatchEntity.STATUS_READY, 3), internalParticipantA(), internalParticipantB());
 
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(1, 0)),
+                setRequest(3, set(1, 1, 701L), set(1, 1, 702L)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Duplicate");
+                .hasMessageContaining("Duplicate setNo");
 
         assertThatThrownBy(() -> service.submitScore(
                 TOURNAMENT_ID,
                 MATCH_ID,
-                request(score(1, 2), score(3, 0)),
+                setRequest(3, set(1, 1, 701L), set(3, 1, 703L)),
                 PLAYER_A_USER_ID,
                 "ROLE_USER"
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("match slots");
+                .hasMessageContaining("completed best-of");
     }
 
     @Test
@@ -381,6 +400,79 @@ class TournamentMatchScoreSubmissionServiceTest {
     }
 
     @Test
+    void submitScore_requiresAllUltimateBattleSets() {
+        givenContext(
+                tournament(),
+                ultimateBattleStage(),
+                matchWithMap(TournamentMatchEntity.STATUS_READY, 5, null),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+
+        assertThatThrownBy(() -> service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                setRequest(
+                        5,
+                        set(1, 1, 701L),
+                        set(2, 2, 702L),
+                        set(3, 1, 703L),
+                        set(4, 1, 704L)
+                ),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("one set result for every game");
+    }
+
+    @Test
+    void submitScore_acceptsUltimateBattleFullSetResults() {
+        List<TournamentMatchScoreSubmissionSetEntity> savedSets = new ArrayList<>();
+        givenContext(
+                tournament(),
+                ultimateBattleStage(),
+                matchWithMap(TournamentMatchEntity.STATUS_READY, 5, null),
+                List.of(actualSlot(1, PLAYER_A_PARTICIPANT_ID), actualSlot(2, PLAYER_B_PARTICIPANT_ID)),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+        given(submissionRepository.save(any(TournamentMatchScoreSubmissionEntity.class)))
+                .willAnswer(invocation -> {
+                    TournamentMatchScoreSubmissionEntity submission = invocation.getArgument(0);
+                    assignId(submission, 900L);
+                    return submission;
+                });
+        captureSavedSubmissionSets(savedSets);
+        given(submissionSetRepository.findAllByScoreSubmissionIdOrderBySetNoAsc(900L))
+                .willReturn(savedSets);
+        givenSubmitterUsers(user(PLAYER_A_USER_ID, "playerA"));
+
+        TournamentScoreSubmissionResponseDto response = service.submitScore(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                setRequest(
+                        5,
+                        set(1, 1, 701L),
+                        set(2, 2, 702L),
+                        set(3, 1, 703L),
+                        set(4, 1, 704L),
+                        set(5, 1, 705L)
+                ),
+                PLAYER_A_USER_ID,
+                "ROLE_USER"
+        );
+
+        assertThat(response.getBestOf()).isEqualTo(5);
+        assertThat(response.getSlot1Score()).isEqualTo(4);
+        assertThat(response.getSlot2Score()).isEqualTo(1);
+        assertThat(response.getWinnerSlotNo()).isEqualTo(1);
+        assertThat(response.getMapId()).isEqualTo(701L);
+        assertThat(savedSets)
+                .extracting(TournamentMatchScoreSubmissionSetEntity::getMapId)
+                .containsExactly(701L, 702L, 703L, 704L, 705L);
+    }
+
+    @Test
     void approveSubmission_finishesMatchPropagatesRoutesAndRejectsOtherPendingSubmissions() {
         TournamentEntity tournament = tournament();
         TournamentMatchEntity match = matchWithMap(TournamentMatchEntity.STATUS_READY, 5, null);
@@ -417,6 +509,65 @@ class TournamentMatchScoreSubmissionServiceTest {
         assertThat(secondSlot.getIsWinner()).isZero();
         assertThat(approved.getStatus()).isEqualTo(TournamentMatchScoreSubmissionEntity.STATUS_APPROVED);
         assertThat(other.getStatus()).isEqualTo(TournamentMatchScoreSubmissionEntity.STATUS_REJECTED);
+        verify(progressionService).propagateManualResult(MATCH_ID, STAGE_ID, PLAYER_A_PARTICIPANT_ID, PLAYER_B_PARTICIPANT_ID);
+    }
+
+    @Test
+    void approveSubmission_appliesUltimateBattleSetResults() {
+        List<TournamentMatchSetEntity> officialSets = new ArrayList<>();
+        TournamentEntity tournament = tournament();
+        TournamentMatchEntity match = matchWithMap(TournamentMatchEntity.STATUS_READY, 5, null);
+        TournamentMatchScoreSubmissionEntity approved = setSubmission(900L, 5, 4, 1, 1);
+        TournamentMatchSlotEntity firstSlot = actualSlot(1, PLAYER_A_PARTICIPANT_ID);
+        TournamentMatchSlotEntity secondSlot = actualSlot(2, PLAYER_B_PARTICIPANT_ID);
+
+        givenContext(
+                tournament,
+                ultimateBattleStage(),
+                match,
+                List.of(firstSlot, secondSlot),
+                List.of(internalParticipantA(), internalParticipantB())
+        );
+        given(submissionRepository.findByIdAndTournamentIdAndMatchId(900L, TOURNAMENT_ID, MATCH_ID))
+                .willReturn(Optional.of(approved));
+        given(submissionRepository.findAllByTournamentIdAndMatchIdAndStatus(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                TournamentMatchScoreSubmissionEntity.STATUS_PENDING
+        )).willReturn(List.of(approved));
+        given(submissionSetRepository.findAllByScoreSubmissionIdOrderBySetNoAsc(900L))
+                .willReturn(List.of(
+                        storedSet(1, 1, 701L),
+                        storedSet(2, 2, 702L),
+                        storedSet(3, 1, 703L),
+                        storedSet(4, 1, 704L),
+                        storedSet(5, 1, 705L)
+                ));
+        captureOfficialMatchSets(officialSets);
+        given(tournamentService.buildDetail(tournament)).willReturn(TournamentDetailResponseDto.builder().id(TOURNAMENT_ID).build());
+
+        TournamentDetailResponseDto response = service.approveSubmission(
+                TOURNAMENT_ID,
+                MATCH_ID,
+                900L,
+                999L,
+                "ROLE_ADMIN"
+        );
+
+        assertThat(response.getId()).isEqualTo(TOURNAMENT_ID);
+        assertThat(match.getBestOf()).isEqualTo(5);
+        assertThat(match.getMapId()).isEqualTo(701L);
+        assertThat(match.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_FINISHED);
+        assertThat(match.getWinnerParticipantId()).isEqualTo(PLAYER_A_PARTICIPANT_ID);
+        assertThat(firstSlot.getScore()).isEqualTo(4);
+        assertThat(secondSlot.getScore()).isEqualTo(1);
+        assertThat(approved.getStatus()).isEqualTo(TournamentMatchScoreSubmissionEntity.STATUS_APPROVED);
+        assertThat(officialSets)
+                .extracting(TournamentMatchSetEntity::getMapId)
+                .containsExactly(701L, 702L, 703L, 704L, 705L);
+        assertThat(officialSets)
+                .extracting(TournamentMatchSetEntity::getWinnerSlotNo)
+                .containsExactly(1, 2, 1, 1, 1);
         verify(progressionService).propagateManualResult(MATCH_ID, STAGE_ID, PLAYER_A_PARTICIPANT_ID, PLAYER_B_PARTICIPANT_ID);
     }
 
@@ -570,6 +721,9 @@ class TournamentMatchScoreSubmissionServiceTest {
         given(matchSlotRepository.findAllByMatchIdOrderBySlotNoAsc(MATCH_ID)).willReturn(slots);
         given(participantRepository.findAllById(any())).willReturn(participants);
         org.mockito.Mockito.lenient().when(mapRepository.existsById(anyLong())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(mapRepository.findAllById(any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(submissionSetRepository.findAllByScoreSubmissionIdOrderBySetNoAsc(anyLong()))
+                .thenReturn(List.of());
     }
 
     private TournamentEntity tournament() {
@@ -586,6 +740,10 @@ class TournamentMatchScoreSubmissionServiceTest {
 
     private TournamentStageEntity raceSurvivalStage() {
         return stage(TournamentStageEntity.TYPE_RACE_SURVIVAL);
+    }
+
+    private TournamentStageEntity ultimateBattleStage() {
+        return stage(TournamentStageEntity.TYPE_ULTIMATE_BATTLE);
     }
 
     private TournamentStageEntity stage(String stageType) {
@@ -712,10 +870,75 @@ class TournamentMatchScoreSubmissionServiceTest {
                 .build();
     }
 
+    private TournamentMatchScoreSubmissionEntity setSubmission(
+            Long id,
+            Integer bestOf,
+            Integer slot1Score,
+            Integer slot2Score,
+            Integer winnerSlotNo
+    ) {
+        return TournamentMatchScoreSubmissionEntity.builder()
+                .id(id)
+                .tournamentId(TOURNAMENT_ID)
+                .matchId(MATCH_ID)
+                .submittedByUserId(PLAYER_A_USER_ID)
+                .submittedByParticipantId(PLAYER_A_PARTICIPANT_ID)
+                .submitterRole(TournamentMatchScoreSubmissionEntity.ROLE_PLAYER)
+                .bestOf(bestOf)
+                .slot1Score(slot1Score)
+                .slot2Score(slot2Score)
+                .winnerSlotNo(winnerSlotNo)
+                .mapId(701L)
+                .status(TournamentMatchScoreSubmissionEntity.STATUS_PENDING)
+                .build();
+    }
+
     private TournamentScoreSubmissionRequestDto request(TournamentMatchScoreRequestDto... scores) {
         TournamentScoreSubmissionRequestDto request = new TournamentScoreSubmissionRequestDto();
         request.setScores(List.of(scores));
         return request;
+    }
+
+    private TournamentScoreSubmissionRequestDto setRequest(
+            Integer bestOf,
+            TournamentScoreSubmissionSetRequestDto... sets
+    ) {
+        TournamentScoreSubmissionRequestDto request = new TournamentScoreSubmissionRequestDto();
+        request.setBestOf(bestOf);
+        request.setSets(List.of(sets));
+        return request;
+    }
+
+    private TournamentScoreSubmissionRequestDto setScoreRequest(
+            Integer bestOf,
+            Integer slot1Score,
+            Integer slot2Score,
+            Long... mapIds
+    ) {
+        List<TournamentScoreSubmissionSetRequestDto> sets = new ArrayList<>();
+        int winnerSlotNo = slot1Score > slot2Score ? 1 : 2;
+        int loserSlotNo = winnerSlotNo == 1 ? 2 : 1;
+        int winnerScore = Math.max(slot1Score, slot2Score);
+        int loserScore = Math.min(slot1Score, slot2Score);
+
+        for (int index = 0; index < loserScore; index++) {
+            sets.add(set(sets.size() + 1, loserSlotNo, mapIdForSet(sets.size(), mapIds)));
+        }
+        for (int index = 0; index < winnerScore; index++) {
+            sets.add(set(sets.size() + 1, winnerSlotNo, mapIdForSet(sets.size(), mapIds)));
+        }
+
+        TournamentScoreSubmissionRequestDto request = new TournamentScoreSubmissionRequestDto();
+        request.setBestOf(bestOf);
+        request.setSets(sets);
+        return request;
+    }
+
+    private Long mapIdForSet(int index, Long... mapIds) {
+        if (mapIds != null && index < mapIds.length && mapIds[index] != null) {
+            return mapIds[index];
+        }
+        return 701L + index;
     }
 
     private TournamentScoreSubmissionRequestDto requestWithMap(Long mapId, TournamentMatchScoreRequestDto... scores) {
@@ -729,5 +952,50 @@ class TournamentMatchScoreSubmissionServiceTest {
         request.setSlotNo(slotNo);
         request.setScore(score);
         return request;
+    }
+
+    private TournamentScoreSubmissionSetRequestDto set(Integer setNo, Integer winnerSlotNo, Long mapId) {
+        TournamentScoreSubmissionSetRequestDto request = new TournamentScoreSubmissionSetRequestDto();
+        request.setSetNo(setNo);
+        request.setWinnerSlotNo(winnerSlotNo);
+        request.setMapId(mapId);
+        return request;
+    }
+
+    private TournamentMatchScoreSubmissionSetEntity storedSet(Integer setNo, Integer winnerSlotNo, Long mapId) {
+        return TournamentMatchScoreSubmissionSetEntity.builder()
+                .scoreSubmissionId(900L)
+                .setNo(setNo)
+                .winnerSlotNo(winnerSlotNo)
+                .mapId(mapId)
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void captureSavedSubmissionSets(List<TournamentMatchScoreSubmissionSetEntity> savedSets) {
+        given(submissionSetRepository.saveAll(any())).willAnswer(invocation -> {
+            Iterable<TournamentMatchScoreSubmissionSetEntity> sets = invocation.getArgument(0);
+            sets.forEach(savedSets::add);
+            return savedSets;
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private void captureOfficialMatchSets(List<TournamentMatchSetEntity> officialSets) {
+        given(matchSetRepository.saveAll(any())).willAnswer(invocation -> {
+            Iterable<TournamentMatchSetEntity> sets = invocation.getArgument(0);
+            sets.forEach(officialSets::add);
+            return officialSets;
+        });
+    }
+
+    private void assignId(Object entity, Long id) {
+        try {
+            Field field = entity.getClass().getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(entity, id);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

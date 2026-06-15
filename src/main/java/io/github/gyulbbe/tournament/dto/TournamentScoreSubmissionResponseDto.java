@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -16,10 +17,12 @@ public class TournamentScoreSubmissionResponseDto {
     private Long submittedByParticipantId;
     private String submitterLoginId;
     private String submitterRole;
+    private Integer bestOf;
     private Integer slot1Score;
     private Integer slot2Score;
     private Integer winnerSlotNo;
     private Long mapId;
+    private List<TournamentScoreSubmissionSetResponseDto> sets;
     private String status;
     private Long adminReviewerUserId;
     private LocalDateTime adminReviewedAt;

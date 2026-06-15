@@ -270,6 +270,44 @@ class TournamentBracketProgressionServiceTest {
     }
 
     @Test
+    void propagateManualResult_autoAdvancesTwoParticipantDualGroupRunnerUpThroughByeDecider() {
+        TournamentStageEntity stage = dualGroupStage();
+        TournamentEntity tournament = liveTournament();
+        TournamentResultSlotEntity firstResultSlot = qualifiedResultSlot(901L);
+        TournamentResultSlotEntity secondResultSlot = qualifiedResultSlot(902L);
+        TournamentMatchEntity deciderMatch = match(200L, TournamentMatchEntity.STATUS_PENDING, 2);
+        TournamentMatchSlotEntity deciderSourceSlot = emptySlot(2000L, 200L, 1, "Winners loser");
+        TournamentMatchSlotEntity deciderByeSlot = byeSlot(2001L, 200L, 2);
+        List<TournamentResultSlotEntity> resultSlots = List.of(firstResultSlot, secondResultSlot);
+
+        given(routeRepository.findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_WINNER))
+                .willReturn(Optional.of(resultSlotRoute(100L, TournamentRouteEntity.OUTCOME_WINNER, 901L)));
+        given(routeRepository.findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_LOSER))
+                .willReturn(Optional.of(matchSlotRoute(100L, TournamentRouteEntity.OUTCOME_LOSER, 200L, 1)));
+        given(routeRepository.findByFromMatchIdAndOutcome(200L, TournamentRouteEntity.OUTCOME_WINNER))
+                .willReturn(Optional.of(resultSlotRoute(200L, TournamentRouteEntity.OUTCOME_WINNER, 902L)));
+        given(resultSlotRepository.findById(901L)).willReturn(Optional.of(firstResultSlot));
+        given(resultSlotRepository.findById(902L)).willReturn(Optional.of(secondResultSlot));
+        given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
+        given(resultSlotRepository.findAllByStageIdOrderByRankNoAscIdAsc(STAGE_ID)).willReturn(resultSlots);
+        given(matchSlotRepository.findByMatchIdAndSlotNo(200L, 1)).willReturn(Optional.of(deciderSourceSlot));
+        given(matchRepository.findById(200L)).willReturn(Optional.of(deciderMatch));
+        given(matchSlotRepository.findAllByMatchIdOrderBySlotNoAsc(200L))
+                .willReturn(List.of(deciderSourceSlot, deciderByeSlot));
+        given(matchRepository.findAllByStageIdOrderByDisplayOrderAsc(STAGE_ID))
+                .willReturn(List.of(deciderMatch));
+        given(tournamentRepository.findById(1L)).willReturn(Optional.of(tournament));
+
+        service.propagateManualResult(100L, STAGE_ID, 101L, 102L);
+
+        assertThat(firstResultSlot.getParticipantId()).isEqualTo(101L);
+        assertThat(secondResultSlot.getParticipantId()).isEqualTo(102L);
+        assertThat(deciderMatch.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_FINISHED);
+        assertThat(deciderMatch.getWinnerParticipantId()).isEqualTo(102L);
+        assertThat(tournament.getStatus()).isEqualTo(TournamentEntity.STATUS_FINISHED);
+    }
+
+    @Test
     void applyByeWinsForStage_cascadesByeWinnersAfterRoutePropagation() {
         TournamentStageEntity stage = singleEliminationStage();
         TournamentMatchEntity r1Match = match(100L, TournamentMatchEntity.STATUS_READY, 1);

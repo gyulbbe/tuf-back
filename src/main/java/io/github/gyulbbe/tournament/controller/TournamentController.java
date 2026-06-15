@@ -5,6 +5,9 @@ import io.github.gyulbbe.common.error.ApiErrorCode;
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionRejectRequestDto;
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogRequestDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDeleteRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
@@ -15,6 +18,7 @@ import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRejectRequestDt
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
 import io.github.gyulbbe.tournament.service.RaceSurvivalProgressSubmissionService;
+import io.github.gyulbbe.tournament.service.TournamentClanShareSendLogService;
 import io.github.gyulbbe.tournament.service.TournamentCreationService;
 import io.github.gyulbbe.tournament.service.TournamentMatchScoreSubmissionService;
 import io.github.gyulbbe.tournament.service.TournamentService;
@@ -50,6 +54,7 @@ public class TournamentController {
     private final TournamentCreationService tournamentCreationService;
     private final TournamentMatchScoreSubmissionService scoreSubmissionService;
     private final RaceSurvivalProgressSubmissionService raceSurvivalProgressSubmissionService;
+    private final TournamentClanShareSendLogService clanShareSendLogService;
 
     @GetMapping
     public ResponseEntity<ResponseDto<TournamentPageResponseDto>> listTournaments(
@@ -128,6 +133,80 @@ public class TournamentController {
         }
     }
 
+    @GetMapping("/{tournamentId}/clan-share-send-logs/summary")
+    public ResponseEntity<ResponseDto<TournamentClanShareSendLogSummaryResponseDto>> getClanShareSendLogSummary(
+            @PathVariable Long tournamentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            if (!isAdmin(userDetails)) {
+                return respond(ResponseDto.fail(
+                        HttpServletResponse.SC_FORBIDDEN,
+                        "Admin permission is required.",
+                        ApiErrorCode.AUTH_FORBIDDEN
+                ));
+            }
+            return respond(ResponseDto.success(clanShareSendLogService.getSummary(tournamentId)));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to get clan-share send log summary. tournamentId={}", tournamentId, e);
+            return respond(ResponseDto.fail("Failed to get clan-share send log summary."));
+        }
+    }
+
+    @PostMapping("/clan-share-send-logs")
+    public ResponseEntity<ResponseDto<TournamentClanShareSendLogResponseDto>> createClanShareSendLog(
+            @RequestBody TournamentClanShareSendLogRequestDto request,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            if (!isAdmin(userDetails)) {
+                return respond(ResponseDto.fail(
+                        HttpServletResponse.SC_FORBIDDEN,
+                        "Admin permission is required.",
+                        ApiErrorCode.AUTH_FORBIDDEN
+                ));
+            }
+            TournamentClanShareSendLogResponseDto response = clanShareSendLogService.createLog(
+                    request,
+                    userDetails.getUserPk()
+            );
+            return respond(ResponseDto.success(response));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to create clan-share send log.", e);
+            return respond(ResponseDto.fail("Failed to create clan-share send log."));
+        }
+    }
+
     @PostMapping("/{tournamentId}/matches/{matchId}/score-submissions")
     public ResponseEntity<ResponseDto<TournamentScoreSubmissionResponseDto>> submitScore(
             @PathVariable Long tournamentId,
@@ -139,12 +218,20 @@ public class TournamentController {
             if (userDetails == null || userDetails.getUserPk() == null) {
                 return authRequiredResponse();
             }
+            String actorRole = resolveRole(userDetails);
+            log.info(
+                    "[tournament-score] submit endpoint tournamentId={} matchId={} actorUserId={} actorRole={}",
+                    tournamentId,
+                    matchId,
+                    userDetails.getUserPk(),
+                    actorRole
+            );
             TournamentScoreSubmissionResponseDto response = scoreSubmissionService.submitScore(
                     tournamentId,
                     matchId,
                     request,
                     userDetails.getUserPk(),
-                    resolveRole(userDetails)
+                    actorRole
             );
             return respond(ResponseDto.success(response));
         } catch (NoSuchElementException e) {
@@ -160,6 +247,12 @@ public class TournamentController {
                     ApiErrorCode.AUTH_FORBIDDEN
             ));
         } catch (IllegalArgumentException e) {
+            log.warn(
+                    "[tournament-score] submit rejected tournamentId={} matchId={} reason={}",
+                    tournamentId,
+                    matchId,
+                    e.getMessage()
+            );
             return respond(ResponseDto.fail(
                     HttpServletResponse.SC_BAD_REQUEST,
                     e.getMessage(),
@@ -466,12 +559,21 @@ public class TournamentController {
             if (userDetails == null || userDetails.getUserPk() == null) {
                 return authRequiredResponse();
             }
+            String actorRole = resolveRole(userDetails);
+            log.info(
+                    "[tournament-score] approve endpoint tournamentId={} matchId={} submissionId={} actorUserId={} actorRole={}",
+                    tournamentId,
+                    matchId,
+                    submissionId,
+                    userDetails.getUserPk(),
+                    actorRole
+            );
             TournamentDetailResponseDto response = scoreSubmissionService.approveSubmission(
                     tournamentId,
                     matchId,
                     submissionId,
                     userDetails.getUserPk(),
-                    resolveRole(userDetails)
+                    actorRole
             );
             return respond(ResponseDto.success(response));
         } catch (NoSuchElementException e) {
@@ -487,6 +589,13 @@ public class TournamentController {
                     ApiErrorCode.AUTH_FORBIDDEN
             ));
         } catch (IllegalArgumentException e) {
+            log.warn(
+                    "[tournament-score] approve rejected tournamentId={} matchId={} submissionId={} reason={}",
+                    tournamentId,
+                    matchId,
+                    submissionId,
+                    e.getMessage()
+            );
             return respond(ResponseDto.fail(
                     HttpServletResponse.SC_BAD_REQUEST,
                     e.getMessage(),
@@ -516,13 +625,22 @@ public class TournamentController {
             if (userDetails == null || userDetails.getUserPk() == null) {
                 return authRequiredResponse();
             }
+            String actorRole = resolveRole(userDetails);
+            log.info(
+                    "[tournament-score] reject endpoint tournamentId={} matchId={} submissionId={} actorUserId={} actorRole={}",
+                    tournamentId,
+                    matchId,
+                    submissionId,
+                    userDetails.getUserPk(),
+                    actorRole
+            );
             TournamentScoreSubmissionResponseDto response = scoreSubmissionService.rejectSubmission(
                     tournamentId,
                     matchId,
                     submissionId,
                     request,
                     userDetails.getUserPk(),
-                    resolveRole(userDetails)
+                    actorRole
             );
             return respond(ResponseDto.success(response));
         } catch (NoSuchElementException e) {
@@ -538,6 +656,13 @@ public class TournamentController {
                     ApiErrorCode.AUTH_FORBIDDEN
             ));
         } catch (IllegalArgumentException e) {
+            log.warn(
+                    "[tournament-score] reject rejected tournamentId={} matchId={} submissionId={} reason={}",
+                    tournamentId,
+                    matchId,
+                    submissionId,
+                    e.getMessage()
+            );
             return respond(ResponseDto.fail(
                     HttpServletResponse.SC_BAD_REQUEST,
                     e.getMessage(),

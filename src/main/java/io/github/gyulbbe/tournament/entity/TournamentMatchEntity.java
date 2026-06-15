@@ -120,6 +120,10 @@ public class TournamentMatchEntity {
         this.mapId = mapId;
     }
 
+    public void updateBestOf(Integer bestOf) {
+        this.bestOf = bestOf;
+    }
+
     public void reschedule(LocalDateTime scheduledAt) {
         this.scheduledAt = scheduledAt;
     }
