@@ -1,15 +1,27 @@
 package io.github.gyulbbe.tournament.service;
 
+import io.github.gyulbbe.map.entity.MapEntity;
+import io.github.gyulbbe.map.repository.MapRepository;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogStatusResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryResponseDto;
 import io.github.gyulbbe.tournament.entity.TournamentClanShareSendLogEntity;
+import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
+import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
 import io.github.gyulbbe.tournament.repository.TournamentClanShareSendLogRepository;
+import io.github.gyulbbe.tournament.repository.TournamentGroupRepository;
 import io.github.gyulbbe.tournament.repository.TournamentMatchRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSetRepository;
+import io.github.gyulbbe.tournament.repository.TournamentMatchSlotRepository;
+import io.github.gyulbbe.tournament.repository.TournamentParticipantRepository;
 import io.github.gyulbbe.tournament.repository.TournamentRepository;
 import io.github.gyulbbe.tournament.repository.TournamentStageRepository;
+import io.github.gyulbbe.user.entity.UserEntity;
+import io.github.gyulbbe.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -18,6 +30,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -44,10 +57,28 @@ class TournamentClanShareSendLogServiceTest {
     private TournamentStageRepository stageRepository;
 
     @Mock
+    private TournamentGroupRepository groupRepository;
+
+    @Mock
     private TournamentMatchRepository matchRepository;
 
     @Mock
+    private TournamentMatchSlotRepository matchSlotRepository;
+
+    @Mock
+    private TournamentMatchSetRepository matchSetRepository;
+
+    @Mock
+    private TournamentParticipantRepository participantRepository;
+
+    @Mock
     private TournamentClanShareSendLogRepository logRepository;
+
+    @Mock
+    private MapRepository mapRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private TournamentClanShareSendLogService service;
@@ -95,6 +126,68 @@ class TournamentClanShareSendLogServiceTest {
         assertThat(response.isHasHistory()).isTrue();
         assertThat(response.getTotalCount()).isEqualTo(3L);
         assertThat(response.getLatestSentAt()).isEqualTo(sentAt);
+    }
+
+    @Test
+    void getStatus_returnsUnsentFailedAndSuccessByMatchLogHistory() {
+        Long failedMatchId = 101L;
+        Long successMatchId = 102L;
+        Long mapId = 300L;
+        given(tournamentRepository.existsById(TOURNAMENT_ID)).willReturn(true);
+        given(stageRepository.findAllByTournamentIdOrderByDisplayOrderAsc(TOURNAMENT_ID))
+                .willReturn(List.of(stage(TOURNAMENT_ID)));
+        given(groupRepository.findAllByStageIdOrderByDisplayOrderAsc(STAGE_ID))
+                .willReturn(List.of(group()));
+        given(matchRepository.findAllByGroupIdInOrderByDisplayOrderAsc(List.of(GROUP_ID)))
+                .willReturn(List.of(
+                        match(MATCH_ID, 1, 1, mapId),
+                        match(failedMatchId, 1, 2, mapId),
+                        match(successMatchId, 2, 3, mapId)
+                ));
+        given(matchSlotRepository.findAllByMatchIdInOrderBySlotNoAsc(List.of(MATCH_ID, failedMatchId, successMatchId)))
+                .willReturn(List.of(
+                        slot(MATCH_ID, 1, 1000L, true),
+                        slot(MATCH_ID, 2, 1001L, false),
+                        slot(failedMatchId, 1, 1000L, false),
+                        slot(failedMatchId, 2, 1001L, true),
+                        slot(successMatchId, 1, 1000L, true),
+                        slot(successMatchId, 2, 1001L, false)
+                ));
+        given(matchSetRepository.findAllByMatchIdInOrderByMatchIdAscSetNoAsc(List.of(MATCH_ID, failedMatchId, successMatchId)))
+                .willReturn(List.of());
+        given(participantRepository.findAllById(any()))
+                .willReturn(List.of(participant(1000L, 2000L, "P1"), participant(1001L, 2001L, "P2")));
+        given(userRepository.findAllById(any()))
+                .willReturn(List.of(user(2000L, "Alpha"), user(2001L, "Beta")));
+        given(mapRepository.findAllById(any()))
+                .willReturn(List.of(MapEntity.builder()
+                        .id(mapId)
+                        .mapName("투혼")
+                        .build()));
+        given(logRepository.findAllByTournamentIdAndMatchIdInOrderByRegDateDescIdDesc(
+                TOURNAMENT_ID,
+                List.of(MATCH_ID, failedMatchId, successMatchId)
+        )).willReturn(List.of(
+                log(successMatchId, TournamentClanShareSendLogEntity.STATUS_SUCCESS, "SUCCESS", TournamentClanShareSendLogEntity.STATUS_FAILED, "sheet failed", 3),
+                log(failedMatchId, TournamentClanShareSendLogEntity.STATUS_FAILED, "ELO user not found", TournamentClanShareSendLogEntity.STATUS_SUCCESS, "SUCCESS", 2)
+        ));
+
+        TournamentClanShareSendLogStatusResponseDto response = service.getStatus(TOURNAMENT_ID);
+
+        assertThat(response.getTotals().getTotal()).isEqualTo(3);
+        assertThat(response.getTotals().getUnsent()).isEqualTo(1);
+        assertThat(response.getTotals().getFailed()).isEqualTo(1);
+        assertThat(response.getTotals().getSuccess()).isEqualTo(1);
+        assertThat(response.getTotals().getRetryable()).isEqualTo(2);
+        assertThat(response.getTotals().getSheetFailed()).isEqualTo(1);
+        assertThat(response.getGroups()).extracting(TournamentClanShareSendLogStatusResponseDto.Group::getGroupLabel)
+                .containsExactly("Round 1", "Final");
+        assertThat(findStatusMatch(response, MATCH_ID).getStatus()).isEqualTo("UNSENT");
+        assertThat(findStatusMatch(response, MATCH_ID).isRetryable()).isTrue();
+        assertThat(findStatusMatch(response, failedMatchId).getStatus()).isEqualTo(TournamentClanShareSendLogEntity.STATUS_FAILED);
+        assertThat(findStatusMatch(response, failedMatchId).getEloMessage()).isEqualTo("ELO user not found");
+        assertThat(findStatusMatch(response, successMatchId).getStatus()).isEqualTo(TournamentClanShareSendLogEntity.STATUS_SUCCESS);
+        assertThat(findStatusMatch(response, successMatchId).isRetryable()).isFalse();
     }
 
     @Test
@@ -163,6 +256,94 @@ class TournamentClanShareSendLogServiceTest {
                 .build();
     }
 
+    private TournamentMatchEntity match(Long matchId, Integer roundNo, Integer displayOrder, Long mapId) {
+        return TournamentMatchEntity.builder()
+                .id(matchId)
+                .stageId(STAGE_ID)
+                .groupId(GROUP_ID)
+                .matchKey("R" + roundNo + "M" + displayOrder)
+                .matchRole(roundNo == 2 ? TournamentMatchEntity.ROLE_FINAL : TournamentMatchEntity.ROLE_ROUND)
+                .roundNo(roundNo)
+                .displayName("Round " + roundNo + " Match " + displayOrder)
+                .bestOf(3)
+                .status(TournamentMatchEntity.STATUS_FINISHED)
+                .mapId(mapId)
+                .displayOrder(displayOrder)
+                .build();
+    }
+
+    private TournamentGroupEntity group() {
+        return TournamentGroupEntity.builder()
+                .id(GROUP_ID)
+                .stageId(STAGE_ID)
+                .groupCode("A")
+                .groupName("A조")
+                .displayOrder(1)
+                .build();
+    }
+
+    private TournamentMatchSlotEntity slot(Long matchId, Integer slotNo, Long participantId, boolean winner) {
+        return TournamentMatchSlotEntity.builder()
+                .id(matchId * 10 + slotNo)
+                .matchId(matchId)
+                .slotNo(slotNo)
+                .participantId(participantId)
+                .score(winner ? 2 : 1)
+                .isWinner(winner ? 1 : 0)
+                .isBye(0)
+                .build();
+    }
+
+    private TournamentParticipantEntity participant(Long participantId, Long userId, String participantName) {
+        return TournamentParticipantEntity.builder()
+                .id(participantId)
+                .tournamentId(TOURNAMENT_ID)
+                .userId(userId)
+                .participantName(participantName)
+                .seedNo(participantId.intValue())
+                .status(TournamentParticipantEntity.STATUS_READY)
+                .build();
+    }
+
+    private UserEntity user(Long userId, String loginId) {
+        return UserEntity.builder()
+                .id(userId)
+                .userId(loginId)
+                .name(loginId)
+                .status("ACTIVE")
+                .build();
+    }
+
+    private TournamentClanShareSendLogEntity log(
+            Long matchId,
+            String eloStatus,
+            String eloMessage,
+            String sheetStatus,
+            String sheetMessage,
+            int minute
+    ) {
+        return TournamentClanShareSendLogEntity.builder()
+                .id(matchId)
+                .tournamentId(TOURNAMENT_ID)
+                .matchId(matchId)
+                .sendGroupId("group-" + matchId)
+                .player1("Alpha")
+                .player2("Beta")
+                .winner("Alpha")
+                .loser("Beta")
+                .mapName("투혼")
+                .matchType("개인리그")
+                .matchName("테스트 대회")
+                .playedDate("2026-05-31")
+                .eloStatus(eloStatus)
+                .eloMessage(eloMessage)
+                .sheetStatus(sheetStatus)
+                .sheetMessage(sheetMessage)
+                .requestedByUserId(ADMIN_USER_ID)
+                .regDate(LocalDateTime.of(2026, 5, 31, 13, minute))
+                .build();
+    }
+
     private TournamentStageEntity stage(Long tournamentId) {
         return TournamentStageEntity.builder()
                 .id(STAGE_ID)
@@ -193,5 +374,16 @@ class TournamentClanShareSendLogServiceTest {
         request.setSheetStatus(TournamentClanShareSendLogEntity.STATUS_SUCCESS);
         request.setSheetMessage("SUCCESS");
         return request;
+    }
+
+    private TournamentClanShareSendLogStatusResponseDto.Match findStatusMatch(
+            TournamentClanShareSendLogStatusResponseDto response,
+            Long matchId
+    ) {
+        return response.getGroups().stream()
+                .flatMap(group -> group.getMatches().stream())
+                .filter(match -> match.getMatchId().equals(matchId))
+                .findFirst()
+                .orElseThrow();
     }
 }

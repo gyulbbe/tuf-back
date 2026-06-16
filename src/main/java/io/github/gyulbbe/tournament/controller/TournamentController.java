@@ -7,6 +7,7 @@ import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionRequestDto
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogStatusResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentCreateRequestDto;
 import io.github.gyulbbe.tournament.dto.TournamentDeleteRequestDto;
@@ -165,6 +166,41 @@ public class TournamentController {
         } catch (Exception e) {
             log.warn("Failed to get clan-share send log summary. tournamentId={}", tournamentId, e);
             return respond(ResponseDto.fail("Failed to get clan-share send log summary."));
+        }
+    }
+
+    @GetMapping("/{tournamentId}/clan-share-send-logs/status")
+    public ResponseEntity<ResponseDto<TournamentClanShareSendLogStatusResponseDto>> getClanShareSendLogStatus(
+            @PathVariable Long tournamentId,
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        try {
+            if (userDetails == null || userDetails.getUserPk() == null) {
+                return authRequiredResponse();
+            }
+            if (!isAdmin(userDetails)) {
+                return respond(ResponseDto.fail(
+                        HttpServletResponse.SC_FORBIDDEN,
+                        "Admin permission is required.",
+                        ApiErrorCode.AUTH_FORBIDDEN
+                ));
+            }
+            return respond(ResponseDto.success(clanShareSendLogService.getStatus(tournamentId)));
+        } catch (NoSuchElementException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_NOT_FOUND,
+                    e.getMessage(),
+                    ApiErrorCode.RESOURCE_NOT_FOUND
+            ));
+        } catch (IllegalArgumentException e) {
+            return respond(ResponseDto.fail(
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    e.getMessage(),
+                    ApiErrorCode.VALIDATION_FAILED
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to get clan-share send log status. tournamentId={}", tournamentId, e);
+            return respond(ResponseDto.fail("Failed to get clan-share send log status."));
         }
     }
 

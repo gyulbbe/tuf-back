@@ -93,6 +93,7 @@ public class SecurityConfig {
                 .requestMatchers("/admin/personal-leagues", "/admin/personal-leagues/**").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/tournaments").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/tournaments/*/clan-share-send-logs/summary").hasAnyRole("MANAGER", "MASTER", "ADMIN")
+                .requestMatchers(HttpMethod.GET, "/tournaments/*/clan-share-send-logs/status").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/tournaments/clan-share-send-logs").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/tournaments/*/matches/*/map").hasAnyRole("MANAGER", "MASTER", "ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/tournaments/*/matches/*/participants").authenticated()

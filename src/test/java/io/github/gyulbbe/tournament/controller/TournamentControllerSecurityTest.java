@@ -4,6 +4,7 @@ import io.github.gyulbbe.config.SecurityConfig;
 import io.github.gyulbbe.jwt.JWTUtil;
 import io.github.gyulbbe.tournament.dto.RaceSurvivalProgressSubmissionResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogResponseDto;
+import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogStatusResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentDetailResponseDto;
 import io.github.gyulbbe.tournament.dto.TournamentScoreSubmissionResponseDto;
@@ -264,6 +265,12 @@ class TournamentControllerSecurityTest {
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
 
+        mockMvc.perform(get("/tournaments/1/clan-share-send-logs/status")
+                        .with(auth(101L, "ROLE_USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.errorCode").value("AUTH_FORBIDDEN"));
+
         mockMvc.perform(post("/tournaments/clan-share-send-logs")
                         .with(auth(101L, "ROLE_USER"))
                         .contentType("application/json")
@@ -279,6 +286,18 @@ class TournamentControllerSecurityTest {
                 .willReturn(TournamentClanShareSendLogSummaryResponseDto.builder()
                         .hasHistory(true)
                         .totalCount(1)
+                        .build());
+        given(clanShareSendLogService.getStatus(eq(1L)))
+                .willReturn(TournamentClanShareSendLogStatusResponseDto.builder()
+                        .groups(List.of())
+                        .totals(TournamentClanShareSendLogStatusResponseDto.Totals.builder()
+                                .total(0)
+                                .success(0)
+                                .failed(0)
+                                .unsent(0)
+                                .sheetFailed(0)
+                                .retryable(0)
+                                .build())
                         .build());
         given(clanShareSendLogService.createLog(any(), anyLong()))
                 .willReturn(TournamentClanShareSendLogResponseDto.builder()
@@ -296,6 +315,12 @@ class TournamentControllerSecurityTest {
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.hasHistory").value(true))
                     .andExpect(jsonPath("$.data.totalCount").value(1));
+
+            mockMvc.perform(get("/tournaments/1/clan-share-send-logs/status")
+                            .with(auth(999L, role)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.totals.total").value(0));
 
             mockMvc.perform(post("/tournaments/clan-share-send-logs")
                             .with(auth(999L, role))
