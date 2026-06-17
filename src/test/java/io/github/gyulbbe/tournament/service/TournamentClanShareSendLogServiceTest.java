@@ -9,6 +9,7 @@ import io.github.gyulbbe.tournament.dto.TournamentClanShareSendLogSummaryRespons
 import io.github.gyulbbe.tournament.entity.TournamentClanShareSendLogEntity;
 import io.github.gyulbbe.tournament.entity.TournamentGroupEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchEntity;
+import io.github.gyulbbe.tournament.entity.TournamentMatchSetEntity;
 import io.github.gyulbbe.tournament.entity.TournamentMatchSlotEntity;
 import io.github.gyulbbe.tournament.entity.TournamentParticipantEntity;
 import io.github.gyulbbe.tournament.entity.TournamentStageEntity;
@@ -191,6 +192,66 @@ class TournamentClanShareSendLogServiceTest {
     }
 
     @Test
+    void getStatus_requiresEveryPlayedSetToHaveEloSuccessLog() {
+        Long mapId = 300L;
+        given(tournamentRepository.existsById(TOURNAMENT_ID)).willReturn(true);
+        given(stageRepository.findAllByTournamentIdOrderByDisplayOrderAsc(TOURNAMENT_ID))
+                .willReturn(List.of(stage(TOURNAMENT_ID)));
+        given(groupRepository.findAllByStageIdOrderByDisplayOrderAsc(STAGE_ID))
+                .willReturn(List.of(group()));
+        given(matchRepository.findAllByGroupIdInOrderByDisplayOrderAsc(List.of(GROUP_ID)))
+                .willReturn(List.of(match(MATCH_ID, 1, 1, mapId)));
+        given(matchSlotRepository.findAllByMatchIdInOrderBySlotNoAsc(List.of(MATCH_ID)))
+                .willReturn(List.of(
+                        slot(MATCH_ID, 1, 1000L, true),
+                        slot(MATCH_ID, 2, 1001L, false)
+                ));
+        given(matchSetRepository.findAllByMatchIdInOrderByMatchIdAscSetNoAsc(List.of(MATCH_ID)))
+                .willReturn(List.of(
+                        matchSet(1, mapId, 1),
+                        matchSet(2, mapId, 2),
+                        matchSet(3, mapId, 1)
+                ));
+        given(participantRepository.findAllById(any()))
+                .willReturn(List.of(participant(1000L, 2000L, "P1"), participant(1001L, 2001L, "P2")));
+        given(userRepository.findAllById(any()))
+                .willReturn(List.of(user(2000L, "Alpha"), user(2001L, "Beta")));
+        given(mapRepository.findAllById(any()))
+                .willReturn(List.of(MapEntity.builder()
+                        .id(mapId)
+                        .mapName("투혼")
+                        .build()));
+        given(logRepository.findAllByTournamentIdAndMatchIdInOrderByRegDateDescIdDesc(
+                TOURNAMENT_ID,
+                List.of(MATCH_ID)
+        )).willReturn(List.of(
+                setLog(MATCH_ID, 1, TournamentClanShareSendLogEntity.STATUS_SUCCESS, "SUCCESS", 3),
+                setLog(MATCH_ID, 2, TournamentClanShareSendLogEntity.STATUS_SUCCESS, "SUCCESS", 2),
+                setLog(MATCH_ID, 3, TournamentClanShareSendLogEntity.STATUS_FAILED, "third set failed", 1)
+        ));
+
+        TournamentClanShareSendLogStatusResponseDto response = service.getStatus(TOURNAMENT_ID);
+
+        TournamentClanShareSendLogStatusResponseDto.Match matchStatus = findStatusMatch(response, MATCH_ID);
+        assertThat(matchStatus.getStatus()).isEqualTo(TournamentClanShareSendLogEntity.STATUS_FAILED);
+        assertThat(matchStatus.getEloMessage()).isEqualTo("third set failed");
+        assertThat(matchStatus.isRetryable()).isTrue();
+        assertThat(matchStatus.getSets()).hasSize(3);
+        assertThat(matchStatus.getSets())
+                .extracting(TournamentClanShareSendLogStatusResponseDto.SetStatus::getStatus)
+                .containsExactly(
+                        TournamentClanShareSendLogEntity.STATUS_SUCCESS,
+                        TournamentClanShareSendLogEntity.STATUS_SUCCESS,
+                        TournamentClanShareSendLogEntity.STATUS_FAILED
+                );
+        assertThat(matchStatus.getSets())
+                .extracting(TournamentClanShareSendLogStatusResponseDto.SetStatus::isRetryable)
+                .containsExactly(false, false, true);
+        assertThat(response.getTotals().getSuccess()).isZero();
+        assertThat(response.getTotals().getFailed()).isEqualTo(1);
+    }
+
+    @Test
     void createLog_savesSuccessAndFailureStatuses() {
         givenMatchInTournament();
         given(logRepository.save(any(TournamentClanShareSendLogEntity.class)))
@@ -305,6 +366,16 @@ class TournamentClanShareSendLogServiceTest {
                 .build();
     }
 
+    private TournamentMatchSetEntity matchSet(Integer setNo, Long mapId, Integer winnerSlotNo) {
+        return TournamentMatchSetEntity.builder()
+                .id(10_000L + setNo)
+                .matchId(MATCH_ID)
+                .setNo(setNo)
+                .mapId(mapId)
+                .winnerSlotNo(winnerSlotNo)
+                .build();
+    }
+
     private UserEntity user(Long userId, String loginId) {
         return UserEntity.builder()
                 .id(userId)
@@ -339,6 +410,35 @@ class TournamentClanShareSendLogServiceTest {
                 .eloMessage(eloMessage)
                 .sheetStatus(sheetStatus)
                 .sheetMessage(sheetMessage)
+                .requestedByUserId(ADMIN_USER_ID)
+                .regDate(LocalDateTime.of(2026, 5, 31, 13, minute))
+                .build();
+    }
+
+    private TournamentClanShareSendLogEntity setLog(
+            Long matchId,
+            Integer setNo,
+            String eloStatus,
+            String eloMessage,
+            int minute
+    ) {
+        return TournamentClanShareSendLogEntity.builder()
+                .id(matchId * 10 + setNo)
+                .tournamentId(TOURNAMENT_ID)
+                .matchId(matchId)
+                .sendGroupId("group-" + matchId)
+                .player1("Alpha")
+                .player2("Beta")
+                .winner(setNo == 2 ? "Beta" : "Alpha")
+                .loser(setNo == 2 ? "Alpha" : "Beta")
+                .mapName("투혼")
+                .matchType("개인리그")
+                .matchName("테스트 대회 | ROUND1 MATCH 1 | " + setNo + "세트")
+                .playedDate("2026-05-31")
+                .eloStatus(eloStatus)
+                .eloMessage(eloMessage)
+                .sheetStatus(TournamentClanShareSendLogEntity.STATUS_SUCCESS)
+                .sheetMessage("SUCCESS")
                 .requestedByUserId(ADMIN_USER_ID)
                 .regDate(LocalDateTime.of(2026, 5, 31, 13, minute))
                 .build();

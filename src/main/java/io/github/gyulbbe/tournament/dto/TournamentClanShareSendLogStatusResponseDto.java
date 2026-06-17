@@ -34,6 +34,19 @@ public class TournamentClanShareSendLogStatusResponseDto {
         private String sheetMessage;
         private LocalDateTime latestSentAt;
         private boolean retryable;
+        private List<SetStatus> sets;
+    }
+
+    @Data
+    @Builder
+    public static class SetStatus {
+        private Integer setNo;
+        private String status;
+        private String eloMessage;
+        private String sheetStatus;
+        private String sheetMessage;
+        private LocalDateTime latestSentAt;
+        private boolean retryable;
     }
 
     @Data

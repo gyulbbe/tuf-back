@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -37,6 +38,8 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,6 +48,7 @@ public class TournamentClanShareSendLogService {
 
     private static final int MESSAGE_MAX_LENGTH = 500;
     private static final String STATUS_UNSENT = "UNSENT";
+    private static final Pattern SET_MATCH_NAME_PATTERN = Pattern.compile("\\|\\s*(\\d+)세트\\s*$");
 
     private final TournamentRepository tournamentRepository;
     private final TournamentStageRepository stageRepository;
@@ -373,26 +377,21 @@ public class TournamentClanShareSendLogService {
                 .filter(slot -> Integer.valueOf(1).equals(slot.getIsWinner()))
                 .findFirst()
                 .orElse(null);
-        TournamentClanShareSendLogEntity successLog = logs.stream()
-                .filter(log -> TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(log.getEloStatus()))
-                .findFirst()
-                .orElse(null);
-        TournamentClanShareSendLogEntity latestLog = logs.isEmpty() ? null : logs.get(0);
-        TournamentClanShareSendLogEntity statusLog = successLog != null ? successLog : latestLog;
-        String status = resolveStatus(successLog, latestLog);
+        ClanShareMatchLogStatus logStatus = resolveMatchLogStatus(buildExpectedSendUnits(sets), logs);
 
         return TournamentClanShareSendLogStatusResponseDto.Match.builder()
                 .matchId(match.getId())
                 .player1(resolveSlotName(slot1, participantsById, usersById))
                 .player2(resolveSlotName(slot2, participantsById, usersById))
                 .winner(resolveSlotName(winnerSlot, participantsById, usersById))
-                .mapName(resolveMapName(match, sets, mapNamesById, statusLog))
-                .status(status)
-                .eloMessage(statusLog == null ? null : statusLog.getEloMessage())
-                .sheetStatus(statusLog == null ? null : statusLog.getSheetStatus())
-                .sheetMessage(statusLog == null ? null : statusLog.getSheetMessage())
-                .latestSentAt(statusLog == null ? null : statusLog.getRegDate())
-                .retryable(!TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(status))
+                .mapName(resolveMapName(match, sets, mapNamesById, logStatus.statusLog()))
+                .status(logStatus.status())
+                .eloMessage(logStatus.statusLog() == null ? null : logStatus.statusLog().getEloMessage())
+                .sheetStatus(logStatus.sheetStatus())
+                .sheetMessage(logStatus.sheetMessage())
+                .latestSentAt(logStatus.latestSentAt())
+                .retryable(!TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(logStatus.status()))
+                .sets(logStatus.sets())
                 .build();
     }
 
@@ -403,17 +402,161 @@ public class TournamentClanShareSendLogService {
                 .orElseGet(() -> slots.size() >= slotNo ? slots.get(slotNo - 1) : null);
     }
 
-    private String resolveStatus(
-            TournamentClanShareSendLogEntity successLog,
-            TournamentClanShareSendLogEntity latestLog
+    private List<ExpectedSendUnit> buildExpectedSendUnits(List<TournamentMatchSetEntity> sets) {
+        List<ExpectedSendUnit> setUnits = sets.stream()
+                .filter(set -> set.getSetNo() != null)
+                .filter(set -> set.getWinnerSlotNo() != null)
+                .filter(set -> set.getMapId() != null)
+                .sorted(Comparator
+                        .comparing((TournamentMatchSetEntity set) -> nullsLast(set.getSetNo()))
+                        .thenComparing(TournamentMatchSetEntity::getId))
+                .map(set -> new ExpectedSendUnit(set.getSetNo()))
+                .toList();
+
+        if (!setUnits.isEmpty()) {
+            return setUnits;
+        }
+
+        return List.of(new ExpectedSendUnit(null));
+    }
+
+    private ClanShareMatchLogStatus resolveMatchLogStatus(
+            List<ExpectedSendUnit> expectedUnits,
+            List<TournamentClanShareSendLogEntity> logs
     ) {
+        boolean setBased = expectedUnits.stream().anyMatch(unit -> unit.setNo() != null);
+        List<UnitLogStatus> unitStatuses = expectedUnits.stream()
+                .map(unit -> resolveUnitLogStatus(unit, logs, setBased))
+                .toList();
+        List<TournamentClanShareSendLogStatusResponseDto.SetStatus> setStatuses = setBased
+                ? unitStatuses.stream()
+                .map(this::toSetStatus)
+                .toList()
+                : List.of();
+        List<TournamentClanShareSendLogEntity> relevantLogs = unitStatuses.stream()
+                .flatMap(unitStatus -> unitStatus.logs().stream())
+                .toList();
+        TournamentClanShareSendLogEntity sheetFailedLog = relevantLogs.stream()
+                .filter(log -> TournamentClanShareSendLogEntity.STATUS_FAILED.equals(log.getSheetStatus()))
+                .findFirst()
+                .orElse(null);
+        LocalDateTime latestSentAt = relevantLogs.stream()
+                .map(TournamentClanShareSendLogEntity::getRegDate)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+
+        boolean allSuccess = unitStatuses.stream()
+                .allMatch(unitStatus -> TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(unitStatus.status()));
+        if (allSuccess && !unitStatuses.isEmpty()) {
+            TournamentClanShareSendLogEntity statusLog = unitStatuses.stream()
+                    .map(UnitLogStatus::successLog)
+                    .filter(Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            return new ClanShareMatchLogStatus(
+                    TournamentClanShareSendLogEntity.STATUS_SUCCESS,
+                    statusLog,
+                    sheetFailedLog == null ? statusLog == null ? null : statusLog.getSheetStatus() : sheetFailedLog.getSheetStatus(),
+                    sheetFailedLog == null ? statusLog == null ? null : statusLog.getSheetMessage() : sheetFailedLog.getSheetMessage(),
+                    latestSentAt,
+                    setStatuses
+            );
+        }
+
+        TournamentClanShareSendLogEntity failedLog = unitStatuses.stream()
+                .filter(unitStatus -> TournamentClanShareSendLogEntity.STATUS_FAILED.equals(unitStatus.status()))
+                .map(UnitLogStatus::latestLog)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (failedLog != null) {
+            return new ClanShareMatchLogStatus(
+                    TournamentClanShareSendLogEntity.STATUS_FAILED,
+                    failedLog,
+                    sheetFailedLog == null ? failedLog.getSheetStatus() : sheetFailedLog.getSheetStatus(),
+                    sheetFailedLog == null ? failedLog.getSheetMessage() : sheetFailedLog.getSheetMessage(),
+                    latestSentAt,
+                    setStatuses
+            );
+        }
+
+        return new ClanShareMatchLogStatus(
+                STATUS_UNSENT,
+                null,
+                sheetFailedLog == null ? null : sheetFailedLog.getSheetStatus(),
+                sheetFailedLog == null ? null : sheetFailedLog.getSheetMessage(),
+                latestSentAt,
+                setStatuses
+        );
+    }
+
+    private TournamentClanShareSendLogStatusResponseDto.SetStatus toSetStatus(UnitLogStatus unitStatus) {
+        TournamentClanShareSendLogEntity statusLog = unitStatus.successLog() == null
+                ? unitStatus.latestLog()
+                : unitStatus.successLog();
+
+        return TournamentClanShareSendLogStatusResponseDto.SetStatus.builder()
+                .setNo(unitStatus.unit().setNo())
+                .status(unitStatus.status())
+                .eloMessage(statusLog == null ? null : statusLog.getEloMessage())
+                .sheetStatus(statusLog == null ? null : statusLog.getSheetStatus())
+                .sheetMessage(statusLog == null ? null : statusLog.getSheetMessage())
+                .latestSentAt(statusLog == null ? null : statusLog.getRegDate())
+                .retryable(!TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(unitStatus.status()))
+                .build();
+    }
+
+    private UnitLogStatus resolveUnitLogStatus(
+            ExpectedSendUnit unit,
+            List<TournamentClanShareSendLogEntity> logs,
+            boolean setBased
+    ) {
+        List<TournamentClanShareSendLogEntity> unitLogs = logs.stream()
+                .filter(log -> matchesExpectedUnit(log, unit, setBased))
+                .toList();
+        TournamentClanShareSendLogEntity successLog = unitLogs.stream()
+                .filter(log -> TournamentClanShareSendLogEntity.STATUS_SUCCESS.equals(log.getEloStatus()))
+                .findFirst()
+                .orElse(null);
+        TournamentClanShareSendLogEntity latestLog = unitLogs.isEmpty() ? null : unitLogs.get(0);
+
         if (successLog != null) {
-            return TournamentClanShareSendLogEntity.STATUS_SUCCESS;
+            return new UnitLogStatus(unit, TournamentClanShareSendLogEntity.STATUS_SUCCESS, successLog, latestLog, unitLogs);
         }
         if (latestLog != null && TournamentClanShareSendLogEntity.STATUS_FAILED.equals(latestLog.getEloStatus())) {
-            return TournamentClanShareSendLogEntity.STATUS_FAILED;
+            return new UnitLogStatus(unit, TournamentClanShareSendLogEntity.STATUS_FAILED, null, latestLog, unitLogs);
         }
-        return STATUS_UNSENT;
+        return new UnitLogStatus(unit, STATUS_UNSENT, null, latestLog, unitLogs);
+    }
+
+    private boolean matchesExpectedUnit(
+            TournamentClanShareSendLogEntity log,
+            ExpectedSendUnit unit,
+            boolean setBased
+    ) {
+        if (!setBased) {
+            return true;
+        }
+
+        return Objects.equals(parseSetNoFromLog(log), unit.setNo());
+    }
+
+    private Integer parseSetNoFromLog(TournamentClanShareSendLogEntity log) {
+        String matchName = log.getMatchName();
+        if (matchName == null || matchName.isBlank()) {
+            return null;
+        }
+        Matcher matcher = SET_MATCH_NAME_PATTERN.matcher(matchName);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        try {
+            return Integer.valueOf(matcher.group(1));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private String resolveSlotName(
@@ -472,6 +615,28 @@ public class TournamentClanShareSendLogService {
         private StatusGroupState(String label) {
             this(label, new ArrayList<>());
         }
+    }
+
+    private record ExpectedSendUnit(Integer setNo) {
+    }
+
+    private record UnitLogStatus(
+            ExpectedSendUnit unit,
+            String status,
+            TournamentClanShareSendLogEntity successLog,
+            TournamentClanShareSendLogEntity latestLog,
+            List<TournamentClanShareSendLogEntity> logs
+    ) {
+    }
+
+    private record ClanShareMatchLogStatus(
+            String status,
+            TournamentClanShareSendLogEntity statusLog,
+            String sheetStatus,
+            String sheetMessage,
+            LocalDateTime latestSentAt,
+            List<TournamentClanShareSendLogStatusResponseDto.SetStatus> sets
+    ) {
     }
 
     private static class StatusCounter {
