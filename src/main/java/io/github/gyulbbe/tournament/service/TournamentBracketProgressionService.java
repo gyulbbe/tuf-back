@@ -134,7 +134,7 @@ public class TournamentBracketProgressionService {
 
         matchSlotRepository.findByMatchIdAndSlotNo(route.getToMatchId(), route.getToSlotNo())
                 .ifPresent(targetSlot -> {
-                    targetSlot.assignParticipant(participantId);
+                    targetSlot.assignRoutedParticipant(participantId);
                     targetSlot.markBye(false);
                     targetSlot.markWinner(false);
                     targetSlot.updateScore(null);

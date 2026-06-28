@@ -74,7 +74,14 @@ class TournamentBracketProgressionServiceTest {
         TournamentMatchSlotEntity byeSlot = byeSlot(1001L, 100L, 2);
         TournamentRouteEntity winnerRoute = matchSlotRoute(100L, 200L, 1);
         TournamentMatchEntity targetMatch = match(200L, TournamentMatchEntity.STATUS_PENDING, 2);
-        TournamentMatchSlotEntity targetSlot = emptySlot(2000L, 200L, 1, "R1 winner");
+        TournamentMatchSlotEntity targetSlot = sourceSlot(
+                2000L,
+                200L,
+                1,
+                100L,
+                TournamentMatchSlotEntity.OUTCOME_WINNER,
+                "R1 winner"
+        );
         TournamentMatchSlotEntity targetOpponentSlot = actualSlot(2001L, 200L, 2, 102L);
 
         given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
@@ -99,6 +106,8 @@ class TournamentBracketProgressionServiceTest {
         assertThat(targetSlot.getIsBye()).isZero();
         assertThat(targetSlot.getIsWinner()).isZero();
         assertThat(targetSlot.getScore()).isNull();
+        assertThat(targetSlot.getSourceMatchId()).isEqualTo(100L);
+        assertThat(targetSlot.getSourceOutcome()).isEqualTo(TournamentMatchSlotEntity.OUTCOME_WINNER);
         assertThat(targetMatch.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_READY);
         verify(routeRepository, never()).findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_LOSER);
     }
@@ -179,11 +188,25 @@ class TournamentBracketProgressionServiceTest {
         TournamentRouteEntity winnerRoute = matchSlotRoute(100L, TournamentRouteEntity.OUTCOME_WINNER, 200L, 1);
         TournamentRouteEntity loserRoute = matchSlotRoute(100L, TournamentRouteEntity.OUTCOME_LOSER, 300L, 2);
         TournamentMatchEntity winnerTargetMatch = match(200L, TournamentMatchEntity.STATUS_PENDING, 2);
-        TournamentMatchSlotEntity winnerTargetSlot = emptySlot(2000L, 200L, 1, "Winner");
+        TournamentMatchSlotEntity winnerTargetSlot = sourceSlot(
+                2000L,
+                200L,
+                1,
+                100L,
+                TournamentMatchSlotEntity.OUTCOME_WINNER,
+                "Winner"
+        );
         TournamentMatchSlotEntity winnerOpponentSlot = actualSlot(2001L, 200L, 2, 201L);
         TournamentMatchEntity loserTargetMatch = match(300L, TournamentMatchEntity.STATUS_PENDING, 3);
         TournamentMatchSlotEntity loserOpponentSlot = actualSlot(3000L, 300L, 1, 202L);
-        TournamentMatchSlotEntity loserTargetSlot = emptySlot(3001L, 300L, 2, "Loser");
+        TournamentMatchSlotEntity loserTargetSlot = sourceSlot(
+                3001L,
+                300L,
+                2,
+                100L,
+                TournamentMatchSlotEntity.OUTCOME_LOSER,
+                "Loser"
+        );
 
         given(routeRepository.findByFromMatchIdAndOutcome(100L, TournamentRouteEntity.OUTCOME_WINNER))
                 .willReturn(Optional.of(winnerRoute));
@@ -206,12 +229,32 @@ class TournamentBracketProgressionServiceTest {
         assertThat(winnerTargetSlot.getIsBye()).isZero();
         assertThat(winnerTargetSlot.getIsWinner()).isZero();
         assertThat(winnerTargetSlot.getScore()).isNull();
+        assertThat(winnerTargetSlot.getSourceMatchId()).isEqualTo(100L);
+        assertThat(winnerTargetSlot.getSourceOutcome()).isEqualTo(TournamentMatchSlotEntity.OUTCOME_WINNER);
         assertThat(winnerTargetMatch.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_READY);
         assertThat(loserTargetSlot.getParticipantId()).isEqualTo(102L);
         assertThat(loserTargetSlot.getIsBye()).isZero();
         assertThat(loserTargetSlot.getIsWinner()).isZero();
         assertThat(loserTargetSlot.getScore()).isNull();
+        assertThat(loserTargetSlot.getSourceMatchId()).isEqualTo(100L);
+        assertThat(loserTargetSlot.getSourceOutcome()).isEqualTo(TournamentMatchSlotEntity.OUTCOME_LOSER);
         assertThat(loserTargetMatch.getStatus()).isEqualTo(TournamentMatchEntity.STATUS_READY);
+    }
+
+    @Test
+    void assignParticipant_clearsSourceButRoutedAssignmentPreservesSource() {
+        TournamentMatchSlotEntity manualSlot = sourceSlot(2000L, 200L, 1, 100L, TournamentMatchSlotEntity.OUTCOME_WINNER, "Winner");
+        TournamentMatchSlotEntity routedSlot = sourceSlot(2001L, 200L, 2, 101L, TournamentMatchSlotEntity.OUTCOME_LOSER, "Loser");
+
+        manualSlot.assignParticipant(201L);
+        routedSlot.assignRoutedParticipant(202L);
+
+        assertThat(manualSlot.getParticipantId()).isEqualTo(201L);
+        assertThat(manualSlot.getSourceMatchId()).isNull();
+        assertThat(manualSlot.getSourceOutcome()).isNull();
+        assertThat(routedSlot.getParticipantId()).isEqualTo(202L);
+        assertThat(routedSlot.getSourceMatchId()).isEqualTo(101L);
+        assertThat(routedSlot.getSourceOutcome()).isEqualTo(TournamentMatchSlotEntity.OUTCOME_LOSER);
     }
 
     @Test
@@ -276,7 +319,14 @@ class TournamentBracketProgressionServiceTest {
         TournamentResultSlotEntity firstResultSlot = qualifiedResultSlot(901L);
         TournamentResultSlotEntity secondResultSlot = qualifiedResultSlot(902L);
         TournamentMatchEntity deciderMatch = match(200L, TournamentMatchEntity.STATUS_PENDING, 2);
-        TournamentMatchSlotEntity deciderSourceSlot = emptySlot(2000L, 200L, 1, "Winners loser");
+        TournamentMatchSlotEntity deciderSourceSlot = sourceSlot(
+                2000L,
+                200L,
+                1,
+                100L,
+                TournamentMatchSlotEntity.OUTCOME_LOSER,
+                "Winners loser"
+        );
         TournamentMatchSlotEntity deciderByeSlot = byeSlot(2001L, 200L, 2);
         List<TournamentResultSlotEntity> resultSlots = List.of(firstResultSlot, secondResultSlot);
 
@@ -314,10 +364,24 @@ class TournamentBracketProgressionServiceTest {
         TournamentMatchSlotEntity r1ActualSlot = actualSlot(1000L, 100L, 1, 101L);
         TournamentMatchSlotEntity r1ByeSlot = byeSlot(1001L, 100L, 2);
         TournamentMatchEntity semifinalMatch = match(200L, TournamentMatchEntity.STATUS_PENDING, 2);
-        TournamentMatchSlotEntity semifinalSourceSlot = emptySlot(2000L, 200L, 1, "R1 winner");
+        TournamentMatchSlotEntity semifinalSourceSlot = sourceSlot(
+                2000L,
+                200L,
+                1,
+                100L,
+                TournamentMatchSlotEntity.OUTCOME_WINNER,
+                "R1 winner"
+        );
         TournamentMatchSlotEntity semifinalByeSlot = byeSlot(2001L, 200L, 2);
         TournamentMatchEntity finalMatch = match(300L, TournamentMatchEntity.STATUS_PENDING, 3);
-        TournamentMatchSlotEntity finalSourceSlot = emptySlot(3000L, 300L, 1, "SF winner");
+        TournamentMatchSlotEntity finalSourceSlot = sourceSlot(
+                3000L,
+                300L,
+                1,
+                200L,
+                TournamentMatchSlotEntity.OUTCOME_WINNER,
+                "SF winner"
+        );
         TournamentMatchSlotEntity finalOpponentSlot = actualSlot(3001L, 300L, 2, 202L);
 
         given(stageRepository.findById(STAGE_ID)).willReturn(Optional.of(stage));
@@ -453,6 +517,26 @@ class TournamentBracketProgressionServiceTest {
                 .id(id)
                 .matchId(matchId)
                 .slotNo(slotNo)
+                .placeholderLabel(placeholderLabel)
+                .isWinner(0)
+                .isBye(0)
+                .build();
+    }
+
+    private TournamentMatchSlotEntity sourceSlot(
+            Long id,
+            Long matchId,
+            Integer slotNo,
+            Long sourceMatchId,
+            String sourceOutcome,
+            String placeholderLabel
+    ) {
+        return TournamentMatchSlotEntity.builder()
+                .id(id)
+                .matchId(matchId)
+                .slotNo(slotNo)
+                .sourceMatchId(sourceMatchId)
+                .sourceOutcome(sourceOutcome)
                 .placeholderLabel(placeholderLabel)
                 .isWinner(0)
                 .isBye(0)

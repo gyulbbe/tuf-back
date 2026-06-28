@@ -82,6 +82,14 @@ public class TournamentMatchSlotEntity {
         this.isBye = 0;
     }
 
+    public void assignRoutedParticipant(Long participantId) {
+        this.participantId = participantId;
+        this.placeholderLabel = null;
+        this.score = null;
+        this.isWinner = 0;
+        this.isBye = 0;
+    }
+
     public void clearParticipant(String placeholderLabel) {
         this.participantId = null;
         this.sourceMatchId = null;
